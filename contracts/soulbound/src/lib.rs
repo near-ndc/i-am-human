@@ -60,6 +60,10 @@ impl Contract {
         }
     }
 
+    /**********
+     * ADMIN
+     **********/
+
     #[payable]
     pub fn sbt_mint(&mut self, metadata: TokenMetadata, receiver: AccountId) {
         self.assert_issuer();
@@ -68,24 +72,68 @@ impl Contract {
         let token_id = self.next_token_id;
         self.next_token_id += 1;
         self.token_metadata.insert(&token_id, &metadata);
-        self.add_token_to_owner(&receiver, &token_id);
+        self.add_token_to_owner(&receiver, token_id);
+        let event = EventLogVariant::SbtMint(vec![SbtMintLog {
+            owner: receiver.to_string(),
+            tokens: vec![token_id],
+            memo: None,
+        }]);
+        self.log(event);
+    }
 
-        // Construct the mint log as per the events standard.
-        let sbt_mint_log: EventLog = EventLog {
-            standard: SBT_STANDARD_NAME.to_string(),
-            version: METADATA_SPEC.to_string(),
-            event: EventLogVariant::SbtMint(vec![SbtMintLog {
-                owner: receiver.to_string(),
-                tokens: vec![token_id.to_string()],
-                memo: None,
-            }]),
-        };
-        env::log_str(&sbt_mint_log.to_string());
+    /// sbt_recover reassigns all tokens from the old_owner to the new_owner,
+    /// and registers `old_owner` to a burned addresses registry.
+    #[payable]
+    pub fn sbt_recover(&mut self, old_owner: AccountId, new_owner: AccountId) {
+        self.assert_operator();
+        assert_one_yocto();
+
+        let mut token_set_old = self
+            .tokens_per_owner
+            .get(&old_owner)
+            .expect("Token not owned by the owner");
+
+        // we remove old_owner records, and merge his tokens into new_owner token set
+        self.tokens_per_owner.remove(&old_owner);
+        let mut token_set_new = self.tokens_per_owner.get(&new_owner).unwrap_or_else(|| {
+            UnorderedSet::new(
+                StorageKey::TokenPerOwnerInner {
+                    //we get a new unique prefix for the collection
+                    account_id_hash: hash_account_id(&new_owner),
+                }
+                .try_to_vec()
+                .unwrap(),
+            )
+        });
+        for t in token_set_old.iter() {
+            token_set_new.insert(&t);
+        }
+        self.tokens_per_owner.insert(&new_owner, &token_set_new);
+
+        // TODO: register the old_account into burned sbt account set contract
+
+        let event = EventLogVariant::SbtRecover(vec![SbtRecoverLog {
+            old_owner: old_owner.to_string(),
+            new_owner: new_owner.to_string(),
+            tokens: token_set_old.iter().collect(),
+            memo: None,
+        }]);
+        self.log(event);
     }
 
     /**********
      * INTERNAL
      **********/
+
+    fn log(&self, event: EventLogVariant) {
+        // Construct the mint log as per the events standard.
+        let sbt_mint_log: EventLog = EventLog {
+            standard: SBT_STANDARD_NAME.to_string(),
+            version: METADATA_SPEC.to_string(),
+            event,
+        };
+        env::log_str(&sbt_mint_log.to_string());
+    }
 
     fn assert_issuer(&self) {
         assert_eq!(self.issuer, env::predecessor_account_id(), "must be issuer");
@@ -99,7 +147,7 @@ impl Contract {
     }
 
     /// add a token to the set of tokens an owner has
-    pub(crate) fn add_token_to_owner(&mut self, account_id: &AccountId, token_id: &TokenId) {
+    pub(crate) fn add_token_to_owner(&mut self, account_id: &AccountId, token_id: TokenId) {
         let mut tokens_set = self.tokens_per_owner.get(account_id).unwrap_or_else(|| {
             //if the account doesn't have any tokens, we create a new unordered set
             UnorderedSet::new(
@@ -112,35 +160,16 @@ impl Contract {
             )
         });
 
-        tokens_set.insert(token_id);
+        tokens_set.insert(&token_id);
         self.tokens_per_owner.insert(account_id, &tokens_set);
-    }
-
-    pub(crate) fn remove_token_from_owner(&mut self, owner: &AccountId, token_id: &TokenId) {
-        // we get the set of tokens that the owner has
-        let mut tokens_set = self
-            .tokens_per_owner
-            .get(owner)
-            .expect("Token not owned by the owner");
-
-        // we remove the the token_id from the set of tokens
-        tokens_set.remove(token_id);
-
-        // if the token set is now empty, we remove the owner from the tokens_per_owner collection
-        if tokens_set.is_empty() {
-            self.tokens_per_owner.remove(owner);
-        } else {
-            // otherwise, we simply insert it back for the account ID.
-            self.tokens_per_owner.insert(owner, &tokens_set);
-        }
     }
 }
 
-//used to generate a unique prefix in our storage collections (this is to avoid data collisions)
+// used to generate a unique prefix in our storage collections (this is to avoid data collisions)
 pub(crate) fn hash_account_id(account_id: &AccountId) -> CryptoHash {
-    //get the default hash
+    // get the default hasher
     let mut hash = CryptoHash::default();
-    //we hash the account ID and return it
+    // we hash the account ID and return it
     hash.copy_from_slice(&env::sha256(account_id.as_bytes()));
     hash
 }

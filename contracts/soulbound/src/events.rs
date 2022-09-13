@@ -2,6 +2,8 @@ use std::fmt;
 
 use near_sdk::serde::{Deserialize, Serialize};
 
+use crate::TokenId;
+
 /// Enum that represents the data type of the EventLog.
 /// The enum can either be an NftMint or an NftTransfer.
 #[derive(Serialize, Deserialize, Debug)]
@@ -51,7 +53,7 @@ impl fmt::Display for EventLog {
 #[serde(crate = "near_sdk::serde")]
 pub struct SbtMintLog {
     pub owner: String,
-    pub tokens: Vec<String>,
+    pub tokens: Vec<TokenId>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memo: Option<String>,
@@ -69,7 +71,7 @@ pub struct SbtMintLog {
 pub struct SbtRecoverLog {
     pub old_owner: String,
     pub new_owner: String,
-    pub tokens: Vec<String>,
+    pub tokens: Vec<TokenId>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memo: Option<String>,
@@ -95,19 +97,19 @@ mod tests {
 
     #[test]
     fn log_format_vector() {
-        let expected = r#"EVENT_JSON:{"standard":"nep999","version":"1.0.0","event":"sbt_mint","data":[{"owner":"bob.near","tokens":["aurora","cheddar"]},{"owner":"user1.near","tokens":["meme"]}]}"#;
+        let expected = r#"EVENT_JSON:{"standard":"nep999","version":"1.0.0","event":"sbt_mint","data":[{"owner":"bob.near","tokens":[1,2]},{"owner":"user1.near","tokens":[4]}]}"#;
         let log = EventLog {
             standard: "nep999".to_string(),
             version: "1.0.0".to_string(),
             event: EventLogVariant::SbtMint(vec![
                 SbtMintLog {
                     owner: "bob.near".to_owned(),
-                    tokens: vec!["aurora".to_string(), "cheddar".to_string()],
+                    tokens: vec![1, 2],
                     memo: None,
                 },
                 SbtMintLog {
                     owner: "user1.near".to_owned(),
-                    tokens: vec!["meme".to_string()],
+                    tokens: vec![4],
                     memo: None,
                 },
             ]),
@@ -117,13 +119,13 @@ mod tests {
 
     #[test]
     fn log_format_mint() {
-        let expected = r#"EVENT_JSON:{"standard":"nep999","version":"1.0.0","event":"sbt_mint","data":[{"owner":"bob.near","tokens":["aurora","cheddar"]}]}"#;
+        let expected = r#"EVENT_JSON:{"standard":"nep999","version":"1.0.0","event":"sbt_mint","data":[{"owner":"bob.near","tokens":[1,2]}]}"#;
         let log = EventLog {
             standard: "nep999".to_string(),
             version: "1.0.0".to_string(),
             event: EventLogVariant::SbtMint(vec![SbtMintLog {
                 owner: "bob.near".to_owned(),
-                tokens: vec!["aurora".to_string(), "cheddar".to_string()],
+                tokens: vec![1, 2],
                 memo: None,
             }]),
         };
@@ -132,14 +134,14 @@ mod tests {
 
     #[test]
     fn log_format_recovery() {
-        let expected = r#"EVENT_JSON:{"standard":"nepTODO","version":"1.0.0","event":"sbt_recover","data":[{"old_owner":"user1.near","new_owner":"user2.near","tokens":["token"],"memo":"process1"}]}"#;
+        let expected = r#"EVENT_JSON:{"standard":"nepTODO","version":"1.0.0","event":"sbt_recover","data":[{"old_owner":"user1.near","new_owner":"user2.near","tokens":[10],"memo":"process1"}]}"#;
         let log = EventLog {
             standard: SBT_STANDARD_NAME.to_string(),
             version: METADATA_SPEC.to_string(),
             event: EventLogVariant::SbtRecover(vec![SbtRecoverLog {
                 old_owner: "user1.near".to_string(),
                 new_owner: "user2.near".to_string(),
-                tokens: vec!["token".to_string()],
+                tokens: vec![10],
                 memo: Some("process1".to_owned()),
             }]),
         };
