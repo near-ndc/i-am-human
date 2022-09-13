@@ -5,16 +5,23 @@ use near_sdk::collections::{LazyOption, LookupMap, UnorderedMap, UnorderedSet};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::CryptoHash;
 use near_sdk::{
-    assert_one_yocto, env, ext_contract, log, near_bindgen, require, AccountId, PanicOnDefault,
+    assert_one_yocto, env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault,
 };
 
 pub use crate::events::*;
+pub use crate::interfaces::*;
 pub use crate::metadata::*;
 pub use crate::storage::*;
 
 mod events;
+mod interfaces;
 mod metadata;
 mod storage;
+
+/// Balance of one mili NEAR, which is 10^23 Yocto NEAR.
+pub const MILI_NEAR: Balance = 1_000_000_000_000_000_000_000;
+pub const BLACKLIST_COST: Balance = 5 * MILI_NEAR;
+pub const GAS_FOR_BLACKLIST: Gas = Gas(6 * Gas::ONE_TERA.0);
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -23,12 +30,13 @@ pub struct Contract {
     pub issuer: AccountId,
     // Address of an account authorized to renew or recover SBT tokens
     pub operators: HashSet<AccountId>,
+    pub burn_account_registry: AccountId,
 
     // keeps track of all the token IDs for a given account
     pub tokens_per_owner: LookupMap<AccountId, UnorderedSet<TokenId>>,
-    // keeps track of the token metadata for a given token ID
+    // token metadata
     pub token_metadata: UnorderedMap<TokenId, TokenMetadata>,
-    // keeps track of the metadata for the contract
+    // contract metadata
     pub metadata: LazyOption<SBTContractMetadata>,
 
     pub next_token_id: TokenId,
@@ -42,10 +50,12 @@ impl Contract {
         issuer: AccountId,
         operators: Vec<AccountId>,
         metadata: SBTContractMetadata,
+        burn_account_registry: AccountId,
     ) -> Self {
         Self {
             issuer,
             operators: HashSet::from_iter(operators),
+            burn_account_registry,
 
             tokens_per_owner: LookupMap::new(StorageKey::TokensPerOwner.try_to_vec().unwrap()),
             token_metadata: UnorderedMap::new(StorageKey::TokenMetadataById.try_to_vec().unwrap()),
@@ -80,10 +90,16 @@ impl Contract {
 
     /// sbt_recover reassigns all tokens from the old_owner to the new_owner,
     /// and registers `old_owner` to a burned addresses registry.
+    /// Must be called by operator.
+    /// Must provide 5 miliNEAR to cover registry storage cost. Operator should
+    ///   put that cost to the requester (old_owner), eg by asking operation fee.
     #[payable]
     pub fn sbt_recover(&mut self, old_owner: AccountId, new_owner: AccountId) {
         self.assert_operator();
-        assert_one_yocto();
+        require!(
+            env::attached_deposit() >= BLACKLIST_COST,
+            "must provide at least 5 miliNEAR to cover blacklist storage cost"
+        );
 
         let token_set_old = self
             .tokens_per_owner
@@ -107,8 +123,6 @@ impl Contract {
         }
         self.tokens_per_owner.insert(&new_owner, &token_set_new);
 
-        // TODO: register the old_account into burned sbt account set contract
-
         let event = EventLogVariant::SbtRecover(vec![SbtRecoverLog {
             old_owner: old_owner.to_string(),
             new_owner: new_owner.to_string(),
@@ -116,6 +130,11 @@ impl Contract {
             memo: None,
         }]);
         emit_event(event);
+
+        ext_blacklist::ext(self.burn_account_registry.clone())
+            .with_attached_deposit(BLACKLIST_COST)
+            .with_static_gas(GAS_FOR_BLACKLIST)
+            .blacklist(old_owner, None);
     }
 
     /// sbt_renew will update the expire time of provided tokens.
@@ -140,11 +159,14 @@ impl Contract {
      **********/
 
     fn assert_issuer(&self) {
-        assert_eq!(self.issuer, env::predecessor_account_id(), "must be issuer");
+        require!(
+            self.issuer == env::predecessor_account_id(),
+            "must be issuer"
+        );
     }
 
     fn assert_operator(&self) {
-        assert!(
+        require!(
             self.operators.contains(&env::predecessor_account_id()),
             "must be operator"
         );
