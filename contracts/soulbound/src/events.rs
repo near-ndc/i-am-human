@@ -85,7 +85,7 @@ pub struct SbtRecoverLog {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub struct SbtRenewLog {
-    pub tokens: Vec<String>,
+    pub tokens: Vec<TokenId>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memo: Option<String>,
@@ -94,6 +94,7 @@ pub struct SbtRenewLog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::*;
 
     #[test]
     fn log_format_vector() {

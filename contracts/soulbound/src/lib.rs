@@ -88,7 +88,7 @@ impl Contract {
         self.assert_operator();
         assert_one_yocto();
 
-        let mut token_set_old = self
+        let token_set_old = self
             .tokens_per_owner
             .get(&old_owner)
             .expect("Token not owned by the owner");
@@ -118,6 +118,23 @@ impl Contract {
             tokens: token_set_old.iter().collect(),
             memo: None,
         }]);
+        self.log(event);
+    }
+
+    /// sbt_renew will update the expire time of provided tokens.
+    /// `expires_at` is a unix timestamp (in seconds).
+    #[payable]
+    pub fn sbt_renew(&mut self, tokens: Vec<TokenId>, expires_at: u64, memo: Option<String>) {
+        self.assert_operator();
+        assert_one_yocto();
+
+        for t_id in tokens.iter() {
+            let mut t = self.token_metadata.get(&t_id).expect("Token doesn't exist");
+            t.expires_at = Some(expires_at);
+            self.token_metadata.insert(&t_id, &t);
+        }
+
+        let event = EventLogVariant::SbtRenew(vec![SbtRenewLog { tokens, memo }]);
         self.log(event);
     }
 
