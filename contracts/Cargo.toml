@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "./soulbound",
+    "./blacklist-human-addresses",
 ]
 
 
