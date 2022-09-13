@@ -1,14 +1,11 @@
 use std::collections::HashSet;
-use std::mem::size_of;
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedMap, UnorderedSet};
-use near_sdk::json_types::U128;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::CryptoHash;
 use near_sdk::{
-    assert_one_yocto, env, ext_contract, log, near_bindgen, require, AccountId, Balance,
-    PanicOnDefault, Promise, PromiseOrValue, PromiseResult, ONE_YOCTO,
+    assert_one_yocto, env, ext_contract, log, near_bindgen, require, AccountId, PanicOnDefault,
 };
 
 pub use crate::events::*;
@@ -78,7 +75,7 @@ impl Contract {
             tokens: vec![token_id],
             memo: None,
         }]);
-        self.log(event);
+        emit_event(event);
     }
 
     /// sbt_recover reassigns all tokens from the old_owner to the new_owner,
@@ -118,7 +115,7 @@ impl Contract {
             tokens: token_set_old.iter().collect(),
             memo: None,
         }]);
-        self.log(event);
+        emit_event(event);
     }
 
     /// sbt_renew will update the expire time of provided tokens.
@@ -135,22 +132,12 @@ impl Contract {
         }
 
         let event = EventLogVariant::SbtRenew(vec![SbtRenewLog { tokens, memo }]);
-        self.log(event);
+        emit_event(event);
     }
 
     /**********
      * INTERNAL
      **********/
-
-    fn log(&self, event: EventLogVariant) {
-        // Construct the mint log as per the events standard.
-        let sbt_mint_log: EventLog = EventLog {
-            standard: SBT_STANDARD_NAME.to_string(),
-            version: METADATA_SPEC.to_string(),
-            event,
-        };
-        env::log_str(&sbt_mint_log.to_string());
-    }
 
     fn assert_issuer(&self) {
         assert_eq!(self.issuer, env::predecessor_account_id(), "must be issuer");
@@ -180,6 +167,16 @@ impl Contract {
         tokens_set.insert(&token_id);
         self.tokens_per_owner.insert(account_id, &tokens_set);
     }
+}
+
+fn emit_event(event: EventLogVariant) {
+    // Construct the mint log as per the events standard.
+    let log: EventLog = EventLog {
+        standard: SBT_STANDARD_NAME.to_string(),
+        version: METADATA_SPEC.to_string(),
+        event,
+    };
+    env::log_str(&log.to_string());
 }
 
 // used to generate a unique prefix in our storage collections (this is to avoid data collisions)

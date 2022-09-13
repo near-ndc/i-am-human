@@ -39,7 +39,7 @@ impl Contract {
             account,
             memo,
         };
-        log(event);
+        emit_event(event);
     }
 
     /// checks if an `account` was blacklisted by `ctr` contract in an event
@@ -51,7 +51,7 @@ impl Contract {
     }
 }
 
-fn log(event: BlacklistLog) {
+fn emit_event(event: BlacklistLog) {
     // Construct the mint log as per the events standard.
     let e = EventLog {
         standard: LOG_NAME.to_string(),
