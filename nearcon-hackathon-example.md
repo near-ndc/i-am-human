@@ -91,3 +91,21 @@ Registering Bob fails because he is not qualified in `class1`:
 false
 https://explorer.testnet.near.org/transactions/CGENd24zkKM9DkbVXhDLUm6H6L3Y8hH5iynTQ28HzhFK
 ```
+
+### Social Graph
+
+Social Graph can be used to generate SBT tokens, proving positive pass of a social graph algorithm.
+
+### Cheddar Farm Drop
+
+As an alternative to popular AirDrops, we are designing a [Cheddar Farm](https://app.cheddar.farm)
+to stake community token and farm new token:
+
+- Only users who pass a human criteria can register to a Cheddar Farm Drops.
+- Each Farm Drop defines a staking token and a reward token. Staking token is usually
+  one of the ecosystem tokens, while farmed tokens is a new token which is supposed to
+  be distributed.
+- This way we create loyalty network:
+  - new tokens has an access to a community of doers and humans.
+  - new token can be a staking token in the future (which can drive a demand).
+  - cheddar can be additional minted to support new projects entering to the NEAER market.
