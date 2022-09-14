@@ -13,7 +13,7 @@ members = [
 [profile.release]
 codegen-units = 1
 # s = optimize for binary size ("z" would additionally turn off loop vectorization)
-opt-level = "z"
+opt-level = "s"
 # link time optimization
 lto = true
 debug = false

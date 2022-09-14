@@ -29,8 +29,6 @@ impl Contract {
         let mut s = self
             .blacklist
             .get(&caller)
-            // TODO: check if we can use this prefix, or if we need to use a
-            // globally unique one
             .unwrap_or_else(|| UnorderedSet::new(caller.as_bytes()));
         s.insert(&account);
         self.blacklist.insert(&caller, &s);

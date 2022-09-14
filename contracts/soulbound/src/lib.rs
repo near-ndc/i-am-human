@@ -31,7 +31,7 @@ pub struct Contract {
     pub issuer: AccountId,
     // Address of an account authorized to renew or recover SBT tokens
     pub operators: HashSet<AccountId>,
-    pub burn_account_registry: AccountId,
+    pub blacklist_registry: AccountId,
 
     pub token_to_owner: UnorderedMap<TokenId, AccountId>,
     // keeps track of all the token IDs for a given account
@@ -52,12 +52,12 @@ impl Contract {
         issuer: AccountId,
         operators: Vec<AccountId>,
         metadata: SBTContractMetadata,
-        burn_account_registry: AccountId,
+        blacklist_registry: AccountId,
     ) -> Self {
         Self {
             issuer,
             operators: HashSet::from_iter(operators),
-            burn_account_registry,
+            blacklist_registry,
 
             token_to_owner: UnorderedMap::new(StorageKey::TokenToOwner.try_to_vec().unwrap()),
             tokens_per_owner: LookupMap::new(StorageKey::TokensPerOwner.try_to_vec().unwrap()),
@@ -207,7 +207,7 @@ impl Contract {
         }]);
         emit_event(event);
 
-        ext_blacklist::ext(self.burn_account_registry.clone())
+        ext_blacklist::ext(self.blacklist_registry.clone())
             .with_attached_deposit(BLACKLIST_COST)
             .with_static_gas(GAS_FOR_BLACKLIST)
             .blacklist(old_owner, None);
