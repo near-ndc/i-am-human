@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedMap, UnorderedSet};
-use near_sdk::json_types::U128;
+use near_sdk::json_types::U64;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::CryptoHash;
 use near_sdk::{
@@ -74,10 +74,10 @@ impl Contract {
      * QUERIES
      **********/
 
-    // get the information for a specific token ID
-    pub fn sbt(&self, token_id: TokenId) -> Option<JsonToken> {
+    // get the information about specific token ID
+    pub fn sbt(&self, token_id: TokenId) -> Option<Token> {
         if let Some(metadata) = self.token_metadata.get(&token_id) {
-            Some(JsonToken {
+            Some(Token {
                 token_id,
                 owner_id: self.token_to_owner.get(&token_id).unwrap(),
                 metadata,
@@ -88,27 +88,27 @@ impl Contract {
     }
 
     // returns total amount of tokens minted by this contract
-    pub fn sbt_total_supply(&self) -> U128 {
-        U128((self.next_token_id - 1) as u128)
+    pub fn sbt_total_supply(&self) -> U64 {
+        U64(self.next_token_id - 1)
     }
 
     // returns total supply of SBTs for a given owner
-    pub fn sbt_supply_by_owner(&self, account: AccountId) -> U128 {
+    pub fn sbt_supply_by_owner(&self, account: AccountId) -> U64 {
         //get the set of tokens for the passed in owner
         let tokens_for_owner_set = self.tokens_per_owner.get(&account);
 
         //if there is some set of tokens, we'll return the length as a U128
         if let Some(tokens_for_owner_set) = tokens_for_owner_set {
-            U128(tokens_for_owner_set.len() as u128)
+            U64(tokens_for_owner_set.len() as u64)
         } else {
-            U128(0)
+            U64(0)
         }
     }
 
     // Query for sbt tokens
-    pub fn sbt_tokens(&self, from_index: Option<U128>, limit: Option<u64>) -> Vec<JsonToken> {
+    pub fn sbt_tokens(&self, from_index: Option<U64>, limit: Option<u32>) -> Vec<Token> {
         //where to start pagination - if we have a from_index, we'll use that - otherwise start from 0 index
-        let start = u128::from(from_index.unwrap_or(U128(0)));
+        let start = u64::from(from_index.unwrap_or(U64(0)));
 
         self.token_metadata
             .keys()
@@ -122,9 +122,9 @@ impl Contract {
     pub fn sbt_tokens_by_owner(
         &self,
         account: AccountId,
-        from_index: Option<U128>,
-        limit: Option<u64>,
-    ) -> Vec<JsonToken> {
+        from_index: Option<U64>,
+        limit: Option<u32>,
+    ) -> Vec<Token> {
         let tokens_for_owner_set = self.tokens_per_owner.get(&account);
         let tokens = if let Some(tokens_for_owner_set) = tokens_for_owner_set {
             tokens_for_owner_set
@@ -133,7 +133,7 @@ impl Contract {
             return vec![];
         };
 
-        let start = u128::from(from_index.unwrap_or(U128(0)));
+        let start = u64::from(from_index.unwrap_or(U64(0)));
         tokens
             .iter()
             .skip(start as usize)
@@ -169,7 +169,7 @@ impl Contract {
     /// Must provide 5 miliNEAR to cover registry storage cost. Operator should
     ///   put that cost to the requester (old_owner), eg by asking operation fee.
     #[payable]
-    pub fn sbt_recover(&mut self, old_owner: AccountId, new_owner: AccountId) {
+    pub fn sbt_recover(&mut self, from: AccountId, to: AccountId) {
         self.assert_operator();
         require!(
             env::attached_deposit() >= BLACKLIST_COST,
@@ -178,16 +178,16 @@ impl Contract {
 
         let token_set_old = self
             .tokens_per_owner
-            .get(&old_owner)
+            .get(&from)
             .expect("Token not owned by the owner");
 
-        // we remove old_owner records, and merge his tokens into new_owner token set
-        self.tokens_per_owner.remove(&old_owner);
-        let mut token_set_new = self.tokens_per_owner.get(&new_owner).unwrap_or_else(|| {
+        // we remove from records, and merge his tokens into to token set
+        self.tokens_per_owner.remove(&from);
+        let mut token_set_new = self.tokens_per_owner.get(&to).unwrap_or_else(|| {
             UnorderedSet::new(
                 StorageKey::TokenPerOwnerInner {
                     //we get a new unique prefix for the collection
-                    account_id_hash: hash_account_id(&new_owner),
+                    account_id_hash: hash_account_id(&to),
                 }
                 .try_to_vec()
                 .unwrap(),
@@ -195,13 +195,13 @@ impl Contract {
         });
         for t in token_set_old.iter() {
             token_set_new.insert(&t);
-            self.token_to_owner.insert(&t, &new_owner);
+            self.token_to_owner.insert(&t, &to);
         }
-        self.tokens_per_owner.insert(&new_owner, &token_set_new);
+        self.tokens_per_owner.insert(&to, &token_set_new);
 
         let event = EventLogVariant::SbtRecover(vec![SbtRecoverLog {
-            old_owner: old_owner.to_string(),
-            new_owner: new_owner.to_string(),
+            old_owner: from.to_string(),
+            new_owner: to.to_string(),
             tokens: token_set_old.iter().collect(),
             memo: None,
         }]);
@@ -210,7 +210,7 @@ impl Contract {
         ext_blacklist::ext(self.blacklist_registry.clone())
             .with_attached_deposit(BLACKLIST_COST)
             .with_static_gas(GAS_FOR_BLACKLIST)
-            .blacklist(old_owner, None);
+            .blacklist(from, None);
     }
 
     /// sbt_renew will update the expire time of provided tokens.

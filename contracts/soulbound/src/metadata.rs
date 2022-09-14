@@ -37,18 +37,10 @@ pub struct TokenMetadata {
     pub reference_hash: Option<Base64VecU8>, // Base64-encoded sha256 hash of JSON from reference field. Required if `reference` is included.
 }
 
-#[derive(BorshDeserialize, BorshSerialize)]
-pub struct Token {
-    //owner of the token
-    pub owner: AccountId,
-    // unix timestamp (in seconds)
-    pub expires_at: u64,
-}
-
-//The Json token is what will be returned from view calls.
+/// Full information about the token
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
-pub struct JsonToken {
+pub struct Token {
     //token ID
     pub token_id: TokenId,
     //owner of the token
