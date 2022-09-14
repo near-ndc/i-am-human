@@ -31,7 +31,12 @@ impl Contract {
     }
 
     /// returns if given account meets the class criteria
-    pub fn is_qualified(&self, account: AccountId) -> PromiseOrValue<bool> {
+    #[allow(unused_variables)]
+    pub fn is_qualified(
+        &self,
+        account: AccountId,
+        payload: Option<String>,
+    ) -> PromiseOrValue<bool> {
         ext_sbt::ext(self.required_sbt.clone())
             .sbt_supply_by_owner(account)
             .then(Self::ext(env::current_account_id()).is_qualified_callback())

@@ -52,7 +52,7 @@ impl Contract {
     pub fn register(&mut self) -> PromiseOrValue<bool> {
         let user = env::predecessor_account_id();
         ext_class::ext(self.class.clone())
-            .is_qualified(user.clone())
+            .is_qualified(user.clone(), None)
             .then(Self::ext(env::current_account_id()).register_callback(user))
             .into()
     }
@@ -97,5 +97,5 @@ impl Contract {
 
 #[ext_contract(ext_class)]
 pub trait HumanClass {
-    fn is_qualified(&self, account: AccountId) -> PromiseOrValue<bool>;
+    fn is_qualified(&self, account: AccountId, payload: Option<String>) -> PromiseOrValue<bool>;
 }
