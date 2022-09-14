@@ -1,0 +1,13 @@
+[package]
+name = "ubi"
+version = "1.0.0"
+authors = ["Robert Zaremba 'https://zaremba.ch/'"]
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+near-sdk = "4.0.0"
+uint = { version = "0.9.3", default-features = false }
+serde_json = "1.0"
