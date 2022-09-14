@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedMap, UnorderedSet};
+use near_sdk::json_types::U128;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::CryptoHash;
 use near_sdk::{
@@ -32,6 +33,7 @@ pub struct Contract {
     pub operators: HashSet<AccountId>,
     pub burn_account_registry: AccountId,
 
+    pub token_to_owner: UnorderedMap<TokenId, AccountId>,
     // keeps track of all the token IDs for a given account
     pub tokens_per_owner: LookupMap<AccountId, UnorderedSet<TokenId>>,
     // token metadata
@@ -57,6 +59,7 @@ impl Contract {
             operators: HashSet::from_iter(operators),
             burn_account_registry,
 
+            token_to_owner: UnorderedMap::new(StorageKey::TokenToOwner.try_to_vec().unwrap()),
             tokens_per_owner: LookupMap::new(StorageKey::TokensPerOwner.try_to_vec().unwrap()),
             token_metadata: UnorderedMap::new(StorageKey::TokenMetadataById.try_to_vec().unwrap()),
             metadata: LazyOption::new(
@@ -65,6 +68,78 @@ impl Contract {
             ),
             next_token_id: 1,
         }
+    }
+
+    /**********
+     * QUERIES
+     **********/
+
+    // get the information for a specific token ID
+    pub fn sbt(&self, token_id: TokenId) -> Option<JsonToken> {
+        if let Some(metadata) = self.token_metadata.get(&token_id) {
+            Some(JsonToken {
+                token_id,
+                owner_id: self.token_to_owner.get(&token_id).unwrap(),
+                metadata,
+            })
+        } else {
+            None
+        }
+    }
+
+    // returns total amount of tokens minted by this contract
+    pub fn sbt_total_supply(&self) -> U128 {
+        U128((self.next_token_id - 1) as u128)
+    }
+
+    // returns total supply of SBTs for a given owner
+    pub fn sbt_supply_by_owner(&self, account: AccountId) -> U128 {
+        //get the set of tokens for the passed in owner
+        let tokens_for_owner_set = self.tokens_per_owner.get(&account);
+
+        //if there is some set of tokens, we'll return the length as a U128
+        if let Some(tokens_for_owner_set) = tokens_for_owner_set {
+            U128(tokens_for_owner_set.len() as u128)
+        } else {
+            U128(0)
+        }
+    }
+
+    // Query for sbt tokens
+    pub fn sbt_tokens(&self, from_index: Option<U128>, limit: Option<u64>) -> Vec<JsonToken> {
+        //where to start pagination - if we have a from_index, we'll use that - otherwise start from 0 index
+        let start = u128::from(from_index.unwrap_or(U128(0)));
+
+        self.token_metadata
+            .keys()
+            .skip(start as usize)
+            .take(limit.unwrap_or(50) as usize)
+            .map(|t| self.sbt(t.clone()).unwrap())
+            .collect()
+    }
+
+    // Query sbt tokens by owner
+    pub fn sbt_tokens_by_owner(
+        &self,
+        account: AccountId,
+        from_index: Option<U128>,
+        limit: Option<u64>,
+    ) -> Vec<JsonToken> {
+        let tokens_for_owner_set = self.tokens_per_owner.get(&account);
+        let tokens = if let Some(tokens_for_owner_set) = tokens_for_owner_set {
+            tokens_for_owner_set
+        } else {
+            // if there is no set of tokens, we'll simply return an empty vector.
+            return vec![];
+        };
+
+        let start = u128::from(from_index.unwrap_or(U128(0)));
+        tokens
+            .iter()
+            .skip(start as usize)
+            .take(limit.unwrap_or(50) as usize)
+            .map(|t| self.sbt(t.clone()).unwrap())
+            .collect()
     }
 
     /**********
@@ -120,6 +195,7 @@ impl Contract {
         });
         for t in token_set_old.iter() {
             token_set_new.insert(&t);
+            self.token_to_owner.insert(&t, &new_owner);
         }
         self.tokens_per_owner.insert(&new_owner, &token_set_new);
 
@@ -188,6 +264,7 @@ impl Contract {
 
         tokens_set.insert(&token_id);
         self.tokens_per_owner.insert(account_id, &tokens_set);
+        self.token_to_owner.insert(&token_id, account_id);
     }
 }
 
