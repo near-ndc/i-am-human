@@ -2,6 +2,7 @@
 members = [
     "./soulbound",
     "./blacklist-human-addresses",
+    "soulbound-class",
 ]
 
 
