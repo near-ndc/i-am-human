@@ -142,6 +142,10 @@ impl Contract {
             .collect()
     }
 
+    // Optional function to implement for SBT with max supply = 1 per account.
+    // /// returns total supply of SBTs for a given owner
+    // pub fn sbt_token_by_owner(&self, account: AccountId) -> Option<Token> {}
+
     /**********
      * ADMIN
      **********/
