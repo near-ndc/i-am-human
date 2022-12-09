@@ -1,2 +1,1 @@
-build:
-	@cargo build --all --target wasm32-unknown-unknown --release
+include ../Makefile-common.mk

@@ -1,14 +1,11 @@
 [workspace]
 members = [
-    "./soulbound",
-    "./blacklist-human-addresses",
+    "soulbound",
     "soulbound-class",
+    "registry",
     "ubi"
 ]
 
-
-# https://github.com/near/core-contracts/blob/master/staking-pool/Cargo.toml
-# https://doc.rust-lang.org/cargo/reference/profiles.html
 
 # compilation profile for a release target
 [profile.release]
@@ -17,6 +14,8 @@ codegen-units = 1
 opt-level = "s"
 # link time optimization
 lto = true
-debug = false
 panic = "abort"
 overflow-checks = true
+debug = false
+debug-assertions = false
+rpath = false

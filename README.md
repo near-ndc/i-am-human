@@ -1,3 +1,3 @@
-# Soulbound Token and Human Class
+# I am Human -- Proof of Humanity
 
-See [NEAR hackathon](./nearcon-hackathon-example.md) for more details.
+Monorepository of base classes for the I am Human proof of humanity protocol.
