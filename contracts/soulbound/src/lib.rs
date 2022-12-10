@@ -35,7 +35,7 @@ pub struct Contract {
 
     pub token_to_owner: UnorderedMap<TokenId, AccountId>,
     // keeps track of all the token IDs for a given account
-    pub tokens_per_owner: LookupMap<AccountId, UnorderedSet<TokenId>>,
+    pub balances: LookupMap<AccountId, UnorderedSet<TokenId>>,
     // token metadata
     pub token_metadata: UnorderedMap<TokenId, TokenMetadata>,
     // contract metadata
@@ -60,7 +60,7 @@ impl Contract {
             blacklist_registry,
 
             token_to_owner: UnorderedMap::new(StorageKey::TokenToOwner.try_to_vec().unwrap()),
-            tokens_per_owner: LookupMap::new(StorageKey::TokensPerOwner.try_to_vec().unwrap()),
+            balances: LookupMap::new(StorageKey::TokensPerOwner.try_to_vec().unwrap()),
             token_metadata: UnorderedMap::new(StorageKey::TokenMetadataById.try_to_vec().unwrap()),
             metadata: LazyOption::new(
                 StorageKey::SBTContractMetadata.try_to_vec().unwrap(),
@@ -95,7 +95,7 @@ impl Contract {
     // returns total supply of SBTs for a given owner
     pub fn sbt_supply_by_owner(&self, account: AccountId) -> U64 {
         //get the set of tokens for the passed in owner
-        let tokens_for_owner_set = self.tokens_per_owner.get(&account);
+        let tokens_for_owner_set = self.balances.get(&account);
 
         //if there is some set of tokens, we'll return the length as a U128
         if let Some(tokens_for_owner_set) = tokens_for_owner_set {
@@ -125,7 +125,7 @@ impl Contract {
         from_index: Option<U64>,
         limit: Option<u32>,
     ) -> Vec<Token> {
-        let tokens_for_owner_set = self.tokens_per_owner.get(&account);
+        let tokens_for_owner_set = self.balances.get(&account);
         let tokens = if let Some(tokens_for_owner_set) = tokens_for_owner_set {
             tokens_for_owner_set
         } else {
@@ -181,13 +181,13 @@ impl Contract {
         );
 
         let token_set_old = self
-            .tokens_per_owner
+            .balances
             .get(&from)
             .expect("Token not owned by the owner");
 
         // we remove from records, and merge his tokens into to token set
-        self.tokens_per_owner.remove(&from);
-        let mut token_set_new = self.tokens_per_owner.get(&to).unwrap_or_else(|| {
+        self.balances.remove(&from);
+        let mut token_set_new = self.balances.get(&to).unwrap_or_else(|| {
             UnorderedSet::new(
                 StorageKey::TokenPerOwnerInner {
                     //we get a new unique prefix for the collection
@@ -201,7 +201,7 @@ impl Contract {
             token_set_new.insert(&t);
             self.token_to_owner.insert(&t, &to);
         }
-        self.tokens_per_owner.insert(&to, &token_set_new);
+        self.balances.insert(&to, &token_set_new);
 
         let event = EventLogVariant::SbtRecover(vec![SbtRecoverLog {
             old_owner: from.to_string(),
@@ -254,7 +254,7 @@ impl Contract {
 
     /// add a token to the set of tokens an owner has
     pub(crate) fn add_token_to_owner(&mut self, account_id: &AccountId, token_id: TokenId) {
-        let mut tokens_set = self.tokens_per_owner.get(account_id).unwrap_or_else(|| {
+        let mut tokens_set = self.balances.get(account_id).unwrap_or_else(|| {
             //if the account doesn't have any tokens, we create a new unordered set
             UnorderedSet::new(
                 StorageKey::TokenPerOwnerInner {
@@ -267,7 +267,7 @@ impl Contract {
         });
 
         tokens_set.insert(&token_id);
-        self.tokens_per_owner.insert(account_id, &tokens_set);
+        self.balances.insert(account_id, &tokens_set);
         self.token_to_owner.insert(&token_id, account_id);
     }
 }
