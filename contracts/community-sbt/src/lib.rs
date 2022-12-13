@@ -185,6 +185,14 @@ impl Contract {
         emit_event(event);
     }
 
+    #[payable]
+    pub fn add_admins(&mut self, admins: Vec<AccountId>) {
+        self.assert_issuer();
+        for a in admins {
+            self.admins.insert(&a);
+        }
+    }
+
     /**********
      * INTERNAL
      **********/
