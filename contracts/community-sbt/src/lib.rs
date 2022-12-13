@@ -103,6 +103,8 @@ impl Contract {
 
     /// Query for sbt tokens
     /// `from_index` and `limit` are not used - one account can have max one sbt.
+    // TODO: maybe we can remove unused parameters? Discussion in the NEP-393
+    #[allow(unused_variables)]
     pub fn sbt_tokens(&self, from_index: Option<U64>, limit: Option<u32>) -> Vec<Token> {
         self.token_metadata
             .keys()
@@ -112,6 +114,7 @@ impl Contract {
 
     /// Query sbt tokens by owner
     /// `from_index` and `limit` are not used - one account can have max one sbt.
+    #[allow(unused_variables)]
     pub fn sbt_tokens_by_owner(
         &self,
         account: AccountId,
