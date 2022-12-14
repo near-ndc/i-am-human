@@ -114,10 +114,15 @@ impl Contract {
     // TODO: maybe we can remove unused parameters? Discussion in the NEP-393
     #[allow(unused_variables)]
     pub fn sbt_tokens(&self, from_index: Option<U64>, limit: Option<u32>) -> Vec<Token> {
-        self.token_metadata
-            .keys()
-            .map(|t| self.sbt(t).unwrap())
-            .collect()
+        let owner = env::predecessor_account_id();
+        if let Some(t) = self.balances.get(&owner) {
+            return vec![Token {
+                token_id: t.id,
+                owner_id: owner,
+                metadata: self.token_metadata.get(&t.id).unwrap(),
+            }];
+        }
+        return Vec::new();
     }
 
     /// Query sbt tokens by owner
@@ -216,7 +221,14 @@ impl Contract {
         emit_event(event);
     }
 
-    #[payable]
+    /// admin: remove SBT from the given accounts
+    pub fn revoke_for(&mut self, accounts: Vec<AccountId>) {
+        self.assert_issuer();
+        for a in accounts {
+            self.balances.remove(&a);
+        }
+    }
+
     pub fn add_admins(&mut self, admins: Vec<AccountId>) {
         self.assert_issuer();
         for a in admins {
@@ -226,7 +238,6 @@ impl Contract {
 
     /// Any admin can remove any other admin.
     /// TODO: probably we should change this.
-    #[payable]
     pub fn remove_admins(&mut self, admins: Vec<AccountId>) {
         self.assert_issuer();
         for a in admins {
