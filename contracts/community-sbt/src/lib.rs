@@ -224,6 +224,16 @@ impl Contract {
         }
     }
 
+    /// Any admin can remove any other admin.
+    /// TODO: probably we should change this.
+    #[payable]
+    pub fn remove_admins(&mut self, admins: Vec<AccountId>) {
+        self.assert_issuer();
+        for a in admins {
+            self.admins.remove(&a);
+        }
+    }
+
     /**********
      * INTERNAL
      **********/
