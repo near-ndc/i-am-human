@@ -114,15 +114,7 @@ impl Contract {
     // TODO: maybe we can remove unused parameters? Discussion in the NEP-393
     #[allow(unused_variables)]
     pub fn sbt_tokens(&self, from_index: Option<U64>, limit: Option<u32>) -> Vec<Token> {
-        let owner = env::predecessor_account_id();
-        if let Some(t) = self.balances.get(&owner) {
-            return vec![Token {
-                token_id: t.id,
-                owner_id: owner,
-                metadata: self.token_metadata.get(&t.id).unwrap(),
-            }];
-        }
-        return Vec::new();
+        self.sbt_tokens_by_owner(env::predecessor_account_id(), from_index, limit)
     }
 
     /// Query sbt tokens by owner
@@ -134,11 +126,14 @@ impl Contract {
         from_index: Option<U64>,
         limit: Option<u32>,
     ) -> Vec<Token> {
-        self.balances
-            .get(&account)
-            .map(|t| self.sbt(t.id).unwrap())
-            .into_iter()
-            .collect()
+        if let Some(t) = self.balances.get(&account) {
+            return vec![Token {
+                token_id: t.id,
+                owner_id: account,
+                metadata: self.token_metadata.get(&t.id).unwrap(),
+            }];
+        }
+        return Vec::new();
     }
 
     /**********
