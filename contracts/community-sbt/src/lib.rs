@@ -165,10 +165,8 @@ impl Contract {
      * ADMIN
      **********/
 
-    #[payable]
     pub fn sbt_mint(&mut self, metadata: TokenMetadata, receiver: AccountId) {
         self.assert_issuer();
-        assert_one_yocto();
         require!(
             !self.balances.contains_key(&receiver),
             "receiver already has SBT"
@@ -196,10 +194,8 @@ impl Contract {
 
     /// sbt_renew will update the expire time of provided tokens.
     /// `expires_at` is a unix timestamp (in seconds).
-    #[payable]
     pub fn sbt_renew(&mut self, tokens: Vec<TokenId>, expires_at: u64, memo: Option<String>) {
         self.assert_issuer();
-        assert_one_yocto();
         let now = env::block_timestamp() / SECOND;
         if now < expires_at && expires_at - now <= self.ttl {
             env::panic_str(
