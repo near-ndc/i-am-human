@@ -1,5 +1,5 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LazyOption, LookupMap, UnorderedMap, UnorderedSet};
+use near_sdk::collections::{LazyOption, LookupMap, UnorderedSet};
 use near_sdk::json_types::U64;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::CryptoHash;
@@ -32,11 +32,12 @@ pub struct Contract {
     /// registry of burned accounts.
     pub registry: AccountId,
 
-    pub token_to_owner: UnorderedMap<TokenId, AccountId>,
+    pub token_to_owner: LookupMap<TokenId, AccountId>,
     // keeps track of all the token IDs for a given account
+    // need to updated according to the NEP finalization
     pub balances: LookupMap<AccountId, TokenData>,
     // token metadata
-    pub token_metadata: UnorderedMap<TokenId, TokenMetadata>,
+    pub token_metadata: LookupMap<TokenId, TokenMetadata>,
     // contract metadata
     pub metadata: LazyOption<SBTContractMetadata>,
 
@@ -59,9 +60,9 @@ impl Contract {
             admins: admin_set,
             registry,
 
-            token_to_owner: UnorderedMap::new(StorageKey::TokenToOwner),
+            token_to_owner: LookupMap::new(StorageKey::TokenToOwner),
             balances: LookupMap::new(StorageKey::Balances),
-            token_metadata: UnorderedMap::new(StorageKey::TokenMetadata),
+            token_metadata: LookupMap::new(StorageKey::TokenMetadata),
             metadata: LazyOption::new(StorageKey::ContractMetadata, Some(&metadata)),
             next_token_id: 1,
             ttl: 3600 * 24 * 365, // ~ 1 year
@@ -71,6 +72,13 @@ impl Contract {
     /**********
      * QUERIES
      **********/
+
+    /// returns true if given address, or caller (if account is None)
+    /// is an admin.
+    pub fn is_admin(&self, addr: Option<AccountId>) -> bool {
+        let addr = addr.unwrap_or(env::predecessor_account_id());
+        return self.admins.contains(&addr);
+    }
 
     /// returns information about specific token ID
     pub fn sbt(&self, token_id: TokenId) -> Option<Token> {
@@ -126,6 +134,26 @@ impl Contract {
             .map(|t| self.sbt(t.id).unwrap())
             .into_iter()
             .collect()
+    }
+
+    /**********
+     * FUNCTIONS
+     **********/
+
+    /// Soulbound transfer implementation.
+    /// returns false if caller is not an SBT holder.
+    #[payable]
+    pub fn sbt_transfer(&mut self, receiver: AccountId) -> bool {
+        let owner = env::predecessor_account_id();
+
+        if let Some(sbt) = self.balances.get(&owner) {
+            self.balances.remove(&owner);
+            self.balances.insert(&receiver, &sbt);
+            return true;
+        }
+        return false;
+
+        // TODO: add registry (update: burn account and set token) and make a transfer when registry updated succeed
     }
 
     /**********
