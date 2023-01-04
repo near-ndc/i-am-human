@@ -3,9 +3,7 @@ use near_sdk::collections::{LazyOption, LookupMap, UnorderedSet};
 use near_sdk::json_types::U64;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::CryptoHash;
-use near_sdk::{
-    assert_one_yocto, env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault,
-};
+use near_sdk::{env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault};
 
 pub use crate::events::*;
 pub use crate::interfaces::*;
@@ -75,8 +73,7 @@ impl Contract {
 
     /// returns true if given address, or caller (if account is None)
     /// is an admin.
-    pub fn is_admin(&self, addr: Option<AccountId>) -> bool {
-        let addr = addr.unwrap_or(env::predecessor_account_id());
+    pub fn is_admin(&self, addr: AccountId) -> bool {
         return self.admins.contains(&addr);
     }
 
@@ -160,12 +157,25 @@ impl Contract {
      * ADMIN
      **********/
 
-    pub fn sbt_mint(&mut self, metadata: TokenMetadata, receiver: AccountId) {
+    /// Mints a new SBT for the given receiver.
+    /// If `metadata.expires_at` is None then we set it to ` now+self.ttl`.
+    /// Panics if `metadata.expires_at > now+self.ttl`.
+    pub fn sbt_mint(&mut self, mut metadata: TokenMetadata, receiver: AccountId) {
         self.assert_issuer();
         require!(
             !self.balances.contains_key(&receiver),
             "receiver already has SBT"
         );
+        let mut expires_at = env::block_timestamp() / SECOND + self.ttl;
+        if let Some(e) = metadata.expires_at {
+            require!(
+                e <= expires_at,
+                format!("max metadata.expire_at is {}", expires_at)
+            );
+            expires_at = e;
+        } else {
+            metadata.expires_at = Some(expires_at);
+        }
 
         let token_id = self.next_token_id;
         self.next_token_id += 1;
@@ -174,7 +184,7 @@ impl Contract {
             &receiver,
             &TokenData {
                 id: token_id,
-                expire_at: env::block_timestamp() / SECOND + self.ttl,
+                expire_at: expires_at,
             },
         );
         self.token_metadata.insert(&token_id, &metadata);
@@ -188,25 +198,22 @@ impl Contract {
     }
 
     /// sbt_renew will update the expire time of provided tokens.
-    /// `expires_at` is a unix timestamp (in seconds).
-    pub fn sbt_renew(&mut self, tokens: Vec<TokenId>, expires_at: u64, memo: Option<String>) {
+    /// `ttl` is duration seconds to set expire time: `now+ttl`. Panics if ttl > self.ttl.
+    pub fn sbt_renew(&mut self, tokens: Vec<TokenId>, ttl: u64, memo: Option<String>) {
         self.assert_issuer();
-        let now = env::block_timestamp() / SECOND;
-        if now < expires_at && expires_at - now <= self.ttl {
-            env::panic_str(
-                format!(
-                    "expires_at must be in the future, but not more than {} seconds",
-                    self.ttl
-                )
-                .as_str(),
-            )
-        }
+        require!(
+            ttl <= self.ttl,
+            format!("ttl must not be bigger than {}", self.ttl)
+        );
+        let expires_at = env::block_timestamp() / SECOND + ttl;
         for t_id in tokens.iter() {
-            let mut t = self.token_metadata.get(&t_id).expect("Token doesn't exist");
-            t.expires_at = Some(expires_at);
-            self.token_metadata.insert(&t_id, &t);
+            let mut m = self.token_metadata.get(&t_id).expect("Token doesn't exist");
+            m.expires_at = Some(expires_at);
+            self.token_metadata.insert(&t_id, &m);
+            let account_id = self.token_to_owner.get(t_id).unwrap();
+            let mut t = self.balances.get(&account_id).unwrap();
+            t.expire_at = expires_at;
         }
-        // TODO: update self.balances
 
         let event = EventLogVariant::SbtRenew(vec![SbtRenewLog { tokens, memo }]);
         emit_event(event);
@@ -234,6 +241,14 @@ impl Contract {
         for a in admins {
             self.admins.remove(&a);
         }
+    }
+
+    /// Testing function
+    /// @`ttl`: expire time to live in seconds
+    /// TODO: must be removed for mainnet
+    pub fn admin_change_ttl(&mut self, ttl: u64) {
+        self.assert_issuer();
+        self.ttl = ttl;
     }
 
     /**********
