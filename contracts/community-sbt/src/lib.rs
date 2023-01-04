@@ -33,6 +33,8 @@ pub struct Contract {
     pub token_to_owner: LookupMap<TokenId, AccountId>,
     // keeps track of all the token IDs for a given account
     // need to updated according to the NEP finalization
+    // TODO: TokenData not used any more. TokenMetadata is used instead. So this should be
+    // account_id -> token_id map.
     pub balances: LookupMap<AccountId, TokenData>,
     // token metadata
     pub token_metadata: LookupMap<TokenId, TokenMetadata>,
@@ -106,18 +108,10 @@ impl Contract {
         0.into()
     }
 
-    /// Query for sbt tokens
-    /// `from_index` and `limit` are not used - one account can have max one sbt.
-    // TODO: maybe we can remove unused parameters? Discussion in the NEP-393
-    #[allow(unused_variables)]
-    pub fn sbt_tokens(&self, from_index: Option<U64>, limit: Option<u32>) -> Vec<Token> {
-        self.sbt_tokens_by_owner(env::predecessor_account_id(), from_index, limit)
-    }
-
     /// Query sbt tokens by owner
     /// `from_index` and `limit` are not used - one account can have max one sbt.
     #[allow(unused_variables)]
-    pub fn sbt_tokens_by_owner(
+    pub fn sbt_tokens(
         &self,
         account: AccountId,
         from_index: Option<U64>,
@@ -213,6 +207,7 @@ impl Contract {
             let account_id = self.token_to_owner.get(t_id).unwrap();
             let mut t = self.balances.get(&account_id).unwrap();
             t.expire_at = expires_at;
+            self.balances.insert(&account_id, &t);
         }
 
         let event = EventLogVariant::SbtRenew(vec![SbtRenewLog { tokens, memo }]);
