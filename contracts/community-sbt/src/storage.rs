@@ -6,7 +6,6 @@ use near_sdk::BorshStorageKey;
 pub enum StorageKey {
     Admins,
     Balances,
-    TokenToOwner,
-    TokenMetadata,
+    TokenData,
     ContractMetadata,
 }

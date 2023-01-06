@@ -32,20 +32,16 @@ pub struct TokenMetadata {
 /// Full information about the token
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct TokenData {
-    pub id: TokenId,
-    /// expire info, unix timestamp (in seconds)
-    pub expire_at: u64,
+    pub owner: AccountId,
+    pub metadata: TokenMetadata,
 }
 
 /// Full information about the token
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct Token {
-    //token ID
     pub token_id: TokenId,
-    //owner of the token
     pub owner_id: AccountId,
-    //token metadata
     pub metadata: TokenMetadata,
 }
 

@@ -1,20 +1,24 @@
 use std::fmt;
 
-use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::{
+    serde::{Deserialize, Serialize},
+    AccountId,
+};
 
 use crate::TokenId;
 
 /// Enum that represents the data type of the EventLog.
 /// The enum can either be an NftMint or an NftTransfer.
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 #[serde(tag = "event", content = "data")]
 #[serde(rename_all = "snake_case")]
 #[serde(crate = "near_sdk::serde")]
 #[non_exhaustive]
-pub enum EventLogVariant {
+pub enum Events {
     SbtMint(Vec<SbtMintLog>),
     SbtRecover(Vec<SbtRecoverLog>),
     SbtRenew(Vec<SbtRenewLog>),
+    SbtRevoke(Vec<SbtRevokeLog>),
 }
 
 /// Interface to capture data about an event
@@ -23,7 +27,7 @@ pub enum EventLogVariant {
 /// * `standard`: name of standard e.g. nep171
 /// * `version`: e.g. 1.0.0
 /// * `event`: associate event data
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct EventLog {
     pub standard: String,
@@ -31,7 +35,7 @@ pub struct EventLog {
 
     // `flatten` to not have "event": {<EventLogVariant>} in the JSON, just have the contents of {<EventLogVariant>}.
     #[serde(flatten)]
-    pub event: EventLogVariant,
+    pub event: Events,
 }
 
 impl fmt::Display for EventLog {
@@ -47,9 +51,9 @@ impl fmt::Display for EventLog {
 ///
 /// Arguments
 /// * `owner`: "account.near"
-/// * `tokens`: ["1", "abc"]
+/// * `tokens`: [1, 123]
 /// * `memo`: optional message
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct SbtMintLog {
     pub owner: String,
@@ -64,9 +68,9 @@ pub struct SbtMintLog {
 /// Arguments
 /// * `old_owner`: "owner.near"
 /// * `new_owner`: "receiver.near"
-/// * `tokens`: ["1", "12345abc"]
+/// * `tokens`: [1, 123]
 /// * `memo`: optional message
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct SbtRecoverLog {
     pub old_owner: String,
@@ -80,11 +84,26 @@ pub struct SbtRecoverLog {
 /// An event emitted when a existing tokens are renewed.
 ///
 /// Arguments
-/// * `tokens`: ["1", "12345abc"]
+/// * `tokens`: [1, 123]
 /// * `memo`: optional message
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct SbtRenewLog {
+    pub owner: AccountId,
+    pub tokens: Vec<TokenId>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memo: Option<String>,
+}
+
+/// An event emitted when a existing tokens are revoked.
+///
+/// Arguments
+/// * `tokens`: [1, 123]
+/// * `memo`: optional message
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct SbtRevokeLog {
     pub tokens: Vec<TokenId>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -102,7 +121,7 @@ mod tests {
         let log = EventLog {
             standard: "nep999".to_string(),
             version: "1.0.0".to_string(),
-            event: EventLogVariant::SbtMint(vec![
+            event: Events::SbtMint(vec![
                 SbtMintLog {
                     owner: "bob.near".to_owned(),
                     tokens: vec![1, 2],
@@ -124,7 +143,7 @@ mod tests {
         let log = EventLog {
             standard: "nep999".to_string(),
             version: "1.0.0".to_string(),
-            event: EventLogVariant::SbtMint(vec![SbtMintLog {
+            event: Events::SbtMint(vec![SbtMintLog {
                 owner: "bob.near".to_owned(),
                 tokens: vec![1, 2],
                 memo: None,
@@ -139,7 +158,7 @@ mod tests {
         let log = EventLog {
             standard: SBT_STANDARD_NAME.to_string(),
             version: METADATA_SPEC.to_string(),
-            event: EventLogVariant::SbtRecover(vec![SbtRecoverLog {
+            event: Events::SbtRecover(vec![SbtRecoverLog {
                 old_owner: "user1.near".to_string(),
                 new_owner: "user2.near".to_string(),
                 tokens: vec![10],

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedSet};
 use near_sdk::json_types::U64;
@@ -20,7 +22,7 @@ pub const MILI_NEAR: Balance = 1_000_000_000_000_000_000_000;
 pub const BLACKLIST_COST: Balance = 5 * MILI_NEAR;
 pub const GAS_FOR_BLACKLIST: Gas = Gas(6 * Gas::ONE_TERA.0);
 /// 1s in nano seconds.
-pub const SECOND: u64 = 1_000_000;
+pub const SECOND: u64 = 1_000_000_000;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -30,14 +32,8 @@ pub struct Contract {
     /// registry of burned accounts.
     pub registry: AccountId,
 
-    pub token_to_owner: LookupMap<TokenId, AccountId>,
-    // keeps track of all the token IDs for a given account
-    // need to updated according to the NEP finalization
-    // TODO: TokenData not used any more. TokenMetadata is used instead. So this should be
-    // account_id -> token_id map.
-    pub balances: LookupMap<AccountId, TokenData>,
-    // token metadata
-    pub token_metadata: LookupMap<TokenId, TokenMetadata>,
+    pub balances: LookupMap<AccountId, TokenId>,
+    pub token_data: LookupMap<TokenId, TokenData>,
     // contract metadata
     pub metadata: LazyOption<SBTContractMetadata>,
 
@@ -60,9 +56,8 @@ impl Contract {
             admins: admin_set,
             registry,
 
-            token_to_owner: LookupMap::new(StorageKey::TokenToOwner),
             balances: LookupMap::new(StorageKey::Balances),
-            token_metadata: LookupMap::new(StorageKey::TokenMetadata),
+            token_data: LookupMap::new(StorageKey::TokenData),
             metadata: LazyOption::new(StorageKey::ContractMetadata, Some(&metadata)),
             next_token_id: 1,
             ttl: 3600 * 24 * 365, // ~ 1 year
@@ -81,11 +76,11 @@ impl Contract {
 
     /// returns information about specific token ID
     pub fn sbt(&self, token_id: TokenId) -> Option<Token> {
-        if let Some(metadata) = self.token_metadata.get(&token_id) {
+        if let Some(t) = self.token_data.get(&token_id) {
             Some(Token {
                 token_id,
-                owner_id: self.token_to_owner.get(&token_id).unwrap(),
-                metadata,
+                owner_id: t.owner,
+                metadata: t.metadata,
             })
         } else {
             None
@@ -98,20 +93,10 @@ impl Contract {
         U64(self.next_token_id - 1)
     }
 
-    /// returns total supply of non expired SBTs for a given owner.
-    pub fn sbt_supply_by_owner(&self, account: AccountId) -> U64 {
-        if let Some(t) = self.balances.get(&account) {
-            if t.expire_at > env::block_timestamp() / SECOND {
-                return 1.into();
-            }
-        }
-        0.into()
-    }
-
     /// Query sbt tokens by owner
     /// `from_index` and `limit` are not used - one account can have max one sbt.
     #[allow(unused_variables)]
-    pub fn sbt_tokens(
+    pub fn sbt_by_owner(
         &self,
         account: AccountId,
         from_index: Option<U64>,
@@ -119,12 +104,21 @@ impl Contract {
     ) -> Vec<Token> {
         if let Some(t) = self.balances.get(&account) {
             return vec![Token {
-                token_id: t.id,
+                token_id: t,
                 owner_id: account,
-                metadata: self.token_metadata.get(&t.id).unwrap(),
+                metadata: self.token_data.get(&t).unwrap().metadata,
             }];
         }
         return Vec::new();
+    }
+
+    /// returns total supply of non expired SBTs for a given owner.
+    pub fn sbt_supply_by_owner(&self, account: AccountId) -> U64 {
+        if self.balances.contains_key(&account) {
+            1.into()
+        } else {
+            0.into()
+        }
     }
 
     /**********
@@ -132,7 +126,7 @@ impl Contract {
      **********/
 
     /// Soulbound transfer implementation.
-    /// returns false if caller is not an SBT holder.
+    /// returns false if caller is not a SBT holder.
     #[payable]
     pub fn sbt_transfer(&mut self, receiver: AccountId) -> bool {
         let owner = env::predecessor_account_id();
@@ -140,6 +134,9 @@ impl Contract {
         if let Some(sbt) = self.balances.get(&owner) {
             self.balances.remove(&owner);
             self.balances.insert(&receiver, &sbt);
+            let mut t = self.token_data.get(&sbt).unwrap();
+            t.owner = receiver;
+            self.token_data.insert(&sbt, &t);
             return true;
         }
         return false;
@@ -160,30 +157,27 @@ impl Contract {
             !self.balances.contains_key(&receiver),
             "receiver already has SBT"
         );
-        let mut expires_at = env::block_timestamp() / SECOND + self.ttl;
+        let default_expires_at = env::block_timestamp() / SECOND + self.ttl;
         if let Some(e) = metadata.expires_at {
             require!(
-                e <= expires_at,
-                format!("max metadata.expire_at is {}", expires_at)
+                e <= default_expires_at,
+                format!("max metadata.expire_at is {}", default_expires_at)
             );
-            expires_at = e;
         } else {
-            metadata.expires_at = Some(expires_at);
+            metadata.expires_at = Some(default_expires_at);
         }
 
         let token_id = self.next_token_id;
         self.next_token_id += 1;
-        self.token_metadata.insert(&token_id, &metadata);
-        self.balances.insert(
-            &receiver,
+        self.token_data.insert(
+            &token_id,
             &TokenData {
-                id: token_id,
-                expire_at: expires_at,
+                owner: receiver.clone(),
+                metadata,
             },
         );
-        self.token_metadata.insert(&token_id, &metadata);
-
-        let event = EventLogVariant::SbtMint(vec![SbtMintLog {
+        self.balances.insert(&receiver, &token_id);
+        let event = Events::SbtMint(vec![SbtMintLog {
             owner: receiver.to_string(),
             tokens: vec![token_id],
             memo: None,
@@ -197,29 +191,46 @@ impl Contract {
         self.assert_issuer();
         require!(
             ttl <= self.ttl,
-            format!("ttl must not be bigger than {}", self.ttl)
+            format!("ttl must be smaller than {}", self.ttl)
         );
         let expires_at = env::block_timestamp() / SECOND + ttl;
+        let mut by_owner: HashMap<AccountId, Vec<TokenId>> = HashMap::new();
         for t_id in tokens.iter() {
-            let mut m = self.token_metadata.get(&t_id).expect("Token doesn't exist");
-            m.expires_at = Some(expires_at);
-            self.token_metadata.insert(&t_id, &m);
-            let account_id = self.token_to_owner.get(t_id).unwrap();
-            let mut t = self.balances.get(&account_id).unwrap();
-            t.expire_at = expires_at;
-            self.balances.insert(&account_id, &t);
+            let mut td = self.token_data.get(&t_id).expect("Token doesn't exist");
+            td.metadata.expires_at = Some(expires_at);
+            self.token_data.insert(&t_id, &td);
+            let owner_tokens = by_owner.get_mut(&td.owner);
+            if let Some(ts) = owner_tokens {
+                ts.push(*t_id);
+            } else {
+                by_owner.insert(td.owner, vec![*t_id]);
+            }
         }
-
-        let event = EventLogVariant::SbtRenew(vec![SbtRenewLog { tokens, memo }]);
-        emit_event(event);
+        let events = by_owner
+            .drain()
+            .map(|item| SbtRenewLog {
+                owner: item.0,
+                tokens: item.1,
+                memo: memo.clone(),
+            })
+            .collect();
+        emit_event(Events::SbtRenew(events));
     }
 
     /// admin: remove SBT from the given accounts
-    pub fn revoke_for(&mut self, accounts: Vec<AccountId>) {
+    pub fn revoke_for(&mut self, accounts: Vec<AccountId>, memo: Option<String>) {
         self.assert_issuer();
+        let mut tokens = Vec::with_capacity(accounts.len());
         for a in accounts {
-            self.balances.remove(&a);
+            let t = self.balances.get(&a);
+            if let Some(t) = t {
+                self.balances.remove(&a);
+                self.token_data.remove(&t);
+                tokens.push(t);
+            }
         }
+        let event = Events::SbtRevoke(vec![SbtRevokeLog { tokens, memo }]);
+        emit_event(event);
     }
 
     pub fn add_admins(&mut self, admins: Vec<AccountId>) {
@@ -230,7 +241,7 @@ impl Contract {
     }
 
     /// Any admin can remove any other admin.
-    /// TODO: probably we should change this.
+    // TODO: probably we should change this.
     pub fn remove_admins(&mut self, admins: Vec<AccountId>) {
         self.assert_issuer();
         for a in admins {
@@ -258,7 +269,7 @@ impl Contract {
     }
 }
 
-fn emit_event(event: EventLogVariant) {
+fn emit_event(event: Events) {
     // Construct the mint log as per the events standard.
     let log: EventLog = EventLog {
         standard: SBT_STANDARD_NAME.to_string(),
