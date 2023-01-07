@@ -184,26 +184,29 @@ impl Contract {
     }
 
     /// sbt_renew will update the expire time of provided tokens.
-    /// `ttl` is duration seconds to set expire time: `now+ttl`. Panics if ttl > self.ttl.
+    /// `ttl` is duration seconds to set expire time: `now+ttl`.
+    /// Panics if ttl > self.ttl or `tokens` is an empty list.
     pub fn sbt_renew(&mut self, tokens: Vec<TokenId>, ttl: u64, memo: Option<String>) {
         self.assert_issuer();
         require!(
             ttl <= self.ttl,
             format!("ttl must be smaller than {}", self.ttl)
         );
+        require!(!tokens.is_empty(), "tokens must be a non empty list");
         let expires_at = env::block_timestamp() / SECOND + ttl;
         for t_id in tokens.iter() {
             let mut td = self.token_data.get(&t_id).expect("Token doesn't exist");
             td.metadata.expires_at = Some(expires_at);
             self.token_data.insert(&t_id, &td);
         }
-        let events = Events::SbtRenew(SbtRenewLog { tokens, memo });
-        emit_event(events);
+        emit_event(Events::SbtRenew(SbtRenewLog { tokens, memo }));
     }
 
-    /// admin: remove SBT from the given accounts
+    /// admin: remove SBT from the given accounts.
+    /// Panics if `accounts` is an empty list.
     pub fn revoke_for(&mut self, accounts: Vec<AccountId>, memo: Option<String>) {
         self.assert_issuer();
+        require!(!accounts.is_empty(), "accounts must be a non empty list");
         let mut tokens = Vec::with_capacity(accounts.len());
         for a in accounts {
             let t = self.balances.get(&a);
@@ -213,8 +216,9 @@ impl Contract {
                 tokens.push(t);
             }
         }
-        let event = Events::SbtRevoke(SbtRevokeLog { tokens, memo });
-        emit_event(event);
+        if !tokens.is_empty() {
+            emit_event(Events::SbtRevoke(SbtRevokeLog { tokens, memo }));
+        }
     }
 
     pub fn add_admins(&mut self, admins: Vec<AccountId>) {
