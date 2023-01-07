@@ -1,9 +1,6 @@
 use std::fmt;
 
-use near_sdk::{
-    serde::{Deserialize, Serialize},
-    AccountId,
-};
+use near_sdk::serde::{Deserialize, Serialize};
 
 use crate::TokenId;
 
@@ -17,8 +14,8 @@ use crate::TokenId;
 pub enum Events {
     SbtMint(Vec<SbtMintLog>),
     SbtRecover(Vec<SbtRecoverLog>),
-    SbtRenew(Vec<SbtRenewLog>),
-    SbtRevoke(Vec<SbtRevokeLog>),
+    SbtRenew(SbtRenewLog),
+    SbtRevoke(SbtRevokeLog),
 }
 
 /// Interface to capture data about an event
@@ -89,7 +86,6 @@ pub struct SbtRecoverLog {
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct SbtRenewLog {
-    pub owner: AccountId,
     pub tokens: Vec<TokenId>,
 
     #[serde(skip_serializing_if = "Option::is_none")]

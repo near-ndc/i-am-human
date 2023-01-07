@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedSet};
 use near_sdk::json_types::U64;
@@ -194,27 +192,13 @@ impl Contract {
             format!("ttl must be smaller than {}", self.ttl)
         );
         let expires_at = env::block_timestamp() / SECOND + ttl;
-        let mut by_owner: HashMap<AccountId, Vec<TokenId>> = HashMap::new();
         for t_id in tokens.iter() {
             let mut td = self.token_data.get(&t_id).expect("Token doesn't exist");
             td.metadata.expires_at = Some(expires_at);
             self.token_data.insert(&t_id, &td);
-            let owner_tokens = by_owner.get_mut(&td.owner);
-            if let Some(ts) = owner_tokens {
-                ts.push(*t_id);
-            } else {
-                by_owner.insert(td.owner, vec![*t_id]);
-            }
         }
-        let events = by_owner
-            .drain()
-            .map(|item| SbtRenewLog {
-                owner: item.0,
-                tokens: item.1,
-                memo: memo.clone(),
-            })
-            .collect();
-        emit_event(Events::SbtRenew(events));
+        let events = Events::SbtRenew(SbtRenewLog { tokens, memo });
+        emit_event(events);
     }
 
     /// admin: remove SBT from the given accounts
@@ -229,7 +213,7 @@ impl Contract {
                 tokens.push(t);
             }
         }
-        let event = Events::SbtRevoke(vec![SbtRevokeLog { tokens, memo }]);
+        let event = Events::SbtRevoke(SbtRevokeLog { tokens, memo });
         emit_event(event);
     }
 
