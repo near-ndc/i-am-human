@@ -155,7 +155,8 @@ impl Contract {
             !self.balances.contains_key(&receiver),
             "receiver already has SBT"
         );
-        let default_expires_at = env::block_timestamp() / SECOND + self.ttl;
+        let now = env::block_timestamp() / SECOND;
+        let default_expires_at = now + self.ttl;
         if let Some(e) = metadata.expires_at {
             require!(
                 e <= default_expires_at,
@@ -164,7 +165,7 @@ impl Contract {
         } else {
             metadata.expires_at = Some(default_expires_at);
         }
-
+        metadata.issued_at = Some(now);
         let token_id = self.next_token_id;
         self.next_token_id += 1;
         self.token_data.insert(
