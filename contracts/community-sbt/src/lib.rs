@@ -74,19 +74,17 @@ impl Contract {
 
     /// returns information about specific token ID
     pub fn sbt(&self, token_id: TokenId) -> Option<Token> {
-        if let Some(t) = self.token_data.get(&token_id) {
+        self.token_data.get(&token_id).and_then(|t| {
             Some(Token {
                 token_id,
                 owner_id: t.owner,
                 metadata: t.metadata,
             })
-        } else {
-            None
-        }
+        })
     }
 
-    /// returns total amount of tokens minted by this contract.
-    /// Includes possible expired tokens.
+    /// Returns total amount of tokens minted by this contract.
+    /// Includes possible expired tokens and revoked tokens.
     pub fn sbt_total_supply(&self) -> U64 {
         U64(self.next_token_id - 1)
     }
@@ -110,7 +108,7 @@ impl Contract {
         return Vec::new();
     }
 
-    /// returns total supply of non expired SBTs for a given owner.
+    /// returns total supply of non revoked SBTs for a given owner.
     pub fn sbt_supply_by_owner(&self, account: AccountId) -> U64 {
         if self.balances.contains_key(&account) {
             1.into()
