@@ -67,8 +67,9 @@ impl Contract {
         // TODO: check if we can handle the double reference in a better way
         let claim = Claim::deserialize(&mut &claim_bytes[..])
             .expect("claim is not borsh -> base64 serialized data");
+        let now = env::block_timestamp() / SECOND;
         require!(
-            claim.timestamp <= env::block_timestamp() / SECOND + self.claim_ttl,
+            claim.timestamp <= now && now - self.claim_ttl < claim.timestamp,
             "claim expired"
         );
         require!(
