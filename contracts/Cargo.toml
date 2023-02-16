@@ -1,10 +1,11 @@
 [workspace]
 members = [
+    "community-sbt",
+    "oracle",
+    "registry",
     "soulbound",
     "soulbound-class",
-    "registry",
     "ubi",
-    "community-sbt"
 ]
 
 
