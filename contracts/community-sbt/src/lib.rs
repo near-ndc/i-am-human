@@ -85,14 +85,14 @@ impl Contract {
 
     /// Returns total amount of tokens minted by this contract.
     /// Includes possible expired tokens and revoked tokens.
-    pub fn sbt_total_supply(&self) -> U64 {
+    pub fn nft_total_supply(&self) -> U64 {
         U64(self.next_token_id - 1)
     }
 
     /// Query sbt tokens by owner
     /// `from_index` and `limit` are not used - one account can have max one sbt.
     #[allow(unused_variables)]
-    pub fn sbt_by_owner(
+    pub fn nft_tokens_for_owner(
         &self,
         account: AccountId,
         from_index: Option<U64>,
@@ -108,18 +108,23 @@ impl Contract {
         return Vec::new();
     }
 
+    /// alias to sbt_supply_for_owner but returns number as a string instead
+    pub fn nft_supply_for_owner(&self, account: AccountId) -> U64 {
+        self.sbt_supply_for_owner(account).into()
+    }
+
     /// returns total supply of non revoked SBTs for a given owner.
-    pub fn sbt_supply_by_owner(&self, account: AccountId) -> U64 {
+    pub fn sbt_supply_for_owner(&self, account: AccountId) -> u64 {
         if self.balances.contains_key(&account) {
-            1.into()
+            1
         } else {
-            0.into()
+            0
         }
     }
 
-    /**********
+    /************
      * FUNCTIONS
-     **********/
+     ************/
 
     /// Soulbound transfer implementation.
     /// returns false if caller is not a SBT holder.
