@@ -152,7 +152,11 @@ impl Contract {
     /// Mints a new SBT for the given receiver.
     /// If `metadata.expires_at` is None then we set it to ` now+self.ttl`.
     /// Panics if `metadata.expires_at > now+self.ttl`.
-    pub fn sbt_mint(&mut self, mut metadata: TokenMetadata, receiver: AccountId) {
+    pub fn sbt_mint(
+        &mut self,
+        #[allow(unused_mut)] mut metadata: TokenMetadata,
+        receiver: AccountId,
+    ) {
         self.assert_issuer();
         require!(
             !self.balances.contains_key(&receiver),
