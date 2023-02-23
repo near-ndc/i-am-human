@@ -2,14 +2,15 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedSet};
 use near_sdk::json_types::U64;
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::CryptoHash;
-use near_sdk::{env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault};
+use near_sdk::{base64, env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault};
 
+pub use crate::errors::*;
 pub use crate::events::*;
 pub use crate::interfaces::*;
 pub use crate::metadata::*;
 pub use crate::storage::*;
 
+mod errors;
 mod events;
 mod interfaces;
 mod metadata;
@@ -25,8 +26,6 @@ pub const SECOND: u64 = 1_000_000_000;
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
-    // Accounts authorized to issue new SBT
-    pub admins: UnorderedSet<AccountId>,
     /// registry of burned accounts.
     pub registry: AccountId,
 
@@ -36,41 +35,60 @@ pub struct Contract {
     pub metadata: LazyOption<SBTContractMetadata>,
 
     pub next_token_id: TokenId,
-    /// time to live in seconds. used for token expiry
+    /// max duration (in seconds) a claim is valid for processing
     pub claim_ttl: u64,
+    /// SBT ttl until expire in miliseconds (expire=issue_time+sbt_ttl)
+    pub sbt_ttl_ms: u64,
+    /// ed25519 pub key (could be same as a NEAR pub key)
+    pub authority_pubkey: Vec<u8>,
+    pub used_identities: UnorderedSet<String>,
+
+    // TODO: remove, to test purposes only
+    pub admin: AccountId,
 }
 
 // Implement the contract structure
 #[near_bindgen]
 impl Contract {
-    /// @admins: initial set of admins
+    /// @authority_pubkey: base64 of authority pub key.
+    /// @metadata: NFT like metadata about the contract.
+    /// @registry: the SBT registry responsable for the "soul transfer".
+    /// @claim_ttl: max duration (in seconds) a claim is valid for processing.
+    ///   If zero default (14 days) is used.
     #[init]
-    pub fn new(admins: Vec<AccountId>, metadata: SBTContractMetadata, registry: AccountId) -> Self {
-        let mut admin_set = UnorderedSet::new(StorageKey::Admins);
-        for a in admins {
-            admin_set.insert(&a);
-        }
+    pub fn new(
+        authority_pubkey: String,
+        metadata: SBTContractMetadata,
+        registry: AccountId,
+        claim_ttl: u64,
+        admin: AccountId,
+    ) -> Self {
+        let claim_ttl = if claim_ttl == 0 {
+            60 * 60 * 24 * 14 // 2 weeks
+        } else {
+            claim_ttl
+        };
+        let authority_pubkey = base64::decode(authority_pubkey)
+            .expect("authority_pubkey is not a valid standard base64");
+
         Self {
-            admins: admin_set,
             registry,
 
             balances: LookupMap::new(StorageKey::Balances),
             token_data: LookupMap::new(StorageKey::TokenData),
             metadata: LazyOption::new(StorageKey::ContractMetadata, Some(&metadata)),
             next_token_id: 1,
-            claim_ttl: 3600 * 24 * 365, // ~ 1 year
+            claim_ttl,
+            sbt_ttl_ms: 1000 * 3600 * 24 * 365, // 1year in ms
+            authority_pubkey,
+            used_identities: UnorderedSet::new(StorageKey::UsedIdentities),
+            admin,
         }
     }
 
     /**********
      * QUERIES
      **********/
-
-    /// returns true if given address, or caller (if account is None)
-    /// is an admin.
-    pub fn is_admin(&self, addr: AccountId) -> bool {
-        return self.admins.contains(&addr);
-    }
 
     /// returns information about specific token ID
     pub fn sbt(&self, token_id: TokenId) -> Option<Token> {
@@ -85,14 +103,14 @@ impl Contract {
 
     /// Returns total amount of tokens minted by this contract.
     /// Includes possible expired tokens and revoked tokens.
-    pub fn sbt_total_supply(&self) -> U64 {
+    pub fn nft_total_supply(&self) -> U64 {
         U64(self.next_token_id - 1)
     }
 
     /// Query sbt tokens by owner
     /// `from_index` and `limit` are not used - one account can have max one sbt.
     #[allow(unused_variables)]
-    pub fn sbt_by_owner(
+    pub fn nft_tokens_for_owner(
         &self,
         account: AccountId,
         from_index: Option<U64>,
@@ -108,12 +126,17 @@ impl Contract {
         return Vec::new();
     }
 
+    /// alias to sbt_supply_for_owner but returns number as a string instead
+    pub fn nft_supply_for_owner(&self, account: AccountId) -> U64 {
+        self.sbt_supply_for_owner(account).into()
+    }
+
     /// returns total supply of non revoked SBTs for a given owner.
-    pub fn sbt_supply_by_owner(&self, account: AccountId) -> U64 {
+    pub fn sbt_supply_for_owner(&self, account: AccountId) -> u64 {
         if self.balances.contains_key(&account) {
-            1.into()
+            1
         } else {
-            0.into()
+            0
         }
     }
 
@@ -136,34 +159,63 @@ impl Contract {
             return true;
         }
         return false;
+    }
 
-        // TODO: add registry (update: burn account and set token) and make a transfer when registry updated succeed
+    pub fn admin_change_authority(&mut self, authority_pubkey: String) {
+        require!(self.admin == env::predecessor_account_id(), "not an admin");
+        self.authority_pubkey = base64::decode(authority_pubkey)
+            .expect("authority_pubkey is not a valid standard base64");
     }
 
     /**********
      * ADMIN
      **********/
 
-    /// Mints a new SBT for the given receiver.
+    /// Mints a new SBT for the transaction signer.
+    /// @claim_b64: standard base64 borsh serialized Claim (same bytes as used for the claim signature)
     /// If `metadata.expires_at` is None then we set it to ` now+self.ttl`.
     /// Panics if `metadata.expires_at > now+self.ttl`.
-    pub fn sbt_mint(&mut self, mut metadata: TokenMetadata, receiver: AccountId) {
-        self.assert_issuer();
-        require!(
-            !self.balances.contains_key(&receiver),
-            "receiver already has SBT"
-        );
+    #[handle_result]
+    pub fn sbt_mint(&mut self, claim_b64: String, claim_sig: String) -> Result<TokenId, CtrError> {
+        let _sig = b64_decode("claim_sig", claim_sig)?;
+        // // TODO: check signature
+
+        let claim_bytes = b64_decode("claim_b64", claim_b64)?; //.expect("claim_b64 is not a valid standard base64");
+                                                               // let claim = Claim::deserialize(&mut &claim_bytes[..])
+        let claim = Claim::try_from_slice(&claim_bytes)
+            .map_err(|_| CtrError::Borsh("claim".to_string()))?;
         let now = env::block_timestamp() / SECOND;
-        let default_expires_at = now + self.claim_ttl;
-        if let Some(e) = metadata.expires_at {
-            require!(
-                e <= default_expires_at,
-                format!("max metadata.expire_at is {}", default_expires_at)
-            );
-        } else {
-            metadata.expires_at = Some(default_expires_at);
+        if claim.timestamp <= now && now - self.claim_ttl < claim.timestamp {
+            return Err(CtrError::BadRequest("claim expired".to_string()));
         }
-        metadata.issued_at = Some(now);
+        if claim.claimer == env::signer_account_id() {
+            return Err(CtrError::BadRequest(
+                "claimer is not the transaction signer".to_string(),
+            ));
+        }
+
+        // TODO: check if claimer and external_id are not yet registered and issue SBT
+
+        if self.used_identities.contains(&claim.external_id) {
+            return Err(CtrError::DuplicatedID("external_id".to_string()));
+        }
+        self.used_identities.insert(&claim.external_id);
+
+        let receiver = env::predecessor_account_id();
+        if self.balances.contains_key(&receiver) {
+            return Err(CtrError::DuplicatedID(
+                "receiver already has a SBT".to_string(),
+            ));
+        }
+
+        let now_ms = env::block_timestamp_ms();
+        let metadata = TokenMetadata {
+            issued_at: Some(now_ms),
+            expires_at: Some(now_ms + self.sbt_ttl_ms),
+            reference: None,
+            reference_hash: None,
+        };
+
         let token_id = self.next_token_id;
         self.next_token_id += 1;
         self.token_data.insert(
@@ -180,80 +232,26 @@ impl Contract {
             memo: None,
         }]);
         emit_event(event);
+        Ok(token_id)
     }
 
-    /// sbt_renew will update the expire time of provided tokens.
-    /// `ttl` is duration seconds to set expire time: `now+ttl`.
-    /// Panics if ttl > self.ttl or `tokens` is an empty list.
-    pub fn sbt_renew(&mut self, tokens: Vec<TokenId>, ttl: u64, memo: Option<String>) {
-        self.assert_issuer();
-        require!(
-            ttl <= self.claim_ttl,
-            format!("ttl must be smaller than {}", self.claim_ttl)
-        );
-        require!(!tokens.is_empty(), "tokens must be a non empty list");
-        let expires_at = env::block_timestamp() / SECOND + ttl;
-        for t_id in tokens.iter() {
-            let mut td = self.token_data.get(&t_id).expect("Token doesn't exist");
-            td.metadata.expires_at = Some(expires_at);
-            self.token_data.insert(&t_id, &td);
-        }
-        emit_event(Events::SbtRenew(SbtRenewLog { tokens, memo }));
-    }
-
-    /// admin: remove SBT from the given accounts.
-    /// Panics if `accounts` is an empty list.
-    pub fn revoke_for(&mut self, accounts: Vec<AccountId>, memo: Option<String>) {
-        self.assert_issuer();
-        require!(!accounts.is_empty(), "accounts must be a non empty list");
-        let mut tokens = Vec::with_capacity(accounts.len());
-        for a in accounts {
-            let t = self.balances.get(&a);
-            if let Some(t) = t {
-                self.balances.remove(&a);
-                self.token_data.remove(&t);
-                tokens.push(t);
-            }
-        }
-        if !tokens.is_empty() {
-            emit_event(Events::SbtRevoke(SbtRevokeLog { tokens, memo }));
-        }
-    }
-
-    pub fn add_admins(&mut self, admins: Vec<AccountId>) {
-        self.assert_issuer();
-        for a in admins {
-            self.admins.insert(&a);
-        }
-    }
-
-    /// Any admin can remove any other admin.
-    // TODO: probably we should change this.
-    pub fn remove_admins(&mut self, admins: Vec<AccountId>) {
-        self.assert_issuer();
-        for a in admins {
-            self.admins.remove(&a);
-        }
-    }
-
-    /// Testing function
-    /// @`ttl`: expire time to live in seconds
-    /// TODO: must be removed for mainnet
-    pub fn admin_change_ttl(&mut self, ttl: u64) {
-        self.assert_issuer();
-        self.claim_ttl = ttl;
-    }
+    // TODO:
+    // - fn sbt_renew
 
     /**********
      * INTERNAL
      **********/
+}
 
-    fn assert_issuer(&self) {
-        require!(
-            self.admins.contains(&env::predecessor_account_id()),
-            "must be issuer"
-        );
-    }
+type CtrResult<T> = Result<T, CtrError>;
+
+#[derive(BorshSerialize, BorshDeserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
+pub struct Claim {
+    claimer: AccountId,
+    external_id: String,
+    /// unix time (seconds) when the claim was signed
+    timestamp: u64,
 }
 
 fn emit_event(event: Events) {
@@ -266,11 +264,9 @@ fn emit_event(event: Events) {
     env::log_str(&log.to_string());
 }
 
-// used to generate a unique prefix in our storage collections (this is to avoid data collisions)
-pub(crate) fn hash_account_id(account_id: &AccountId) -> CryptoHash {
-    // get the default hasher
-    let mut hash = CryptoHash::default();
-    // we hash the account ID and return it
-    hash.copy_from_slice(&env::sha256(account_id.as_bytes()));
-    hash
+fn b64_decode(arg: &str, data: String) -> CtrResult<Vec<u8>> {
+    return base64::decode(data).map_err(|e| CtrError::B64Err {
+        arg: arg.to_string(),
+        err: e,
+    });
 }

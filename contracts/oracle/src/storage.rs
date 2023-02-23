@@ -4,8 +4,8 @@ use near_sdk::BorshStorageKey;
 /// Helper structure for keys of the persistent collections.
 #[derive(BorshSerialize, BorshStorageKey)]
 pub enum StorageKey {
-    Admins,
     Balances,
     TokenData,
     ContractMetadata,
+    UsedIdentities,
 }
