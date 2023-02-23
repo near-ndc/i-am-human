@@ -36,7 +36,7 @@ pub struct Contract {
     pub metadata: LazyOption<SBTContractMetadata>,
 
     pub next_token_id: TokenId,
-    /// time to live in seconds. used for token expiry
+    /// time to live in ms. Used for token expiry
     pub ttl: u64,
 }
 
@@ -58,7 +58,7 @@ impl Contract {
             token_data: LookupMap::new(StorageKey::TokenData),
             metadata: LazyOption::new(StorageKey::ContractMetadata, Some(&metadata)),
             next_token_id: 1,
-            ttl: 3600 * 24 * 365, // ~ 1 year
+            ttl: 1000 * 3600 * 24 * 365, // ~ 1 year
         }
     }
 
@@ -162,8 +162,8 @@ impl Contract {
             !self.balances.contains_key(&receiver),
             "receiver already has SBT"
         );
-        let now = env::block_timestamp() / SECOND;
-        let default_expires_at = now + self.ttl;
+        let now_ms = env::block_timestamp_ms();
+        let default_expires_at = now_ms + self.ttl;
         if let Some(e) = metadata.expires_at {
             require!(
                 e <= default_expires_at,
@@ -172,7 +172,7 @@ impl Contract {
         } else {
             metadata.expires_at = Some(default_expires_at);
         }
-        metadata.issued_at = Some(now);
+        metadata.issued_at = Some(now_ms);
         let token_id = self.next_token_id;
         self.next_token_id += 1;
         self.token_data.insert(
