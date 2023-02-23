@@ -54,7 +54,7 @@ impl Contract {
     /// @metadata: NFT like metadata about the contract.
     /// @registry: the SBT registry responsable for the "soul transfer".
     /// @claim_ttl: max duration (in seconds) a claim is valid for processing.
-    ///   If zero default (14 days) is used.
+    ///   If zero default (1 day) is used.
     #[init]
     pub fn new(
         authority_pubkey: String,
@@ -64,7 +64,7 @@ impl Contract {
         admin: AccountId,
     ) -> Self {
         let claim_ttl = if claim_ttl == 0 {
-            60 * 60 * 24 * 14 // 2 weeks
+            3600 * 24 // 1 day
         } else {
             claim_ttl
         };
@@ -188,7 +188,7 @@ impl Contract {
         if claim.timestamp <= now && now - self.claim_ttl < claim.timestamp {
             return Err(CtrError::BadRequest("claim expired".to_string()));
         }
-        if claim.claimer == env::signer_account_id() {
+        if claim.claimer != env::signer_account_id() {
             return Err(CtrError::BadRequest(
                 "claimer is not the transaction signer".to_string(),
             ));
@@ -201,8 +201,7 @@ impl Contract {
         }
         self.used_identities.insert(&claim.external_id);
 
-        let receiver = env::predecessor_account_id();
-        if self.balances.contains_key(&receiver) {
+        if self.balances.contains_key(&claim.claimer) {
             return Err(CtrError::DuplicatedID(
                 "receiver already has a SBT".to_string(),
             ));
@@ -218,20 +217,20 @@ impl Contract {
 
         let token_id = self.next_token_id;
         self.next_token_id += 1;
-        self.token_data.insert(
-            &token_id,
-            &TokenData {
-                owner: receiver.clone(),
-                metadata,
-            },
-        );
-        self.balances.insert(&receiver, &token_id);
+        self.balances.insert(&claim.claimer, &token_id);
         let event = Events::SbtMint(vec![SbtMintLog {
-            owner: receiver.to_string(),
+            owner: claim.claimer.to_string(),
             tokens: vec![token_id],
             memo: None,
         }]);
         emit_event(event);
+        self.token_data.insert(
+            &token_id,
+            &TokenData {
+                owner: claim.claimer,
+                metadata,
+            },
+        );
         Ok(token_id)
     }
 
