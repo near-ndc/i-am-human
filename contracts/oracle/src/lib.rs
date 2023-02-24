@@ -4,6 +4,9 @@ use near_sdk::json_types::U64;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{base64, env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault};
 
+// TODO
+// use near_sdk::bs58 -- use public key in the base58 format
+
 pub use crate::errors::*;
 pub use crate::events::*;
 pub use crate::interfaces::*;
@@ -180,6 +183,11 @@ impl Contract {
         let _sig = b64_decode("claim_sig", claim_sig)?;
         // // TODO: check signature
 
+        // match ed25519::PublicKey::from_bytes(&public_key.0) {
+        //     Err(_) => false,
+        //     Ok(public_key) => public_key.verify(data, signature).is_ok(),
+        // }
+
         let claim_bytes = b64_decode("claim_b64", claim_b64)?; //.expect("claim_b64 is not a valid standard base64");
                                                                // let claim = Claim::deserialize(&mut &claim_bytes[..])
         let claim = Claim::try_from_slice(&claim_bytes)
@@ -232,6 +240,15 @@ impl Contract {
             },
         );
         Ok(token_id)
+    }
+
+    // TODO: remove
+    // For testing purposes ONLY.
+    // NOTE: idenity relationshipt to the issuer is not checked, so it's possible to remove any idenity.
+    pub fn sbt_remove(&mut self, identity: String) {
+        let claimer = env::predecessor_account_id();
+        self.used_identities.remove(&identity);
+        self.balances.remove(&claimer);
     }
 
     // TODO:
