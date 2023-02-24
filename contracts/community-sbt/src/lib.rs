@@ -23,6 +23,7 @@ pub struct Contract {
     /// registry of burned accounts.
     pub registry: AccountId,
 
+    // Community SBT has only one class, so only one SBT per account is allowed
     pub balances: LookupMap<AccountId, TokenId>,
     pub token_data: LookupMap<TokenId, TokenData>,
     // contract metadata
@@ -194,10 +195,10 @@ impl Contract {
             format!("ttl must be smaller than {}", self.ttl)
         );
         require!(!tokens.is_empty(), "tokens must be a non empty list");
-        let expires_at = env::block_timestamp_ms() + ttl * 1000;
+        let expires_at_ms = env::block_timestamp_ms() + ttl * 1000;
         for t_id in tokens.iter() {
             let mut td = self.token_data.get(&t_id).expect("Token doesn't exist");
-            td.metadata.expires_at = Some(expires_at);
+            td.metadata.expires_at = Some(expires_at_ms);
             self.token_data.insert(&t_id, &td);
         }
         emit_event(Events::SbtRenew(SbtRenewLog { tokens, memo }));
@@ -210,11 +211,13 @@ impl Contract {
         require!(!accounts.is_empty(), "accounts must be a non empty list");
         let mut tokens = Vec::with_capacity(accounts.len());
         for a in accounts {
-            let t = self.balances.get(&a);
-            if let Some(t) = t {
-                self.balances.remove(&a);
-                self.token_data.remove(&t);
-                tokens.push(t);
+            match self.balances.get(&a) {
+                Some(t) => {
+                    self.balances.remove(&a);
+                    self.token_data.remove(&t);
+                    tokens.push(t);
+                }
+                _ => (),
             }
         }
         if !tokens.is_empty() {

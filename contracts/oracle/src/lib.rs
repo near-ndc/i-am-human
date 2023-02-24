@@ -252,6 +252,13 @@ impl Contract {
      **********/
 }
 
+#[near_bindgen]
+impl SBTMetadata for Contract {
+    fn sbt_metadata(&self) -> SBTContractMetadata {
+        self.metadata.get().unwrap()
+    }
+}
+
 type CtrResult<T> = Result<T, CtrError>;
 
 #[derive(BorshSerialize, BorshDeserialize)]
@@ -261,16 +268,6 @@ pub struct Claim {
     external_id: String,
     /// unix time (seconds) when the claim was signed
     timestamp: u64,
-}
-
-fn emit_event(event: Events) {
-    // Construct the mint log as per the events standard.
-    let log: EventLog = EventLog {
-        standard: SBT_STANDARD_NAME.to_string(),
-        version: METADATA_SPEC.to_string(),
-        event,
-    };
-    env::log_str(&log.to_string());
 }
 
 fn b64_decode(arg: &str, data: String) -> CtrResult<Vec<u8>> {
