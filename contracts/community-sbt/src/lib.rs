@@ -1,7 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedSet};
 use near_sdk::json_types::U64;
-use near_sdk::CryptoHash;
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
 
 use sbt::*;
@@ -275,13 +274,4 @@ impl SBTMetadata for Contract {
     fn sbt_metadata(&self) -> SBTContractMetadata {
         self.metadata.get().unwrap()
     }
-}
-
-// used to generate a unique prefix in our storage collections (this is to avoid data collisions)
-pub(crate) fn hash_account_id(account_id: &AccountId) -> CryptoHash {
-    // get the default hasher
-    let mut hash = CryptoHash::default();
-    // we hash the account ID and return it
-    hash.copy_from_slice(&env::sha256(account_id.as_bytes()));
-    hash
 }

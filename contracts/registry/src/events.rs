@@ -1,5 +1,6 @@
 use std::fmt;
 
+use near_sdk::env::log_str;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::AccountId;
 
@@ -46,4 +47,14 @@ pub struct BlacklistLog {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memo: Option<String>,
+}
+
+pub(crate) fn emit_event(event: BlacklistLog) {
+    // Construct the mint log as per the events standard.
+    let e = EventLog {
+        standard: LOG_NAME.to_string(),
+        version: VERSION.to_string(),
+        event,
+    };
+    log_str(&e.to_string());
 }

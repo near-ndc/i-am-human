@@ -4,9 +4,6 @@ version = "1.0.0"
 authors = ["Robert Zaremba 'https://zaremba.ch/'"]
 edition = "2021"
 
-[lib]
-crate-type = ["cdylib", "rlib"]
-
 
 [dependencies]
 uint.workspace = true
