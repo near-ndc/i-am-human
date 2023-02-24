@@ -14,3 +14,5 @@ near-sdk.workspace = true
 serde_json.workspace = true
 base64.workspace = true
 ed25519.workspace = true
+
+sbt = { path = "../sbt" }

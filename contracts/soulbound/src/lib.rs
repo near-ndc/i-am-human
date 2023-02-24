@@ -3,20 +3,17 @@ use std::collections::HashSet;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedMap, UnorderedSet};
 use near_sdk::json_types::U64;
-use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::CryptoHash;
 use near_sdk::{
     assert_one_yocto, env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault,
 };
 
-pub use crate::events::*;
+use sbt::*;
+
 pub use crate::interfaces::*;
-pub use crate::metadata::*;
 pub use crate::storage::*;
 
-mod events;
 mod interfaces;
-mod metadata;
 mod storage;
 
 /// Balance of one mili NEAR, which is 10^23 Yocto NEAR.
@@ -159,7 +156,7 @@ impl Contract {
         self.next_token_id += 1;
         self.token_metadata.insert(&token_id, &metadata);
         self.add_token_to_owner(&receiver, token_id);
-        let event = EventLogVariant::SbtMint(vec![SbtMintLog {
+        let event = Events::SbtMint(vec![SbtMintLog {
             owner: receiver.to_string(),
             tokens: vec![token_id],
             memo: None,
@@ -203,7 +200,7 @@ impl Contract {
         }
         self.balances.insert(&to, &token_set_new);
 
-        let event = EventLogVariant::SbtRecover(vec![SbtRecoverLog {
+        let event = Events::SbtRecover(vec![SbtRecoverLog {
             old_owner: from.to_string(),
             new_owner: to.to_string(),
             tokens: token_set_old.iter().collect(),
@@ -230,7 +227,7 @@ impl Contract {
             self.token_metadata.insert(&t_id, &t);
         }
 
-        let event = EventLogVariant::SbtRenew(vec![SbtRenewLog { tokens, memo }]);
+        let event = Events::SbtRenew(SbtRenewLog { tokens, memo });
         emit_event(event);
     }
 
@@ -270,16 +267,6 @@ impl Contract {
         self.balances.insert(account_id, &tokens_set);
         self.token_to_owner.insert(&token_id, account_id);
     }
-}
-
-fn emit_event(event: EventLogVariant) {
-    // Construct the mint log as per the events standard.
-    let log: EventLog = EventLog {
-        standard: SBT_STANDARD_NAME.to_string(),
-        version: METADATA_SPEC.to_string(),
-        event,
-    };
-    env::log_str(&log.to_string());
 }
 
 // used to generate a unique prefix in our storage collections (this is to avoid data collisions)

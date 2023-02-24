@@ -26,7 +26,7 @@ pub fn emit_event(event: Events) {
 pub enum Events {
     SbtMint(Vec<SbtMintLog>),
     SbtRecover(Vec<SbtRecoverLog>),
-    SbtRenew(SbtRenewLog),
+    SbtRenew(SbtRenewLog), // TODO: use Vec?
     SbtRevoke(SbtRevokeLog),
 }
 

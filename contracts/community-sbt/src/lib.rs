@@ -1,9 +1,10 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedSet};
 use near_sdk::json_types::U64;
-use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::CryptoHash;
-use near_sdk::{env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault};
+use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
+
+use sbt::*;
 
 pub use crate::interfaces::*;
 pub use crate::storage::*;
@@ -11,10 +12,6 @@ pub use crate::storage::*;
 mod interfaces;
 mod storage;
 
-/// Balance of one mili NEAR, which is 10^23 Yocto NEAR.
-pub const MILI_NEAR: Balance = 1_000_000_000_000_000_000_000;
-pub const BLACKLIST_COST: Balance = 5 * MILI_NEAR;
-pub const GAS_FOR_BLACKLIST: Gas = Gas(6 * Gas::ONE_TERA.0);
 /// 1s in nano seconds.
 pub const SECOND: u64 = 1_000_000_000;
 

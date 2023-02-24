@@ -12,3 +12,4 @@ crate-type = ["cdylib", "rlib"]
 uint.workspace = true
 near-sdk.workspace = true
 serde_json.workspace = true
+sbt = { path = "../sbt" }
