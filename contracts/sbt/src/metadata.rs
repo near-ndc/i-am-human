@@ -1,7 +1,7 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::json_types::Base64VecU8;
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::AccountId;
+use near_sdk::{require, AccountId};
 
 use crate::*;
 
@@ -20,6 +20,12 @@ pub struct SBTContractMetadata {
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct TokenMetadata {
+    /***
+     TODO: probably title, media and media_hash is not needed - all of it can be in reference
+     pub title: Option<String>, // ex. "Arch Nemesis: Mail Carrier" or "Parcel #5055"
+     pub media: Option<String>, // URL to associated media, preferably to decentralized, content-addressed storage
+     pub media_hash: Option<Base64VecU8>, // Base64-encoded sha256 hash of content referenced by the `media` field.
+    ***/
     pub issued_at: Option<u64>, // When token was issued or minted, Unix epoch in milliseconds
     pub expires_at: Option<u64>, // When token expires, Unix epoch in milliseconds
     pub reference: Option<String>, // URL to an off-chain JSON file with more info.
@@ -42,7 +48,45 @@ pub struct Token {
     pub metadata: TokenMetadata,
 }
 
+/// trait which every SBT contract with metadata should implement, offering contract details.
 pub trait SBTMetadata {
     //view call for returning the contract metadata
     fn sbt_metadata(&self) -> SBTContractMetadata;
+}
+
+impl SBTContractMetadata {
+    pub fn assert_valid(&self) {
+        require!(
+            self.spec == crate::METADATA_SPEC,
+            "Spec is not NFT metadata"
+        );
+        require!(
+            self.name.len() >= 1 && self.symbol.len() >= 1,
+            "name and spec must be a non empty string"
+        );
+        require!(
+            self.reference.is_some() == self.reference_hash.is_some(),
+            "Reference and reference hash must be present"
+        );
+        if let Some(reference_hash) = &self.reference_hash {
+            require!(reference_hash.0.len() == 32, "Hash has to be 32 bytes");
+        }
+    }
+}
+
+impl TokenMetadata {
+    pub fn assert_valid(&self) {
+        // require!(self.media.is_some() == self.media_hash.is_some());
+        // if let Some(media_hash) = &self.media_hash {
+        //     require!(media_hash.0.len() == 32, "Media hash has to be 32 bytes");
+        // }
+
+        require!(self.reference.is_some() == self.reference_hash.is_some());
+        if let Some(reference_hash) = &self.reference_hash {
+            require!(
+                reference_hash.0.len() == 32,
+                "Reference hash has to be 32 bytes"
+            );
+        }
+    }
 }
