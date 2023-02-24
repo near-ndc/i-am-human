@@ -79,18 +79,21 @@ impl Contract {
 
     /// Returns total amount of tokens minted by this contract.
     /// Includes possible expired tokens and revoked tokens.
+    // TODO: maybe we will want to use u64 as a return type? But that will break the NFT interface
+    // .... nft interface is using U128 anyway
     pub fn nft_total_supply(&self) -> U64 {
-        U64(self.next_token_id - 1)
+        U64(self.sbt_total_supply())
     }
 
     /// Query sbt tokens by owner
     /// `from_index` and `limit` are not used - one account can have max one sbt.
+    // TODO: nft uses U128 instead of U64 ... but it's really not needed.
     #[allow(unused_variables)]
     pub fn nft_tokens_for_owner(
         &self,
         account: AccountId,
         from_index: Option<U64>,
-        limit: Option<u32>,
+        limit: Option<u64>,
     ) -> Vec<Token> {
         if let Some(t) = self.balances.get(&account) {
             return vec![Token {
@@ -105,6 +108,12 @@ impl Contract {
     /// alias to sbt_supply_for_owner but returns number as a string instead
     pub fn nft_supply_for_owner(&self, account: AccountId) -> U64 {
         self.sbt_supply_for_owner(account).into()
+    }
+
+    // SBT Query version //
+
+    pub fn sbt_total_supply(&self) -> u64 {
+        self.next_token_id - 1
     }
 
     /// returns total supply of non revoked SBTs for a given owner.
