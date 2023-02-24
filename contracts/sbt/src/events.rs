@@ -1,8 +1,20 @@
 use std::fmt;
 
+use near_sdk::env;
 use near_sdk::serde::{Deserialize, Serialize};
 
 use crate::TokenId;
+use crate::{METADATA_SPEC, SBT_STANDARD_NAME};
+
+pub fn emit_event(event: Events) {
+    // Construct the mint log as per the events standard.
+    let log: EventLog = EventLog {
+        standard: SBT_STANDARD_NAME.to_string(),
+        version: METADATA_SPEC.to_string(),
+        event,
+    };
+    env::log_str(&log.to_string());
+}
 
 /// Enum that represents the data type of the EventLog.
 /// The enum can either be an NftMint or an NftTransfer.

@@ -1,12 +1,9 @@
+use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::json_types::Base64VecU8;
+use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::AccountId;
 
 use crate::*;
-pub type TokenId = u64;
-
-/// This spec can be treated like a version of the standard.
-pub const METADATA_SPEC: &str = "1.0.0";
-/// This is the name of the SBT standard we're using
-pub const SBT_STANDARD_NAME: &str = "nepTODO";
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
@@ -48,11 +45,4 @@ pub struct Token {
 pub trait SBTMetadata {
     //view call for returning the contract metadata
     fn sbt_metadata(&self) -> SBTContractMetadata;
-}
-
-#[near_bindgen]
-impl SBTMetadata for Contract {
-    fn sbt_metadata(&self) -> SBTContractMetadata {
-        self.metadata.get().unwrap()
-    }
 }

@@ -5,14 +5,10 @@ use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::CryptoHash;
 use near_sdk::{env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault};
 
-pub use crate::events::*;
 pub use crate::interfaces::*;
-pub use crate::metadata::*;
 pub use crate::storage::*;
 
-mod events;
 mod interfaces;
-mod metadata;
 mod storage;
 
 /// Balance of one mili NEAR, which is 10^23 Yocto NEAR.
@@ -265,14 +261,11 @@ impl Contract {
     }
 }
 
-fn emit_event(event: Events) {
-    // Construct the mint log as per the events standard.
-    let log: EventLog = EventLog {
-        standard: SBT_STANDARD_NAME.to_string(),
-        version: METADATA_SPEC.to_string(),
-        event,
-    };
-    env::log_str(&log.to_string());
+#[near_bindgen]
+impl SBTMetadata for Contract {
+    fn sbt_metadata(&self) -> SBTContractMetadata {
+        self.metadata.get().unwrap()
+    }
 }
 
 // used to generate a unique prefix in our storage collections (this is to avoid data collisions)
