@@ -51,7 +51,7 @@ impl Contract {
             token_data: LookupMap::new(StorageKey::TokenData),
             metadata: LazyOption::new(StorageKey::ContractMetadata, Some(&metadata)),
             next_token_id: 1,
-            ttl: 1000 * 3600 * 24 * 365, // ~ 1 year
+            ttl: 1000 * 3600 * 24 * 365, // ~ 1 year in ms
         }
     }
 
@@ -194,7 +194,7 @@ impl Contract {
             format!("ttl must be smaller than {}", self.ttl)
         );
         require!(!tokens.is_empty(), "tokens must be a non empty list");
-        let expires_at = env::block_timestamp() / SECOND + ttl;
+        let expires_at = env::block_timestamp_ms() + ttl * 1000;
         for t_id in tokens.iter() {
             let mut td = self.token_data.get(&t_id).expect("Token doesn't exist");
             td.metadata.expires_at = Some(expires_at);
