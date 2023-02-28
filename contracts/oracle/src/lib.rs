@@ -92,7 +92,7 @@ impl Contract {
             Some(Token {
                 token_id,
                 owner_id: t.owner,
-                metadata: t.metadata,
+                metadata: t.metadata.v1(),
             })
         })
     }
@@ -119,7 +119,7 @@ impl Contract {
             return vec![Token {
                 token_id: t,
                 owner_id: account,
-                metadata: self.token_data.get(&t).unwrap().metadata,
+                metadata: self.token_data.get(&t).unwrap().metadata.v1(),
             }];
         }
         return Vec::new();
@@ -238,7 +238,7 @@ impl Contract {
             &token_id,
             &TokenData {
                 owner: claim.claimer,
-                metadata,
+                metadata: metadata.into(),
             },
         );
         Ok(token_id)

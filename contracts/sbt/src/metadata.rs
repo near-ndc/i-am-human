@@ -17,6 +17,12 @@ pub struct ContractMetadata {
     pub reference_hash: Option<Base64VecU8>, // Base64-encoded sha256 hash of JSON from reference field. Required if `reference` is included.
 }
 
+/// Versioned token metadata
+#[derive(BorshDeserialize, BorshSerialize)]
+pub enum VerTokenMetadata {
+    V1(TokenMetadata),
+}
+
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct TokenMetadata {
@@ -32,11 +38,25 @@ pub struct TokenMetadata {
     pub reference_hash: Option<Base64VecU8>, // Base64-encoded sha256 hash of JSON from reference field. Required if `reference` is included.
 }
 
+impl VerTokenMetadata {
+    pub fn v1(self) -> TokenMetadata {
+        match self {
+            VerTokenMetadata::V1(x) => x,
+        }
+    }
+}
+
+impl From<TokenMetadata> for VerTokenMetadata {
+    fn from(m: TokenMetadata) -> Self {
+        VerTokenMetadata::V1(m)
+    }
+}
+
 /// Full information about the token
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct TokenData {
     pub owner: AccountId,
-    pub metadata: TokenMetadata,
+    pub metadata: VerTokenMetadata,
 }
 
 /// Full information about the token

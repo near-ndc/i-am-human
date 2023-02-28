@@ -71,7 +71,7 @@ impl Contract {
             Some(Token {
                 token_id,
                 owner_id: t.owner,
-                metadata: t.metadata,
+                metadata: t.metadata.v1(),
             })
         })
     }
@@ -98,7 +98,7 @@ impl Contract {
             return vec![Token {
                 token_id: t,
                 owner_id: account,
-                metadata: self.token_data.get(&t).unwrap().metadata,
+                metadata: self.token_data.get(&t).unwrap().metadata.v1(),
             }];
         }
         return Vec::new();
@@ -181,7 +181,7 @@ impl Contract {
             &token_id,
             &TokenData {
                 owner: receiver.clone(),
-                metadata,
+                metadata: metadata.into(),
             },
         );
         self.balances.insert(&receiver, &token_id);
@@ -206,7 +206,9 @@ impl Contract {
         let expires_at_ms = env::block_timestamp_ms() + ttl * 1000;
         for t_id in tokens.iter() {
             let mut td = self.token_data.get(&t_id).expect("Token doesn't exist");
-            td.metadata.expires_at = Some(expires_at_ms);
+            let mut m = td.metadata.v1();
+            m.expires_at = Some(expires_at_ms);
+            td.metadata = m.into();
             self.token_data.insert(&t_id, &td);
         }
         emit_event(Events::SbtRenew(SbtRenewLog { tokens, memo }));
