@@ -4,12 +4,12 @@ use near_sdk::env;
 use near_sdk::serde::{Deserialize, Serialize};
 
 use crate::TokenId;
-use crate::{METADATA_SPEC, SBT_STANDARD_NAME};
+use crate::{METADATA_SPEC, STANDARD_NAME};
 
 pub fn emit_event(event: Events) {
     // Construct the mint log as per the events standard.
     let log: EventLog = EventLog {
-        standard: SBT_STANDARD_NAME.to_string(),
+        standard: STANDARD_NAME.to_string(),
         version: METADATA_SPEC.to_string(),
         event,
     };
@@ -164,7 +164,7 @@ mod tests {
     fn log_format_recovery() {
         let expected = r#"EVENT_JSON:{"standard":"nepTODO","version":"1.0.0","event":"sbt_recover","data":[{"old_owner":"user1.near","new_owner":"user2.near","tokens":[10],"memo":"process1"}]}"#;
         let log = EventLog {
-            standard: SBT_STANDARD_NAME.to_string(),
+            standard: STANDARD_NAME.to_string(),
             version: METADATA_SPEC.to_string(),
             event: Events::SbtRecover(vec![SbtRecoverLog {
                 old_owner: "user1.near".to_string(),

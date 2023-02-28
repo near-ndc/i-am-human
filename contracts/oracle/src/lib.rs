@@ -1,3 +1,4 @@
+use ed25519_dalek::{PublicKey, Signature, Verifier, PUBLIC_KEY_LENGTH};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedSet};
 use near_sdk::json_types::U64;
@@ -36,7 +37,7 @@ pub struct Contract {
     /// SBT ttl until expire in miliseconds (expire=issue_time+sbt_ttl)
     pub sbt_ttl_ms: u64,
     /// ed25519 pub key (could be same as a NEAR pub key)
-    pub authority_pubkey: Vec<u8>,
+    pub authority_pubkey: [u8; PUBLIC_KEY_LENGTH], // Vec<u8>,
     pub used_identities: UnorderedSet<String>,
 
     // TODO: remove, to test purposes only
@@ -76,7 +77,9 @@ impl Contract {
             next_token_id: 1,
             claim_ttl,
             sbt_ttl_ms: 1000 * 3600 * 24 * 365, // 1year in ms
-            authority_pubkey,
+            authority_pubkey: authority_pubkey
+                .try_into()
+                .expect("authority pubkey must be 32 bytes"),
             used_identities: UnorderedSet::new(StorageKey::UsedIdentities),
             admin,
         }
@@ -169,12 +172,28 @@ impl Contract {
     pub fn admin_change_authority(&mut self, authority_pubkey: String) {
         require!(self.admin == env::predecessor_account_id(), "not an admin");
         self.authority_pubkey = base64::decode(authority_pubkey)
-            .expect("authority_pubkey is not a valid standard base64");
+            .expect("authority_pubkey is not a valid standard base64")
+            .try_into()
+            .expect("authority key must be 32 bytes");
     }
 
     /**********
      * ADMIN
      **********/
+
+    pub(crate) fn verify_claim(
+        &mut self,
+        claim: Vec<u8>,
+        claim_sig: Vec<u8>,
+    ) -> Result<(), CtrError> {
+        let pk = PublicKey::from_bytes(&self.authority_pubkey).unwrap();
+        let sig = match Signature::from_bytes(&claim_sig) {
+            Ok(sig) => sig,
+            Err(_) => return Err(CtrError::Signature("malformed signature".to_string())),
+        };
+        pk.verify(&claim, &sig)
+            .map_err(|_| CtrError::Signature("invalid signature".to_string()))
+    }
 
     /// Mints a new SBT for the transaction signer.
     /// @claim_b64: standard base64 borsh serialized Claim (same bytes as used for the claim signature)
@@ -182,18 +201,14 @@ impl Contract {
     /// Panics if `metadata.expires_at > now+self.ttl`.
     #[handle_result]
     pub fn sbt_mint(&mut self, claim_b64: String, claim_sig: String) -> Result<TokenId, CtrError> {
-        let _sig = b64_decode("claim_sig", claim_sig)?;
-        // // TODO: check signature
-
-        // match ed25519::PublicKey::from_bytes(&public_key.0) {
-        //     Err(_) => false,
-        //     Ok(public_key) => public_key.verify(data, signature).is_ok(),
-        // }
-
-        let claim_bytes = b64_decode("claim_b64", claim_b64)?; //.expect("claim_b64 is not a valid standard base64");
-                                                               // let claim = Claim::deserialize(&mut &claim_bytes[..])
+        let sig = b64_decode("claim_sig", claim_sig)?;
+        let claim_bytes = b64_decode("claim_b64", claim_b64)?;
+        // let claim = Claim::deserialize(&mut &claim_bytes[..])
         let claim = Claim::try_from_slice(&claim_bytes)
             .map_err(|_| CtrError::Borsh("claim".to_string()))?;
+
+        self.verify_claim(claim_bytes, sig)?;
+
         let now = env::block_timestamp() / SECOND;
         if claim.timestamp <= now && now - self.claim_ttl < claim.timestamp {
             return Err(CtrError::BadRequest("claim expired".to_string()));
@@ -203,8 +218,6 @@ impl Contract {
                 "claimer is not the transaction signer".to_string(),
             ));
         }
-
-        // TODO: check if claimer and external_id are not yet registered and issue SBT
 
         if self.used_identities.contains(&claim.external_id) {
             return Err(CtrError::DuplicatedID("external_id".to_string()));
@@ -284,4 +297,51 @@ fn b64_decode(arg: &str, data: String) -> CtrResult<Vec<u8>> {
         arg: arg.to_string(),
         err: e,
     });
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use near_sdk::test_utils::VMContextBuilder;
+    use near_sdk::{testing_env, AccountId, VMContext};
+    use sbt::{ContractMetadata, STANDARD_NAME};
+
+    use crate::Contract;
+
+    use ed25519_dalek::Keypair;
+    use rand::rngs::OsRng;
+
+    fn b64_encode(data: Vec<u8>) -> String {
+        //::encode(data);
+        return "ABC".into();
+    }
+
+    fn setup(is_view: bool) -> (Contract, Keypair, VMContext) {
+        let registry: AccountId = "registry.near".parse().unwrap();
+        let ctx = VMContextBuilder::new()
+            .signer_account_id("bob_near".parse().unwrap())
+            .is_view(is_view)
+            .build();
+        let mut csprng = OsRng {};
+        let keypair: Keypair = Keypair::generate(&mut csprng);
+
+        let ctr = Contract::new(
+            b64_encode(keypair.public.to_bytes()),
+            ContractMetadata {
+                spec: STANDARD_NAME.to_string(),
+                name: "name".to_string(),
+                symbol: "symbol".to_string(),
+            },
+            registry,
+            10,
+            "admin.near".parse().unwrap(),
+        );
+        return (ctr, keypair, ctx);
+    }
+
+    #[test]
+    fn my_test() {
+        let context = setup(false);
+        testing_env!(context);
+        // ... Write test here
+    }
 }
