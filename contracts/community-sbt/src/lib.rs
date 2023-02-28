@@ -26,7 +26,7 @@ pub struct Contract {
     pub balances: LookupMap<AccountId, TokenId>,
     pub token_data: LookupMap<TokenId, TokenData>,
     // contract metadata
-    pub metadata: LazyOption<SBTContractMetadata>,
+    pub metadata: LazyOption<ContractMetadata>,
 
     pub next_token_id: TokenId,
     /// time to live in ms. Used for token expiry
@@ -38,7 +38,7 @@ pub struct Contract {
 impl Contract {
     /// @admins: initial set of admins
     #[init]
-    pub fn new(admins: Vec<AccountId>, metadata: SBTContractMetadata, registry: AccountId) -> Self {
+    pub fn new(admins: Vec<AccountId>, metadata: ContractMetadata, registry: AccountId) -> Self {
         let mut admin_set = UnorderedSet::new(StorageKey::Admins);
         for a in admins {
             admin_set.insert(&a);
@@ -271,7 +271,7 @@ impl Contract {
 
 #[near_bindgen]
 impl SBTMetadata for Contract {
-    fn sbt_metadata(&self) -> SBTContractMetadata {
+    fn sbt_metadata(&self) -> ContractMetadata {
         self.metadata.get().unwrap()
     }
 }

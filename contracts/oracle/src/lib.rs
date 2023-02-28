@@ -28,7 +28,7 @@ pub struct Contract {
     pub balances: LookupMap<AccountId, TokenId>,
     pub token_data: LookupMap<TokenId, TokenData>,
     // contract metadata
-    pub metadata: LazyOption<SBTContractMetadata>,
+    pub metadata: LazyOption<ContractMetadata>,
 
     pub next_token_id: TokenId,
     /// max duration (in seconds) a claim is valid for processing
@@ -54,7 +54,7 @@ impl Contract {
     #[init]
     pub fn new(
         authority_pubkey: String,
-        metadata: SBTContractMetadata,
+        metadata: ContractMetadata,
         registry: AccountId,
         claim_ttl: u64,
         admin: AccountId,
@@ -263,7 +263,7 @@ impl Contract {
 
 #[near_bindgen]
 impl SBTMetadata for Contract {
-    fn sbt_metadata(&self) -> SBTContractMetadata {
+    fn sbt_metadata(&self) -> ContractMetadata {
         self.metadata.get().unwrap()
     }
 }

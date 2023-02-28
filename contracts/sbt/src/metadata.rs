@@ -7,7 +7,7 @@ use crate::*;
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
-pub struct SBTContractMetadata {
+pub struct ContractMetadata {
     pub spec: String,              // required, essentially a version like "sbt-1.0.0"
     pub name: String,              // required, ex. "Mosaics"
     pub symbol: String,            // required, ex. "MOSAIC"
@@ -51,10 +51,10 @@ pub struct Token {
 /// trait which every SBT contract with metadata should implement, offering contract details.
 pub trait SBTMetadata {
     //view call for returning the contract metadata
-    fn sbt_metadata(&self) -> SBTContractMetadata;
+    fn sbt_metadata(&self) -> ContractMetadata;
 }
 
-impl SBTContractMetadata {
+impl ContractMetadata {
     pub fn assert_valid(&self) {
         require!(
             self.spec == crate::METADATA_SPEC,

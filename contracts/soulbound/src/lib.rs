@@ -36,7 +36,7 @@ pub struct Contract {
     // token metadata
     pub token_metadata: UnorderedMap<TokenId, TokenMetadata>,
     // contract metadata
-    pub metadata: LazyOption<SBTContractMetadata>,
+    pub metadata: LazyOption<ContractMetadata>,
 
     pub next_token_id: TokenId,
 }
@@ -48,7 +48,7 @@ impl Contract {
     pub fn new(
         issuer: AccountId,
         operators: Vec<AccountId>,
-        metadata: SBTContractMetadata,
+        metadata: ContractMetadata,
         blacklist_registry: AccountId,
     ) -> Self {
         Self {
