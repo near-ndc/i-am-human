@@ -13,7 +13,7 @@ members = [
 # compilation profile for a release target
 [profile.release]
 codegen-units = 1
-# s = optimize for binary size ("z" would additionally turn off loop vectorization)
+# s = optimize for binary size ("z" would additionally turn off loop vectorization), z is recommended usually
 # 3  all optimiations
 opt-level = 3
 # link time optimization

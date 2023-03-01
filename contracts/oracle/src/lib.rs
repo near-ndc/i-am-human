@@ -47,14 +47,14 @@ pub struct Contract {
 // Implement the contract structure
 #[near_bindgen]
 impl Contract {
-    /// @authority_pubkey: base64 of authority pub key.
+    /// @authority: base64 of authority pub key used for claim signature authorization.
     /// @metadata: NFT like metadata about the contract.
     /// @registry: the SBT registry responsable for the "soul transfer".
     /// @claim_ttl: max duration (in seconds) a claim is valid for processing.
     ///   If zero default (1 day) is used.
     #[init]
     pub fn new(
-        authority_pubkey: String,
+        authority: String,
         metadata: ContractMetadata,
         registry: AccountId,
         claim_ttl: u64,
@@ -65,8 +65,6 @@ impl Contract {
         } else {
             claim_ttl
         };
-        let authority_pubkey = base64::decode(authority_pubkey)
-            .expect("authority_pubkey is not a valid standard base64");
 
         Self {
             registry,
@@ -77,9 +75,7 @@ impl Contract {
             next_token_id: 1,
             claim_ttl,
             sbt_ttl_ms: 1000 * 3600 * 24 * 365, // 1year in ms
-            authority_pubkey: authority_pubkey
-                .try_into()
-                .expect("authority pubkey must be 32 bytes"),
+            authority_pubkey: pubkey_from_b64(authority),
             used_identities: UnorderedSet::new(StorageKey::UsedIdentities),
             admin,
         }
@@ -169,31 +165,9 @@ impl Contract {
         return false;
     }
 
-    pub fn admin_change_authority(&mut self, authority_pubkey: String) {
-        require!(self.admin == env::predecessor_account_id(), "not an admin");
-        self.authority_pubkey = base64::decode(authority_pubkey)
-            .expect("authority_pubkey is not a valid standard base64")
-            .try_into()
-            .expect("authority key must be 32 bytes");
-    }
-
     /**********
      * ADMIN
      **********/
-
-    pub(crate) fn verify_claim(
-        &mut self,
-        claim: Vec<u8>,
-        claim_sig: Vec<u8>,
-    ) -> Result<(), CtrError> {
-        let pk = PublicKey::from_bytes(&self.authority_pubkey).unwrap();
-        let sig = match Signature::from_bytes(&claim_sig) {
-            Ok(sig) => sig,
-            Err(_) => return Err(CtrError::Signature("malformed signature".to_string())),
-        };
-        pk.verify(&claim, &sig)
-            .map_err(|_| CtrError::Signature("invalid signature".to_string()))
-    }
 
     /// Mints a new SBT for the transaction signer.
     /// @claim_b64: standard base64 borsh serialized Claim (same bytes as used for the claim signature)
@@ -207,15 +181,9 @@ impl Contract {
         let claim = Claim::try_from_slice(&claim_bytes)
             .map_err(|_| CtrError::Borsh("claim".to_string()))?;
 
-        self.verify_claim(claim_bytes, sig)?;
+        verify_claim(&self.authority_pubkey, claim_bytes, sig)?;
 
         let now = env::block_timestamp() / SECOND;
-        println!(
-            ">>> now {}, claim_timestamp {} claim_expire: {}",
-            now,
-            claim.timestamp,
-            claim.timestamp + self.claim_ttl
-        );
         if claim.timestamp > now {
             return Err(CtrError::BadRequest(
                 "claim.timestamp in the future".to_string(),
@@ -269,6 +237,12 @@ impl Contract {
         Ok(token_id)
     }
 
+    /// @authority: pubkey used to verify claim signature
+    pub fn admin_change_authority(&mut self, authority: String) {
+        require!(self.admin == env::predecessor_account_id(), "not an admin");
+        self.authority_pubkey = pubkey_from_b64(authority);
+    }
+
     // TODO: remove
     // For testing purposes ONLY.
     // NOTE: idenity relationshipt to the issuer is not checked, so it's possible to remove any idenity.
@@ -284,6 +258,20 @@ impl Contract {
     /**********
      * INTERNAL
      **********/
+}
+
+fn verify_claim(
+    pubkey: &[u8; PUBLIC_KEY_LENGTH],
+    claim: Vec<u8>,
+    claim_sig: Vec<u8>,
+) -> Result<(), CtrError> {
+    let pk = PublicKey::from_bytes(pubkey).unwrap();
+    let sig = match Signature::from_bytes(&claim_sig) {
+        Ok(sig) => sig,
+        Err(_) => return Err(CtrError::Signature("malformed signature".to_string())),
+    };
+    pk.verify(&claim, &sig)
+        .map_err(|_| CtrError::Signature("invalid signature".to_string()))
 }
 
 #[near_bindgen]
@@ -320,7 +308,7 @@ mod tests {
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::{testing_env, VMContext};
 
-    use ed25519_dalek::{Keypair, Signer};
+    use ed25519_dalek::{Keypair, SecretKey, Signer};
     use rand::rngs::OsRng;
 
     fn b64_encode(data: Vec<u8>) -> String {
@@ -464,6 +452,26 @@ mod tests {
     }
 
     #[test]
+    fn test_pubkey() {
+        let pk_bytes = pubkey_from_b64("kSj7W/TdN9RGLgdJA8ac7i/WdQdm2lwQ1IPGlO1L3xc=".to_string());
+        assert_ne!(pk_bytes[0], 0);
+    }
+
+    #[test]
+    fn test_pubkey_sig() {
+        let mut csprng = OsRng {};
+        let k = Keypair::generate(&mut csprng);
+        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "id1", &k);
+        let claim_bytes = b64_decode("claim_b64", c_str).unwrap();
+        let res = verify_claim(
+            &k.public.to_bytes(),
+            claim_bytes,
+            b64_decode("sig", sig).unwrap(),
+        );
+        assert!(res.is_ok(), "verification result: {:?}", res);
+    }
+
+    #[test]
     fn claim_serialization() {
         let c = mk_claim(1677621259142, "some_111#$!");
         let claim_bz = c.try_to_vec().unwrap();
@@ -472,4 +480,9 @@ mod tests {
         let claim2 = Claim::try_from_slice(&claim2_bz).unwrap();
         assert_eq!(c, claim2, "serialization should work");
     }
+}
+
+fn pubkey_from_b64(pubkey: String) -> [u8; PUBLIC_KEY_LENGTH] {
+    let pk_bz = base64::decode(pubkey).expect("authority_pubkey is not a valid standard base64");
+    pk_bz.try_into().expect("authority pubkey must be 32 bytes")
 }
