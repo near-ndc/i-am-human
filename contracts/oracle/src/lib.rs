@@ -210,9 +210,21 @@ impl Contract {
         self.verify_claim(claim_bytes, sig)?;
 
         let now = env::block_timestamp() / SECOND;
-        if claim.timestamp <= now && now - self.claim_ttl < claim.timestamp {
+        println!(
+            ">>> now {}, claim_timestamp {} claim_expire: {}",
+            now,
+            claim.timestamp,
+            claim.timestamp + self.claim_ttl
+        );
+        if claim.timestamp > now {
+            return Err(CtrError::BadRequest(
+                "claim.timestamp in the future".to_string(),
+            ));
+        }
+        if now >= claim.timestamp + self.claim_ttl {
             return Err(CtrError::BadRequest("claim expired".to_string()));
         }
+
         if claim.claimer != env::signer_account_id() {
             return Err(CtrError::BadRequest(
                 "claimer is not the transaction signer".to_string(),
@@ -301,47 +313,163 @@ fn b64_decode(arg: &str, data: String) -> CtrResult<Vec<u8>> {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
+    extern crate ed25519_dalek;
+    extern crate rand;
+
+    use crate::*;
     use near_sdk::test_utils::VMContextBuilder;
-    use near_sdk::{testing_env, AccountId, VMContext};
-    use sbt::{ContractMetadata, STANDARD_NAME};
+    use near_sdk::{testing_env, VMContext};
 
-    use crate::Contract;
-
-    use ed25519_dalek::Keypair;
+    use ed25519_dalek::{Keypair, Signer};
     use rand::rngs::OsRng;
 
     fn b64_encode(data: Vec<u8>) -> String {
-        //::encode(data);
-        return "ABC".into();
+        near_sdk::base64::encode(data)
     }
 
-    fn setup(is_view: bool) -> (Contract, Keypair, VMContext) {
-        let registry: AccountId = "registry.near".parse().unwrap();
+    fn acc_claimer() -> AccountId {
+        "user1.near".parse().unwrap()
+    }
+
+    #[allow(dead_code)]
+    fn acc_u1() -> AccountId {
+        "user2.near".parse().unwrap()
+    }
+
+    fn acc_registry() -> AccountId {
+        "registry".parse().unwrap()
+    }
+
+    fn acc_admin() -> AccountId {
+        "admin".parse().unwrap()
+    }
+
+    fn start() -> u64 {
+        11 * SECOND
+    }
+
+    /// SBT claim ttl in seconds
+    const CLAIM_TTL: u64 = 2;
+
+    fn setup(signer: &AccountId, predecessor: &AccountId) -> (VMContext, Contract, Keypair) {
         let ctx = VMContextBuilder::new()
-            .signer_account_id("bob_near".parse().unwrap())
-            .is_view(is_view)
+            .signer_account_id(signer.clone())
+            .predecessor_account_id(predecessor.clone())
+            // .attached_deposit(deposit_dec.into())
+            .block_timestamp(start())
+            .is_view(false)
             .build();
+
         let mut csprng = OsRng {};
         let keypair: Keypair = Keypair::generate(&mut csprng);
-
         let ctr = Contract::new(
-            b64_encode(keypair.public.to_bytes()),
+            b64_encode(keypair.public.to_bytes().to_vec()),
             ContractMetadata {
                 spec: STANDARD_NAME.to_string(),
                 name: "name".to_string(),
                 symbol: "symbol".to_string(),
+                icon: None,
+                base_uri: None,
+                reference: None,
+                reference_hash: None,
             },
-            registry,
-            10,
-            "admin.near".parse().unwrap(),
+            acc_registry(),
+            CLAIM_TTL,
+            acc_admin(),
         );
-        return (ctr, keypair, ctx);
+        testing_env!(ctx.clone());
+
+        return (ctx, ctr, keypair);
+    }
+
+    /// @timestamp: in seconds
+    fn mk_claim(timestamp: u64, external_id: &str) -> Claim {
+        Claim {
+            claimer: acc_claimer(),
+            external_id: external_id.to_string(),
+            timestamp,
+        }
+    }
+
+    // returns b64 serialized claim and signature
+    fn sign_claim(c: &Claim, k: &Keypair) -> (String, String) {
+        let c_bz = c.try_to_vec().unwrap();
+        let sig = k.sign(&c_bz);
+        let sig_bz = sig.to_bytes();
+        (b64_encode(c_bz), b64_encode(sig_bz.to_vec()))
+    }
+
+    fn mk_claim_sign(timestamp: u64, external_id: &str, k: &Keypair) -> (Claim, String, String) {
+        let c = mk_claim(timestamp, external_id);
+        let (c_str, sig) = sign_claim(&c, &k);
+        return (c, c_str, sig);
     }
 
     #[test]
-    fn my_test() {
-        let context = setup(false);
-        testing_env!(context);
-        // ... Write test here
+    fn flow1() {
+        let signer = acc_claimer();
+        let predecessor = acc_u1();
+        let (mut ctx, mut ctr, k) = setup(&signer, &predecessor);
+
+        // fail: tx signer is not claimer
+        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "id1", &k);
+        ctx.signer_account_id = acc_u1();
+        testing_env!(ctx.clone());
+        match ctr.sbt_mint(c_str.clone(), sig.clone()) {
+            Err(CtrError::BadRequest(s)) => assert_eq!(s, "claimer is not the transaction signer"),
+            resp @ _ => panic!("expected BadRequest, got: {:?}", resp),
+        }
+
+        // fail: claim_ttl passed
+        ctx.signer_account_id = signer.clone();
+        ctx.block_timestamp = start() + CLAIM_TTL * SECOND;
+        testing_env!(ctx.clone());
+        match ctr.sbt_mint(c_str.clone(), sig.clone()) {
+            Err(CtrError::BadRequest(s)) => {
+                assert_eq!("claim expired", s, "wrong BadRequest: {}", s)
+            }
+            resp @ _ => panic!("expected BadRequest, got: {:?}", resp),
+        }
+
+        // fail: claim_ttl passed way more
+        ctx.signer_account_id = signer.clone();
+        ctx.block_timestamp = start() + CLAIM_TTL * 10 * SECOND;
+        testing_env!(ctx.clone());
+        match ctr.sbt_mint(c_str.clone(), sig.clone()) {
+            Err(CtrError::BadRequest(s)) => {
+                assert_eq!("claim expired", s, "wrong BadRequest: {}", s)
+            }
+            resp @ _ => panic!("expected BadRequest, got: {:?}", resp),
+        }
+
+        // test case: claim.timestamp can't be in the future
+        ctx.block_timestamp = start() - SECOND;
+        testing_env!(ctx.clone());
+        match ctr.sbt_mint(c_str.clone(), sig.clone()) {
+            Err(CtrError::BadRequest(s)) => assert_eq!("claim.timestamp in the future", s),
+            resp @ _ => panic!("expected BadRequest, got: {:?}", resp),
+        }
+
+        // should create a SBT for a valid claim
+        ctx.block_timestamp = start() + SECOND;
+        testing_env!(ctx.clone());
+        let resp = ctr.sbt_mint(c_str.clone(), sig.clone());
+        assert!(resp.is_ok(), "should accept valid claim, {:?}", resp);
+
+        // fail: signer already has SBT
+        match ctr.sbt_mint(c_str.clone(), sig.clone()) {
+            Err(CtrError::DuplicatedID(_)) => (),
+            resp @ _ => panic!("DuplicatedID, got: {:?}", resp),
+        }
+    }
+
+    #[test]
+    fn claim_serialization() {
+        let c = mk_claim(1677621259142, "some_111#$!");
+        let claim_bz = c.try_to_vec().unwrap();
+        let claim_str = b64_encode(claim_bz);
+        let claim2_bz = b64_decode("claim", claim_str).unwrap();
+        let claim2 = Claim::try_from_slice(&claim2_bz).unwrap();
+        assert_eq!(c, claim2, "serialization should work");
     }
 }

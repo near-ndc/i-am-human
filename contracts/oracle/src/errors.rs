@@ -2,6 +2,7 @@ use near_sdk::env::panic_str;
 use near_sdk::{base64, FunctionError};
 
 /// Contract errors
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
 pub enum CtrError {
     Borsh(String),
     B64Err {

@@ -16,5 +16,5 @@ ed25519-dalek.workspace = true
 
 sbt = { path = "../sbt" }
 
-[dev.dependencies]
-rand = "^0."
+[dev-dependencies]
+rand = "^0.7"
