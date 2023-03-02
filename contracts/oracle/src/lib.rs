@@ -273,7 +273,7 @@ fn verify_claim(
     let pk = PublicKey::from_bytes(pubkey).unwrap();
     let sig = match Signature::from_bytes(&claim_sig) {
         Ok(sig) => sig,
-        Err(_) => return Err(CtrError::Signature("malformed signature".to_string())),
+        Err(err) => return Err(CtrError::Signature(format!("malformed: {}", err))),
     };
     pk.verify(&claim, &sig)
         .map_err(|_| CtrError::Signature("invalid signature".to_string()))
