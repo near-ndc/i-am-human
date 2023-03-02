@@ -15,7 +15,7 @@ members = [
 codegen-units = 1
 # s = optimize for binary size ("z" would additionally turn off loop vectorization), z is recommended usually
 # 3  all optimiations
-opt-level = 3
+opt-level = "s"
 # link time optimization
 lto = true
 panic = "abort"
