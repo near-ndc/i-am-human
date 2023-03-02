@@ -29,7 +29,7 @@ impl FunctionError for CtrError {
             CtrError::B64Err { arg, .. } => panic_str(&format!("can't base64-decode {}", arg)),
             CtrError::BadRequest(s) => panic_str(s.as_ref()),
             CtrError::DuplicatedID(s) => panic_str(&format!("duplicated id: {}", s)),
-            CtrError::Signature(s) => panic_str(&format!("duplicated id: {}", s)),
+            CtrError::Signature(s) => panic_str(&format!("signature error: {}", s)),
         }
     }
 }
