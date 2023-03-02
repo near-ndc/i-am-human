@@ -40,8 +40,8 @@ pub struct Contract {
     pub authority_pubkey: [u8; PUBLIC_KEY_LENGTH], // Vec<u8>,
     pub used_identities: UnorderedSet<String>,
 
-    // TODO: remove, to test purposes only
-    pub admin: AccountId,
+    /// used for backend key rotation
+    pub admins: UnorderedSet<AccountId>,
 }
 
 // Implement the contract structure
@@ -65,7 +65,8 @@ impl Contract {
         } else {
             claim_ttl
         };
-
+        let mut admins = UnorderedSet::new(StorageKey::Admins);
+        admins.insert(&admin);
         Self {
             registry,
 
@@ -77,7 +78,7 @@ impl Contract {
             sbt_ttl_ms: 1000 * 3600 * 24 * 365, // 1year in ms
             authority_pubkey: pubkey_from_b64(authority),
             used_identities: UnorderedSet::new(StorageKey::UsedIdentities),
-            admin,
+            admins,
         }
     }
 
@@ -239,17 +240,21 @@ impl Contract {
 
     /// @authority: pubkey used to verify claim signature
     pub fn admin_change_authority(&mut self, authority: String) {
-        require!(self.admin == env::predecessor_account_id(), "not an admin");
+        self.assure_admin();
         self.authority_pubkey = pubkey_from_b64(authority);
     }
 
-    // TODO: remove
-    // For testing purposes ONLY.
-    // NOTE: idenity relationshipt to the issuer is not checked, so it's possible to remove any idenity.
-    pub fn sbt_remove(&mut self, identity: String) {
-        let claimer = env::predecessor_account_id();
-        self.used_identities.remove(&identity);
-        self.balances.remove(&claimer);
+    pub fn add_admin(&mut self, admin: AccountId) {
+        self.assure_admin();
+        self.admins.insert(&admin);
+    }
+
+    #[inline]
+    fn assure_admin(&self) {
+        require!(
+            self.admins.contains(&env::predecessor_account_id()),
+            "not an admin"
+        );
     }
 
     // TODO:
@@ -308,7 +313,7 @@ mod tests {
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::{testing_env, VMContext};
 
-    use ed25519_dalek::{Keypair, SecretKey, Signer};
+    use ed25519_dalek::{Keypair, Signer};
     use rand::rngs::OsRng;
 
     fn b64_encode(data: Vec<u8>) -> String {
