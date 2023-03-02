@@ -273,7 +273,7 @@ fn verify_claim(
     let pk = PublicKey::from_bytes(pubkey).unwrap();
     let sig = match Signature::from_bytes(&claim_sig) {
         Ok(sig) => sig,
-        Err(err) => return Err(CtrError::Signature(format!("malformed: {}", err))),
+        Err(_) => return Err(CtrError::Signature("malformed signature".to_string())),
     };
     pk.verify(&claim, &sig)
         .map_err(|_| CtrError::Signature("invalid signature".to_string()))
@@ -474,6 +474,14 @@ mod tests {
             b64_decode("sig", sig).unwrap(),
         );
         assert!(res.is_ok(), "verification result: {:?}", res);
+    }
+
+    #[test]
+    fn test_sig_deserialization() {
+        let sig_b64 =
+            "o8MGudK9OrdNKVCMhjF7rEv9LangB+PdjxuQ0kgglCskZX7Al4JPrwf7tRlT252kiNpJaGPURgAvAA==";
+        let sig_bz = b64_decode("sig", sig_b64.to_string()).unwrap();
+        Signature::from_bytes(&sig_bz).unwrap();
     }
 
     #[test]
