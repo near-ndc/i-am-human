@@ -160,6 +160,12 @@ impl Contract {
         receiver: AccountId,
     ) {
         self.assert_issuer();
+        if str::ends_with(env::current_account_id().as_ref(), "near") {
+            require!(str::ends_with(receiver.as_ref(), "near"))
+        } else {
+            require!(str::ends_with(receiver.as_ref(), "testnet"))
+        }
+
         require!(
             !self.balances.contains_key(&receiver),
             "receiver already has SBT"
@@ -251,13 +257,12 @@ impl Contract {
         }
     }
 
-    /// Testing function
-    /// @`ttl`: expire time to live in seconds
-    /// TODO: must be removed for mainnet
-    pub fn admin_change_ttl(&mut self, ttl: u64) {
-        self.assert_issuer();
-        self.ttl = ttl;
-    }
+    // /// Testing function
+    // /// @`ttl`: expire time to live in seconds
+    // pub fn admin_change_ttl(&mut self, ttl: u64) {
+    //     self.assert_issuer();
+    //     self.ttl = ttl;
+    // }
 
     /**********
      * INTERNAL
