@@ -199,12 +199,9 @@ impl Contract {
                 "claimer is not the transaction signer".to_string(),
             ));
         }
-
         if self.used_identities.contains(&claim.external_id) {
             return Err(CtrError::DuplicatedID("external_id".to_string()));
         }
-        self.used_identities.insert(&claim.external_id);
-
         if self.balances.contains_key(&claim.claimer) {
             return Err(CtrError::DuplicatedID(
                 "receiver already has a SBT".to_string(),
@@ -222,6 +219,7 @@ impl Contract {
         let token_id = self.next_token_id;
         self.next_token_id += 1;
         self.balances.insert(&claim.claimer, &token_id);
+        self.used_identities.insert(&claim.external_id);
         let event = Events::SbtMint(vec![SbtMintLog {
             owner: claim.claimer.to_string(),
             tokens: vec![token_id],
@@ -257,12 +255,33 @@ impl Contract {
         );
     }
 
+    /// remove sbt.
+    /// Must match owner with his external_id.
+    /// Panics if not on testnet.
+    pub fn admin_remove_sbt(&mut self, owner: AccountId, external_id: String) {
+        // require!(
+        //     str::ends_with(env::current_account_id().as_ref(), "testnet"),
+        //     "can only remove sbt on testnet"
+        // );
+        self.assure_admin();
+        self.balances.remove(&owner);
+        self.used_identities.remove(&external_id);
+    }
+
     // TODO:
     // - fn sbt_renew
+}
 
-    /**********
-     * INTERNAL
-     **********/
+fn b64_decode(arg: &str, data: String) -> CtrResult<Vec<u8>> {
+    return base64::decode(data).map_err(|e| CtrError::B64Err {
+        arg: arg.to_string(),
+        err: e,
+    });
+}
+
+fn pubkey_from_b64(pubkey: String) -> [u8; PUBLIC_KEY_LENGTH] {
+    let pk_bz = base64::decode(pubkey).expect("authority_pubkey is not a valid standard base64");
+    pk_bz.try_into().expect("authority pubkey must be 32 bytes")
 }
 
 fn verify_claim(
@@ -295,13 +314,6 @@ pub struct Claim {
     external_id: String,
     /// unix time (seconds) when the claim was signed
     timestamp: u64,
-}
-
-fn b64_decode(arg: &str, data: String) -> CtrResult<Vec<u8>> {
-    return base64::decode(data).map_err(|e| CtrError::B64Err {
-        arg: arg.to_string(),
-        err: e,
-    });
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -481,6 +493,7 @@ mod tests {
         let sig_b64 =
             "o8MGudK9OrdNKVCMhjF7rEv9LangB+PdjxuQ0kgglCskZX7Al4JPrwf7tRlT252kiNpJaGPURgAvAA==";
         let sig_bz = b64_decode("sig", sig_b64.to_string()).unwrap();
+        println!("sig len: {}", sig_bz.len());
         Signature::from_bytes(&sig_bz).unwrap();
     }
 
@@ -493,9 +506,4 @@ mod tests {
         let claim2 = Claim::try_from_slice(&claim2_bz).unwrap();
         assert_eq!(c, claim2, "serialization should work");
     }
-}
-
-fn pubkey_from_b64(pubkey: String) -> [u8; PUBLIC_KEY_LENGTH] {
-    let pk_bz = base64::decode(pubkey).expect("authority_pubkey is not a valid standard base64");
-    pk_bz.try_into().expect("authority pubkey must be 32 bytes")
 }
