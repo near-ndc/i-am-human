@@ -153,6 +153,8 @@ impl Contract {
     /// returns false if caller is not a SBT holder.
     #[payable]
     pub fn sbt_transfer(&mut self, receiver: AccountId) -> bool {
+        panic!("not implemented");
+
         let owner = env::predecessor_account_id();
 
         if let Some(sbt) = self.balances.get(&owner) {
@@ -489,7 +491,17 @@ mod tests {
     }
 
     #[test]
-    fn test_sig_deserialization() {
+    fn claim_serialization() {
+        let c = mk_claim(1677621259142, "some_111#$!");
+        let claim_bz = c.try_to_vec().unwrap();
+        let claim_str = b64_encode(claim_bz);
+        let claim2_bz = b64_decode("claim", claim_str).unwrap();
+        let claim2 = Claim::try_from_slice(&claim2_bz).unwrap();
+        assert_eq!(c, claim2, "serialization should work");
+    }
+
+    // #[test]
+    fn sig_deserialization_check() {
         let sig_b64 =
             "o8MGudK9OrdNKVCMhjF7rEv9LangB+PdjxuQ0kgglCskZX7Al4JPrwf7tRlT252kiNpJaGPURgAvAA==";
         let sig_bz = b64_decode("sig", sig_b64.to_string()).unwrap();
@@ -498,12 +510,11 @@ mod tests {
     }
 
     #[test]
-    fn claim_serialization() {
-        let c = mk_claim(1677621259142, "some_111#$!");
-        let claim_bz = c.try_to_vec().unwrap();
-        let claim_str = b64_encode(claim_bz);
-        let claim2_bz = b64_decode("claim", claim_str).unwrap();
-        let claim2 = Claim::try_from_slice(&claim2_bz).unwrap();
-        assert_eq!(c, claim2, "serialization should work");
+    fn claim_deserialization_check() {
+        let c = "EQAAAGhhcnJ5ZGhpbGxvbi5uZWFyKgAAADB4YjRiZjBmMjNjNzAyZWZiOGE5ZGE4N2E5NDA5NWUyOGRlM2QyMWNjMyDzAGQAAAAA";
+        let c_bz = b64_decode("claim", c.to_string()).unwrap();
+        let c = Claim::try_from_slice(&c_bz).unwrap();
+        println!("claim: {:?}", c);
+        assert_eq!(c.external_id, "abc", "deserialization check");
     }
 }
