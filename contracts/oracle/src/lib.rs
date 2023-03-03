@@ -151,12 +151,12 @@ impl Contract {
 
     /// Soulbound transfer implementation.
     /// returns false if caller is not a SBT holder.
+    #[allow(unused_variables)]
     #[payable]
     pub fn sbt_transfer(&mut self, receiver: AccountId) -> bool {
         panic!("not implemented");
 
         let owner = env::predecessor_account_id();
-
         if let Some(sbt) = self.balances.get(&owner) {
             self.balances.remove(&owner);
             self.balances.insert(&receiver, &sbt);
@@ -201,7 +201,8 @@ impl Contract {
                 "claimer is not the transaction signer".to_string(),
             ));
         }
-        if self.used_identities.contains(&claim.external_id) {
+        let external_id = claim.external_id.to_lowercase();
+        if self.used_identities.contains(&external_id) {
             return Err(CtrError::DuplicatedID("external_id".to_string()));
         }
         if self.balances.contains_key(&claim.claimer) {
@@ -221,7 +222,7 @@ impl Contract {
         let token_id = self.next_token_id;
         self.next_token_id += 1;
         self.balances.insert(&claim.claimer, &token_id);
-        self.used_identities.insert(&claim.external_id);
+        self.used_identities.insert(&external_id);
         let event = Events::SbtMint(vec![SbtMintLog {
             owner: claim.claimer.to_string(),
             tokens: vec![token_id],
@@ -268,6 +269,7 @@ impl Contract {
         self.assure_admin();
         self.balances.remove(&owner);
         self.used_identities.remove(&external_id);
+        self.used_identities.remove(&external_id.to_lowercase());
     }
 
     // TODO:
@@ -500,6 +502,7 @@ mod tests {
         assert_eq!(c, claim2, "serialization should work");
     }
 
+    #[allow(dead_code)]
     // #[test]
     fn sig_deserialization_check() {
         let sig_b64 =
@@ -509,12 +512,16 @@ mod tests {
         Signature::from_bytes(&sig_bz).unwrap();
     }
 
+    #[allow(dead_code)]
     #[test]
     fn claim_deserialization_check() {
         let c = "EQAAAGhhcnJ5ZGhpbGxvbi5uZWFyKgAAADB4YjRiZjBmMjNjNzAyZWZiOGE5ZGE4N2E5NDA5NWUyOGRlM2QyMWNjMyDzAGQAAAAA";
         let c_bz = b64_decode("claim", c.to_string()).unwrap();
         let c = Claim::try_from_slice(&c_bz).unwrap();
         println!("claim: {:?}", c);
-        assert_eq!(c.external_id, "abc", "deserialization check");
+        assert_eq!(
+            c.external_id, "0xb4bf0f23c702efb8a9da87a94095e28de3d21cc3",
+            "deserialization check"
+        );
     }
 }
