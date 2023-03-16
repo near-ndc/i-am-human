@@ -155,17 +155,18 @@ impl Contract {
     #[payable]
     pub fn sbt_transfer(&mut self, receiver: AccountId) -> bool {
         panic!("not implemented");
-
-        let owner = env::predecessor_account_id();
-        if let Some(sbt) = self.balances.get(&owner) {
-            self.balances.remove(&owner);
-            self.balances.insert(&receiver, &sbt);
-            let mut t = self.token_data.get(&sbt).unwrap();
-            t.owner = receiver;
-            self.token_data.insert(&sbt, &t);
-            return true;
-        }
-        return false;
+        /*
+            let owner = env::predecessor_account_id();
+            if let Some(sbt) = self.balances.get(&owner) {
+                self.balances.remove(&owner);
+                self.balances.insert(&receiver, &sbt);
+                let mut t = self.token_data.get(&sbt).unwrap();
+                t.owner = receiver;
+                self.token_data.insert(&sbt, &t);
+                return true;
+            }
+            return false;
+        */
     }
 
     /**********

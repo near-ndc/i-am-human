@@ -130,20 +130,22 @@ impl Contract {
 
     /// Soulbound transfer implementation.
     /// returns false if caller is not a SBT holder.
+    #[allow(unused_variables)]
     #[payable]
     pub fn sbt_transfer(&mut self, receiver: AccountId) -> bool {
-        let owner = env::predecessor_account_id();
-
-        if let Some(sbt) = self.balances.get(&owner) {
-            self.balances.remove(&owner);
-            self.balances.insert(&receiver, &sbt);
-            let mut t = self.token_data.get(&sbt).unwrap();
-            t.owner = receiver;
-            self.token_data.insert(&sbt, &t);
-            return true;
-        }
-        return false;
-
+        panic!("not implemented");
+        /*
+                let owner = env::predecessor_account_id();
+                if let Some(sbt) = self.balances.get(&owner) {
+                    self.balances.remove(&owner);
+                    self.balances.insert(&receiver, &sbt);
+                    let mut t = self.token_data.get(&sbt).unwrap();
+                    t.owner = receiver;
+                    self.token_data.insert(&sbt, &t);
+                    return true;
+                }
+                return false;
+        */
         // TODO: add registry (update: burn account and set token) and make a transfer when registry updated succeed
     }
 
