@@ -4,7 +4,7 @@ Monorepository of base classes for the I am Human proof of humanity protocol.
 
 ## Testnet
 
-|        contract | address                              |
-| --------------: | :----------------------------------- |
-| `community-sbt` | `community-sbt-1.i-am-human.testnet` |
-|      `registry` | `registry.i-am-human.testnet`        |
+- **SBT registry**: `registry.i-am-human.testnet`
+- **OG SBT**: `og-sbt-1.i-am-human.testnet`
+- **GoodDollar-SBT**: `gooddollar-v1.i-am-human.testnet`
+  verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
