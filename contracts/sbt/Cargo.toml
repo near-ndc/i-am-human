@@ -9,3 +9,6 @@ edition = "2021"
 uint.workspace = true
 near-sdk.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+near-contract-standards.workspace = true

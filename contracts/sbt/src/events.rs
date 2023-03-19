@@ -122,6 +122,7 @@ pub struct SbtRevokeLog {
 mod tests {
     use super::*;
     use crate::*;
+    // use near_contract_standards::non_fungible_token::events::NftMint;
 
     #[test]
     fn log_format_vector() {
@@ -162,7 +163,7 @@ mod tests {
 
     #[test]
     fn log_format_recovery() {
-        let expected = r#"EVENT_JSON:{"standard":"nepTODO","version":"1.0.0","event":"sbt_recover","data":[{"old_owner":"user1.near","new_owner":"user2.near","tokens":[10],"memo":"process1"}]}"#;
+        let expected = r#"EVENT_JSON:{"standard":"nep-393","version":"1.0.0","event":"sbt_recover","data":[{"old_owner":"user1.near","new_owner":"user2.near","tokens":[10],"memo":"process1"}]}"#;
         let log = EventLog {
             standard: STANDARD_NAME.to_string(),
             version: METADATA_SPEC.to_string(),
@@ -175,4 +176,7 @@ mod tests {
         };
         assert_eq!(expected, log.to_string());
     }
+
+    // #[test]
+    // fn
 }
