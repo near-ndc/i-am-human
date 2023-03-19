@@ -17,7 +17,7 @@ pub type TokenId = u64;
 /// This spec can be treated like a version of the standard.
 pub const METADATA_SPEC: &str = "1.0.0";
 /// This is the name of the SBT standard we're using
-pub const STANDARD_NAME: &str = "nep-393";
+pub const STANDARD_NAME: &str = "nep393";
 
 /// Balance of one mili NEAR, which is 10^23 Yocto NEAR.
 pub const MILI_NEAR: Balance = 1_000_000_000_000_000_000_000;

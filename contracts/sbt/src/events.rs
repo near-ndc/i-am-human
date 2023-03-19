@@ -1,10 +1,8 @@
-use std::fmt;
-
 use near_sdk::env;
 use near_sdk::serde::{Deserialize, Serialize};
 
-use crate::TokenId;
 use crate::METADATA_SPEC;
+use crate::{TokenId, STANDARD_NAME};
 
 pub fn emit_event(event: Nep393EventKind) {
     env::log_str(&Event::from(event).to_string());
@@ -26,6 +24,13 @@ pub enum Nep393EventKind {
     SbtRevoke(SbtRevoke),
 }
 
+impl Nep393EventKind {
+    /// creates a string compatible with NEAR event standard
+    pub fn to_json_event_string(self) -> String {
+        format!("EVENT_JSON:{}", Event::from(self).to_string())
+    }
+}
+
 /// Interface to capture data about an event
 ///
 /// Arguments:
@@ -35,10 +40,9 @@ pub enum Nep393EventKind {
 #[derive(Serialize, Deserialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
 #[serde(crate = "near_sdk::serde")]
-pub struct Event {
-    // TODO: `standard` is specified by NEP, but nor the indexer nor the near-contract-standards
-    // provide that field
-    // pub standard: String,
+#[serde(rename_all = "snake_case")]
+struct Event {
+    pub standard: String,
     pub version: String,
 
     // `flatten` to not have "event": {<EventLogVariant>} in the JSON, just have the contents of {<EventLogVariant>}.
@@ -46,23 +50,22 @@ pub struct Event {
     pub event: Nep393EventKind,
 }
 
+impl Event {
+    fn to_string(&self) -> String {
+        serde_json::to_string(self)
+            .ok()
+            .unwrap_or_else(|| env::abort())
+    }
+}
+
 impl From<Nep393EventKind> for Event {
     fn from(event: Nep393EventKind) -> Self {
         // Construct the mint log as per the events standard.
         Self {
-            // standard: STANDARD_NAME.to_string(),
+            standard: STANDARD_NAME.to_string(),
             version: METADATA_SPEC.to_string(),
             event,
         }
-    }
-}
-
-impl fmt::Display for Event {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!(
-            "EVENT_JSON:{}",
-            &serde_json::to_string(self).map_err(|_| fmt::Error)?
-        ))
     }
 }
 
@@ -158,28 +161,17 @@ impl SbtRevoke {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    // use near_contract_standards::non_fungible_token::events::NftMint;
+    use near_contract_standards::non_fungible_token::events::NftMint;
+    use near_sdk::{test_utils, AccountId};
 
-    #[test]
-    fn log_format_mint() {
-        let expected = r#"EVENT_JSON:{"version":"1.0.0","event":"sbt_mint","data":[{"owner":"bob.near","tokens":[1,2]},{"owner":"user1.near","tokens":[4],"memo":"my memo"}]}"#;
-        let log = Event {
-            version: "1.0.0".to_string(),
-            event: Nep393EventKind::SbtMint(vec![
-                SbtMint {
-                    owner: "bob.near".to_owned(),
-                    tokens: vec![1, 2],
-                    memo: None,
-                },
-                SbtMint {
-                    owner: "user1.near".to_owned(),
-                    tokens: vec![4],
-                    memo: Some("my memo".to_owned()),
-                },
-            ]),
-        };
-        assert_eq!(expected, log.to_string());
+    use super::*;
+
+    fn alice() -> AccountId {
+        AccountId::new_unchecked("alice.near".to_string())
+    }
+
+    fn bob() -> AccountId {
+        AccountId::new_unchecked("bob.near".to_string())
     }
 
     #[test]
@@ -190,6 +182,7 @@ mod tests {
             memo: None,
         }]);
         let expected = Event {
+            standard: STANDARD_NAME.to_owned(),
             version: "1.0.0".to_string(),
             event: event.clone(),
         };
@@ -197,20 +190,48 @@ mod tests {
     }
 
     #[test]
-    fn log_format_recovery() {
-        let expected = r#"EVENT_JSON:{"version":"1.0.0","event":"sbt_recover","data":[{"old_owner":"user1.near","new_owner":"user2.near","tokens":[10],"memo":"process1"}]}"#;
-        let log = Event {
-            version: METADATA_SPEC.to_string(),
-            event: Nep393EventKind::SbtRecover(vec![SbtRecover {
-                old_owner: "user1.near".to_string(),
-                new_owner: "user2.near".to_string(),
-                tokens: vec![10],
-                memo: Some("process1".to_owned()),
-            }]),
+    fn log_format_mint() {
+        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"sbt_mint","data":[{"owner":"bob.near","tokens":[1,2]},{"owner":"user1.near","tokens":[4],"memo":"my memo"}]}"#;
+        let event = Nep393EventKind::SbtMint(vec![
+            SbtMint {
+                owner: "bob.near".to_owned(),
+                tokens: vec![1, 2],
+                memo: None,
+            },
+            SbtMint {
+                owner: "user1.near".to_owned(),
+                tokens: vec![4],
+                memo: Some("my memo".to_owned()),
+            },
+        ]);
+        assert_eq!(expected, event.to_json_event_string());
+
+        let event = Nep393EventKind::SbtMint(vec![SbtMint {
+            owner: "bob.near".to_owned(),
+            tokens: vec![1, 2],
+            memo: Some("something".to_owned()),
+        }]);
+
+        let token_ids = &["0", "1"];
+        let nft_log = NftMint {
+            owner_id: &bob(),
+            token_ids,
+            memo: Some("something"),
         };
-        assert_eq!(expected, log.to_string());
+        nft_log.emit();
+        assert_eq!(test_utils::get_logs()[0], event.to_json_event_string());
     }
 
-    // #[test]
-    // fn
+    #[test]
+    fn log_format_recovery() {
+        // "EVENT_JSON:{\"standard\":\"nep393\",\"version\":\"1.0.0\",\"event\":\"sbt_mint\",\"data\":[{\"owner\":\"bob.near\",\"tokens\":[1,2],\"memo\":\"something\"}]}"
+        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"sbt_recover","data":[{"old_owner":"user1.near","new_owner":"user2.near","tokens":[10],"memo":"process1"}]}"#;
+        let event = Nep393EventKind::SbtRecover(vec![SbtRecover {
+            old_owner: "user1.near".to_string(),
+            new_owner: "user2.near".to_string(),
+            tokens: vec![10],
+            memo: Some("process1".to_owned()),
+        }]);
+        assert_eq!(expected, event.to_json_event_string());
+    }
 }
