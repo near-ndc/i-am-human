@@ -224,7 +224,7 @@ impl Contract {
         self.next_token_id += 1;
         self.balances.insert(&claim.claimer, &token_id);
         self.used_identities.insert(&external_id);
-        let event = Events::SbtMint(vec![SbtMintLog {
+        let event = Nep393EventKind::SbtMint(vec![SbtMint {
             owner: claim.claimer.to_string(),
             tokens: vec![token_id],
             memo: None,

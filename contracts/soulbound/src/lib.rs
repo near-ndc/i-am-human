@@ -156,7 +156,7 @@ impl Contract {
         self.next_token_id += 1;
         self.token_metadata.insert(&token_id, &metadata);
         self.add_token_to_owner(&receiver, token_id);
-        let event = Events::SbtMint(vec![SbtMintLog {
+        let event = Nep393EventKind::SbtMint(vec![SbtMint {
             owner: receiver.to_string(),
             tokens: vec![token_id],
             memo: None,
@@ -200,7 +200,7 @@ impl Contract {
         }
         self.balances.insert(&to, &token_set_new);
 
-        let event = Events::SbtRecover(vec![SbtRecoverLog {
+        let event = Nep393EventKind::SbtRecover(vec![SbtRecover {
             old_owner: from.to_string(),
             new_owner: to.to_string(),
             tokens: token_set_old.iter().collect(),
@@ -227,7 +227,7 @@ impl Contract {
             self.token_metadata.insert(&t_id, &t);
         }
 
-        let event = Events::SbtRenew(SbtRenewLog { tokens, memo });
+        let event = Nep393EventKind::SbtRenew(SbtRenew { tokens, memo });
         emit_event(event);
     }
 

@@ -4,30 +4,27 @@ use near_sdk::env;
 use near_sdk::serde::{Deserialize, Serialize};
 
 use crate::TokenId;
-use crate::{METADATA_SPEC, STANDARD_NAME};
+use crate::METADATA_SPEC;
 
-pub fn emit_event(event: Events) {
-    // Construct the mint log as per the events standard.
-    let log: EventLog = EventLog {
-        standard: STANDARD_NAME.to_string(),
-        version: METADATA_SPEC.to_string(),
-        event,
-    };
-    env::log_str(&log.to_string());
+pub fn emit_event(event: Nep393EventKind) {
+    env::log_str(&Event::from(event).to_string());
 }
 
 /// Enum that represents the data type of the EventLog.
 /// The enum can either be an NftMint or an NftTransfer.
 #[derive(Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 #[serde(tag = "event", content = "data")]
 #[serde(rename_all = "snake_case")]
 #[serde(crate = "near_sdk::serde")]
 #[non_exhaustive]
-pub enum Events {
-    SbtMint(Vec<SbtMintLog>),
-    SbtRecover(Vec<SbtRecoverLog>),
-    SbtRenew(SbtRenewLog), // TODO: use Vec?
-    SbtRevoke(SbtRevokeLog),
+pub enum Nep393EventKind {
+    SbtMint(Vec<SbtMint>),
+    SbtRecover(Vec<SbtRecover>),
+    // no need to use vector of SbtRenew and SbtRevoke events, because the event already has
+    // list of token_ids
+    SbtRenew(SbtRenew),
+    SbtRevoke(SbtRevoke),
 }
 
 /// Interface to capture data about an event
@@ -37,17 +34,31 @@ pub enum Events {
 /// * `version`: e.g. 1.0.0
 /// * `event`: associate event data
 #[derive(Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
 #[serde(crate = "near_sdk::serde")]
-pub struct EventLog {
-    pub standard: String,
+pub struct Event {
+    // TODO: `standard` is specified by NEP, but nor the indexer nor the near-contract-standards
+    // provide that field
+    // pub standard: String,
     pub version: String,
 
     // `flatten` to not have "event": {<EventLogVariant>} in the JSON, just have the contents of {<EventLogVariant>}.
     #[serde(flatten)]
-    pub event: Events,
+    pub event: Nep393EventKind,
 }
 
-impl fmt::Display for EventLog {
+impl From<Nep393EventKind> for Event {
+    fn from(event: Nep393EventKind) -> Self {
+        // Construct the mint log as per the events standard.
+        Self {
+            // standard: STANDARD_NAME.to_string(),
+            version: METADATA_SPEC.to_string(),
+            event,
+        }
+    }
+}
+
+impl fmt::Display for Event {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
             "EVENT_JSON:{}",
@@ -63,8 +74,9 @@ impl fmt::Display for EventLog {
 /// * `tokens`: [1, 123]
 /// * `memo`: optional message
 #[derive(Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 #[serde(crate = "near_sdk::serde")]
-pub struct SbtMintLog {
+pub struct SbtMint {
     pub owner: String,
     pub tokens: Vec<TokenId>,
 
@@ -80,8 +92,9 @@ pub struct SbtMintLog {
 /// * `tokens`: [1, 123]
 /// * `memo`: optional message
 #[derive(Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 #[serde(crate = "near_sdk::serde")]
-pub struct SbtRecoverLog {
+pub struct SbtRecover {
     pub old_owner: String,
     pub new_owner: String,
     pub tokens: Vec<TokenId>,
@@ -96,8 +109,9 @@ pub struct SbtRecoverLog {
 /// * `tokens`: [1, 123]
 /// * `memo`: optional message
 #[derive(Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 #[serde(crate = "near_sdk::serde")]
-pub struct SbtRenewLog {
+pub struct SbtRenew {
     pub tokens: Vec<TokenId>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -110,8 +124,9 @@ pub struct SbtRenewLog {
 /// * `tokens`: [1, 123]
 /// * `memo`: optional message
 #[derive(Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 #[serde(crate = "near_sdk::serde")]
-pub struct SbtRevokeLog {
+pub struct SbtRevoke {
     pub tokens: Vec<TokenId>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -121,22 +136,20 @@ pub struct SbtRevokeLog {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::*;
     // use near_contract_standards::non_fungible_token::events::NftMint;
 
     #[test]
-    fn log_format_vector() {
-        let expected = r#"EVENT_JSON:{"standard":"nep999","version":"1.0.0","event":"sbt_mint","data":[{"owner":"bob.near","tokens":[1,2]},{"owner":"user1.near","tokens":[4]}]}"#;
-        let log = EventLog {
-            standard: "nep999".to_string(),
+    fn log_format_mint() {
+        let expected = r#"EVENT_JSON:{"version":"1.0.0","event":"sbt_mint","data":[{"owner":"bob.near","tokens":[1,2]},{"owner":"user1.near","tokens":[4]}]}"#;
+        let log = Event {
             version: "1.0.0".to_string(),
-            event: Events::SbtMint(vec![
-                SbtMintLog {
+            event: Nep393EventKind::SbtMint(vec![
+                SbtMint {
                     owner: "bob.near".to_owned(),
                     tokens: vec![1, 2],
                     memo: None,
                 },
-                SbtMintLog {
+                SbtMint {
                     owner: "user1.near".to_owned(),
                     tokens: vec![4],
                     memo: None,
@@ -147,27 +160,25 @@ mod tests {
     }
 
     #[test]
-    fn log_format_mint() {
-        let expected = r#"EVENT_JSON:{"standard":"nep999","version":"1.0.0","event":"sbt_mint","data":[{"owner":"bob.near","tokens":[1,2]}]}"#;
-        let log = EventLog {
-            standard: "nep999".to_string(),
+    fn log_event_from() {
+        let event = Nep393EventKind::SbtMint(vec![SbtMint {
+            owner: "bob.near".to_owned(),
+            tokens: vec![1, 2],
+            memo: None,
+        }]);
+        let expected = Event {
             version: "1.0.0".to_string(),
-            event: Events::SbtMint(vec![SbtMintLog {
-                owner: "bob.near".to_owned(),
-                tokens: vec![1, 2],
-                memo: None,
-            }]),
+            event: event.clone(),
         };
-        assert_eq!(expected, log.to_string());
+        assert_eq!(expected, event.into());
     }
 
     #[test]
     fn log_format_recovery() {
-        let expected = r#"EVENT_JSON:{"standard":"nep-393","version":"1.0.0","event":"sbt_recover","data":[{"old_owner":"user1.near","new_owner":"user2.near","tokens":[10],"memo":"process1"}]}"#;
-        let log = EventLog {
-            standard: STANDARD_NAME.to_string(),
+        let expected = r#"EVENT_JSON:{"version":"1.0.0","event":"sbt_recover","data":[{"old_owner":"user1.near","new_owner":"user2.near","tokens":[10],"memo":"process1"}]}"#;
+        let log = Event {
             version: METADATA_SPEC.to_string(),
-            event: Events::SbtRecover(vec![SbtRecoverLog {
+            event: Nep393EventKind::SbtRecover(vec![SbtRecover {
                 old_owner: "user1.near".to_string(),
                 new_owner: "user2.near".to_string(),
                 tokens: vec![10],
