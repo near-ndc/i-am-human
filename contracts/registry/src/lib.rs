@@ -54,12 +54,12 @@ impl Contract {
         // s.insert(account);
         // self.blacklist.insert(ctr, s);
 
-        let event = BlacklistLog {
-            caller: ctr,
-            account,
+        Blacklist {
+            caller: ctr.to_string(),
+            account: account.to_string(),
             memo,
-        };
-        emit_event(event);
+        }
+        .emit();
     }
 
     /// checks if an `account` was blacklisted by `ctr` contract in an event

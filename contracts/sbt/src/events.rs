@@ -163,7 +163,7 @@ mod tests {
 
     #[test]
     fn log_format_mint() {
-        let expected = r#"EVENT_JSON:{"version":"1.0.0","event":"sbt_mint","data":[{"owner":"bob.near","tokens":[1,2]},{"owner":"user1.near","tokens":[4]}]}"#;
+        let expected = r#"EVENT_JSON:{"version":"1.0.0","event":"sbt_mint","data":[{"owner":"bob.near","tokens":[1,2]},{"owner":"user1.near","tokens":[4],"memo":"my memo"}]}"#;
         let log = Event {
             version: "1.0.0".to_string(),
             event: Nep393EventKind::SbtMint(vec![
@@ -175,7 +175,7 @@ mod tests {
                 SbtMint {
                     owner: "user1.near".to_owned(),
                     tokens: vec![4],
-                    memo: None,
+                    memo: Some("my memo".to_owned()),
                 },
             ]),
         };
