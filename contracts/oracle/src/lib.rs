@@ -225,7 +225,7 @@ impl Contract {
         self.balances.insert(&claim.claimer, &token_id);
         self.used_identities.insert(&external_id);
         SbtMint {
-            owner: claim.claimer.to_string(),
+            owner: &claim.claimer,
             tokens: vec![token_id],
             memo: None,
         }

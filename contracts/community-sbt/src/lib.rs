@@ -194,7 +194,7 @@ impl Contract {
         );
         self.balances.insert(&receiver, &token_id);
         SbtMint {
-            owner: receiver.to_string(),
+            owner: &receiver,
             tokens: vec![token_id],
             memo: None,
         }

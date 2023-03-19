@@ -55,8 +55,8 @@ impl Contract {
         // self.blacklist.insert(ctr, s);
 
         Blacklist {
-            caller: ctr.to_string(),
-            account: account.to_string(),
+            caller: &ctr,
+            account: &account,
             memo,
         }
         .emit();

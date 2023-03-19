@@ -157,7 +157,7 @@ impl Contract {
         self.token_metadata.insert(&token_id, &metadata);
         self.add_token_to_owner(&receiver, token_id);
         SbtMint {
-            owner: receiver.to_string(),
+            owner: &receiver,
             tokens: vec![token_id],
             memo: None,
         }
@@ -201,8 +201,8 @@ impl Contract {
         self.balances.insert(&to, &token_set_new);
 
         SbtRecover {
-            old_owner: from.to_string(),
-            new_owner: to.to_string(),
+            old_owner: &from,
+            new_owner: &to,
             tokens: token_set_old.iter().collect(),
             memo: None,
         }
