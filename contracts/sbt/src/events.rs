@@ -11,7 +11,6 @@ pub fn emit_event(event: Nep393EventKind) {
 }
 
 /// Enum that represents the data type of the EventLog.
-/// The enum can either be an NftMint or an NftTransfer.
 #[derive(Serialize, Deserialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 #[serde(tag = "event", content = "data")]
@@ -84,6 +83,12 @@ pub struct SbtMint {
     pub memo: Option<String>,
 }
 
+impl SbtMint {
+    pub fn emit(self) {
+        emit_event(Nep393EventKind::SbtMint(vec![self]));
+    }
+}
+
 /// An event emitted when a recovery process succeeded to reassign SBT.
 ///
 /// Arguments
@@ -103,6 +108,12 @@ pub struct SbtRecover {
     pub memo: Option<String>,
 }
 
+impl SbtRecover {
+    pub fn emit(self) {
+        emit_event(Nep393EventKind::SbtRecover(vec![self]));
+    }
+}
+
 /// An event emitted when a existing tokens are renewed.
 ///
 /// Arguments
@@ -118,6 +129,12 @@ pub struct SbtRenew {
     pub memo: Option<String>,
 }
 
+impl SbtRenew {
+    pub fn emit(self) {
+        emit_event(Nep393EventKind::SbtRenew(self));
+    }
+}
+
 /// An event emitted when a existing tokens are revoked.
 ///
 /// Arguments
@@ -131,6 +148,12 @@ pub struct SbtRevoke {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memo: Option<String>,
+}
+
+impl SbtRevoke {
+    pub fn emit(self) {
+        emit_event(Nep393EventKind::SbtRevoke(self));
+    }
 }
 
 #[cfg(test)]

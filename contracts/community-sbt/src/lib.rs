@@ -193,12 +193,12 @@ impl Contract {
             },
         );
         self.balances.insert(&receiver, &token_id);
-        let event = Nep393EventKind::SbtMint(vec![SbtMint {
+        SbtMint {
             owner: receiver.to_string(),
             tokens: vec![token_id],
             memo: None,
-        }]);
-        emit_event(event);
+        }
+        .emit();
     }
 
     /// sbt_renew will update the expire time of provided tokens.
@@ -219,7 +219,7 @@ impl Contract {
             td.metadata = m.into();
             self.token_data.insert(&t_id, &td);
         }
-        emit_event(Nep393EventKind::SbtRenew(SbtRenew { tokens, memo }));
+        SbtRenew { tokens, memo }.emit();
     }
 
     /// admin: remove SBT from the given accounts.
@@ -239,7 +239,7 @@ impl Contract {
             }
         }
         if !tokens.is_empty() {
-            emit_event(Nep393EventKind::SbtRevoke(SbtRevoke { tokens, memo }));
+            SbtRevoke { tokens, memo }.emit();
         }
     }
 

@@ -224,12 +224,12 @@ impl Contract {
         self.next_token_id += 1;
         self.balances.insert(&claim.claimer, &token_id);
         self.used_identities.insert(&external_id);
-        let event = Nep393EventKind::SbtMint(vec![SbtMint {
+        SbtMint {
             owner: claim.claimer.to_string(),
             tokens: vec![token_id],
             memo: None,
-        }]);
-        emit_event(event);
+        }
+        .emit();
         self.token_data.insert(
             &token_id,
             &TokenData {
