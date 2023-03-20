@@ -193,12 +193,7 @@ impl Contract {
             },
         );
         self.balances.insert(&receiver, &token_id);
-        SbtMint {
-            owner: &receiver,
-            tokens: vec![token_id],
-            memo: None,
-        }
-        .emit();
+        emit_mint_event(&receiver, token_id, None);
     }
 
     /// sbt_renew will update the expire time of provided tokens.

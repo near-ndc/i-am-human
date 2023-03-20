@@ -224,12 +224,7 @@ impl Contract {
         self.next_token_id += 1;
         self.balances.insert(&claim.claimer, &token_id);
         self.used_identities.insert(&external_id);
-        SbtMint {
-            owner: &claim.claimer,
-            tokens: vec![token_id],
-            memo: None,
-        }
-        .emit();
+        emit_mint_event(&claim.claimer, token_id, None);
         self.token_data.insert(
             &token_id,
             &TokenData {

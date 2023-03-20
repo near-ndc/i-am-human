@@ -156,12 +156,7 @@ impl Contract {
         self.next_token_id += 1;
         self.token_metadata.insert(&token_id, &metadata);
         self.add_token_to_owner(&receiver, token_id);
-        SbtMint {
-            owner: &receiver,
-            tokens: vec![token_id],
-            memo: None,
-        }
-        .emit();
+        emit_mint_event(&receiver, token_id, None);
     }
 
     /// sbt_recover reassigns all tokens from the old_owner to the new_owner,
