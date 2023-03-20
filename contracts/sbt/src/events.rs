@@ -6,7 +6,7 @@ use crate::{TokenId, STANDARD_NAME};
 
 /// Enum that represents the data type of the EventLog.
 #[derive(Serialize)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 #[serde(tag = "event", content = "data")]
 #[serde(rename_all = "snake_case")]
 #[serde(crate = "near_sdk::serde")]
@@ -195,6 +195,10 @@ mod tests {
         AccountId::new_unchecked("bob.near".to_string())
     }
 
+    fn charlie() -> AccountId {
+        AccountId::new_unchecked("charlie.near".to_string())
+    }
+
     fn nft_to_sbt_mint<'a>(n: &Nep171Mint<'a>) -> Mint<'a> {
         Mint {
             owner_id: n.owner_id,
@@ -260,15 +264,48 @@ mod tests {
     fn log_format_recovery() {
         let alice = alice();
         let bob = bob();
-        // "EVENT_JSON:{\"standard\":\"nep393\",\"version\":\"1.0.0\",\"event\":\"sbt_mint\",\"data\":[{\"owner\":\"bob.near\",\"tokens\":[1,2],\"memo\":\"something\"}]}"
-        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"recover","data":[{"old_owner":"alice.near","new_owner":"bob.near","tokens":[10],"memo":"process1"}]}"#;
-        let event = Nep393EventKind::Recover(vec![SbtRecover {
-            old_owner: &alice,
-            new_owner: &bob,
-            tokens: vec![10],
+        let charlie = charlie();
+        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"recover","data":[{"old_owner":"alice.near","new_owner":"bob.near","tokens":[821,10],"memo":"process1"},{"old_owner":"bob.near","new_owner":"charlie.near","tokens":[1]}]}"#;
+        let event = Nep393EventKind::Recover(vec![
+            SbtRecover {
+                old_owner: &alice,
+                new_owner: &bob,
+                tokens: vec![821, 10],
+                memo: Some("process1".to_owned()),
+            },
+            SbtRecover {
+                old_owner: &bob,
+                new_owner: &charlie,
+                tokens: vec![1],
+                memo: None,
+            },
+        ]);
+        assert_eq!(expected, event.clone().to_json_event_string());
+        event.emit();
+        assert_eq!(expected, test_utils::get_logs()[0]);
+    }
+
+    #[test]
+    fn log_format_renew() {
+        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"renew","data":{"tokens":[21,10,888],"memo":"process1"}}"#;
+        let event = Nep393EventKind::Renew(SbtRenew {
+            tokens: vec![21, 10, 888],
             memo: Some("process1".to_owned()),
-        }]);
-        assert_eq!(expected, event.to_json_event_string());
-        // assert_ne!(test_utils::get_logs()[0], event.to_json_event_string());
+        });
+        assert_eq!(expected, event.clone().to_json_event_string());
+        event.emit();
+        assert_eq!(expected, test_utils::get_logs()[0]);
+    }
+
+    #[test]
+    fn log_format_revoke() {
+        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"revoke","data":{"tokens":[],"memo":"process2"}}"#;
+        let event = Nep393EventKind::Revoke(SbtRevoke {
+            tokens: vec![],
+            memo: Some("process2".to_owned()),
+        });
+        assert_eq!(expected, event.clone().to_json_event_string());
+        event.emit();
+        assert_eq!(expected, test_utils::get_logs()[0]);
     }
 }
