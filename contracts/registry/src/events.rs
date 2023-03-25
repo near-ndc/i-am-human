@@ -16,7 +16,8 @@ pub const STANDARD_NAME: &str = "nepXXX";
 #[serde(crate = "near_sdk::serde")]
 #[non_exhaustive]
 pub enum EventKind<'a> {
-    Blacklist(Vec<Blacklist<'a>>),
+    Kill(Vec<Kill<'a>>),
+    SoulTranser(Vec<SoulTransfer<'a>>),
 }
 
 impl EventKind<'_> {
@@ -38,26 +39,51 @@ impl EventKind<'_> {
     }
 }
 
-/// An event emitted when a human protocol SBT blacklists an account.
+/// An event emitted when the `account` is killed within the emitting registry.
+/// Must be emitted by an SBT registry.
+/// Registry must add the `account` to a blocklist and prohibit issuing SBTs to this account
+/// in the future
 ///
 /// Arguments
-/// * `caller`: "sbt-poap.near"
 /// * `account`: "bob.near"
 /// * `memo`: optional message
 #[derive(Serialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
 #[serde(crate = "near_sdk::serde")]
-pub struct Blacklist<'a> {
-    pub caller: &'a AccountId,
+pub struct Kill<'a> {
     pub account: &'a AccountId,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memo: Option<String>,
 }
 
-impl Blacklist<'_> {
+impl Kill<'_> {
     pub fn emit(self) {
-        EventKind::Blacklist(vec![self]).emit();
+        EventKind::Kill(vec![self]).emit();
+    }
+}
+
+/// An event emitted when a human requests soul_transfer.
+///
+/// Arguments
+/// * `from`: source account from which all SBTs are transferred.
+/// * `to`: destination account for the soul, can be an existing account, which already holds
+///   SBTs.
+/// * `memo`: optional message
+#[derive(Serialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
+#[serde(crate = "near_sdk::serde")]
+pub struct SoulTransfer<'a> {
+    pub from: &'a AccountId,
+    pub to: &'a AccountId,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memo: Option<String>,
+}
+
+impl SoulTransfer<'_> {
+    pub fn emit(self) {
+        EventKind::SoulTranser(vec![self]).emit();
     }
 }
 
@@ -78,19 +104,16 @@ mod tests {
     }
 
     #[test]
-    fn log_format_blacklist() {
+    fn log_format_kill() {
         let alice = alice();
-        let bob = bob();
         let charlie = charlie();
-        let expected = r#"EVENT_JSON:{"standard":"nepXXX","version":"1.0.0","event":"blacklist","data":[{"caller":"bob.near","account":"charlie.near"},{"caller":"charlie.near","account":"alice.near","memo":"my memo"}]}"#;
-        let event = EventKind::Blacklist(vec![
-            Blacklist {
-                caller: &bob,
+        let expected = r#"EVENT_JSON:{"standard":"nepXXX","version":"1.0.0","event":"kill","data":[{"account":"charlie.near"},{"account":"alice.near","memo":"my memo"}]}"#;
+        let event = EventKind::Kill(vec![
+            Kill {
                 account: &charlie,
                 memo: None,
             },
-            Blacklist {
-                caller: &charlie,
+            Kill {
                 account: &alice,
                 memo: Some("my memo".to_owned()),
             },

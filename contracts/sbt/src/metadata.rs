@@ -76,10 +76,7 @@ pub trait SBTMetadata {
 
 impl ContractMetadata {
     pub fn assert_valid(&self) {
-        require!(
-            self.spec == crate::METADATA_SPEC,
-            "Spec is not NFT metadata"
-        );
+        require!(self.spec == crate::SPEC_VERSION, "Spec is not NFT metadata");
         require!(
             self.name.len() >= 1 && self.symbol.len() >= 1,
             "name and spec must be a non empty string"

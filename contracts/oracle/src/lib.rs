@@ -97,6 +97,22 @@ impl Contract {
         })
     }
 
+    pub fn sbt_total_supply(&self) -> u64 {
+        self.next_token_id - 1
+    }
+
+    /// returns total supply of non revoked SBTs for a given owner.
+    pub fn sbt_supply_for_owner(&self, account: AccountId) -> u64 {
+        if self.balances.contains_key(&account) {
+            1
+        } else {
+            0
+        }
+    }
+
+    /*********************
+     * NFT compatibility */
+
     /// Returns total amount of tokens minted by this contract.
     /// Includes possible expired tokens and revoked tokens.
     // TODO: maybe we will want to use u64 as a return type? But that will break the NFT interface
@@ -111,14 +127,14 @@ impl Contract {
     #[allow(unused_variables)]
     pub fn nft_tokens_for_owner(
         &self,
-        account: AccountId,
+        account_id: AccountId,
         from_index: Option<U64>,
         limit: Option<u64>,
     ) -> Vec<Token> {
-        if let Some(t) = self.balances.get(&account) {
+        if let Some(t) = self.balances.get(&account_id) {
             return vec![Token {
                 token_id: t,
-                owner_id: account,
+                owner_id: account_id,
                 metadata: self.token_data.get(&t).unwrap().metadata.v1(),
             }];
         }
@@ -126,23 +142,8 @@ impl Contract {
     }
 
     /// alias to sbt_supply_for_owner but returns number as a string instead
-    pub fn nft_supply_for_owner(&self, account: AccountId) -> U64 {
-        self.sbt_supply_for_owner(account).into()
-    }
-
-    // SBT Query version //
-
-    pub fn sbt_total_supply(&self) -> u64 {
-        self.next_token_id - 1
-    }
-
-    /// returns total supply of non revoked SBTs for a given owner.
-    pub fn sbt_supply_for_owner(&self, account: AccountId) -> u64 {
-        if self.balances.contains_key(&account) {
-            1
-        } else {
-            0
-        }
+    pub fn nft_supply_for_owner(&self, account_id: AccountId) -> U64 {
+        self.sbt_supply_for_owner(account_id).into()
     }
 
     /**********
@@ -203,6 +204,13 @@ impl Contract {
             ));
         }
         let external_id = claim.external_id.to_lowercase();
+        let external_id = external_id
+            .strip_prefix("0x")
+            .unwrap_or(&external_id)
+            .to_owned();
+        // TODO
+        //let mut iter = $crate::rustc_hex::FromHexIter::new(input);
+
         if self.used_identities.contains(&external_id) {
             return Err(CtrError::DuplicatedID("external_id".to_string()));
         }

@@ -1,7 +1,7 @@
 use near_sdk::serde::Serialize;
 use near_sdk::{env, AccountId};
 
-use crate::METADATA_SPEC;
+use crate::SPEC_VERSION;
 use crate::{TokenId, STANDARD_NAME};
 
 /// Enum that represents the data type of the EventLog.
@@ -15,8 +15,9 @@ pub enum Nep393EventKind<'a> {
     Recover(Vec<SbtRecover<'a>>),
     // no need to use vector of SbtRenew and SbtRevoke events, because the event already has
     // list of token_ids
-    Renew(SbtRenew),
-    Revoke(SbtRevoke),
+    Renew(SbtRenewRevoke),
+    Revoke(SbtRenewRevoke),
+    // TODO: SoulTransfer(Vec<SoulTransferEvent<'a>>),
 }
 
 impl Nep393EventKind<'_> {
@@ -24,7 +25,7 @@ impl Nep393EventKind<'_> {
     pub fn to_json_event_string(self) -> String {
         let e = NearEvent {
             standard: STANDARD_NAME,
-            version: METADATA_SPEC,
+            version: SPEC_VERSION,
             event: self,
         };
         let s = serde_json::to_string(&e)
@@ -33,26 +34,10 @@ impl Nep393EventKind<'_> {
         format!("EVENT_JSON:{}", s)
     }
 
+    // todo: maybe move to NearEvent
     pub fn emit(self) {
         env::log_str(&self.to_json_event_string());
     }
-}
-
-/// Helper struct to create Standard NEAR Event JSON
-///
-/// Arguments:
-/// * `standard`: name of standard e.g. nep171
-/// * `version`: e.g. 1.0.0
-/// * `event`: associate event data
-#[derive(Serialize)]
-#[serde(crate = "near_sdk::serde")]
-pub struct NearEvent<T: Serialize> {
-    pub standard: &'static str,
-    pub version: &'static str,
-
-    // `flatten` to not have "event": {<EventLogVariant>} in the JSON, just have the contents of {<EventLogVariant>}.
-    #[serde(flatten)]
-    pub event: T,
 }
 
 /// An event emitted when a recovery process succeeded to reassign SBT.
@@ -80,7 +65,7 @@ impl SbtRecover<'_> {
     }
 }
 
-/// An event emitted when a existing tokens are renewed.
+/// An event emitted when a existing tokens are renewed or revoked.
 ///
 /// Arguments
 /// * `tokens`: [1, 123]
@@ -88,36 +73,19 @@ impl SbtRecover<'_> {
 #[derive(Serialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 #[serde(crate = "near_sdk::serde")]
-pub struct SbtRenew {
+pub struct SbtRenewRevoke {
     pub tokens: Vec<TokenId>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memo: Option<String>,
 }
 
-impl SbtRenew {
-    pub fn emit(self) {
+impl SbtRenewRevoke {
+    pub fn emit_renew(self) {
         Nep393EventKind::Renew(self).emit();
     }
-}
 
-/// An event emitted when a existing tokens are revoked.
-///
-/// Arguments
-/// * `tokens`: [1, 123]
-/// * `memo`: optional message
-#[derive(Serialize)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
-#[serde(crate = "near_sdk::serde")]
-pub struct SbtRevoke {
-    pub tokens: Vec<TokenId>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memo: Option<String>,
-}
-
-impl SbtRevoke {
-    pub fn emit(self) {
+    pub fn emit_revoke(self) {
         Nep393EventKind::Revoke(self).emit();
     }
 }
@@ -130,7 +98,8 @@ struct EventWrapper<T: Serialize> {
     data: T,
 }
 
-/// NEP-171 compatible Mint event structure.
+/// NEP-171 compatible Mint event structure. A light version of the Mint event from the
+/// `near_contract_standards::non_fungible_token::events::NftMint` to reduce code dependency and size.
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct Mint<'a> {
@@ -178,6 +147,23 @@ pub fn emit_mint_event(owner_id: &AccountId, token: TokenId, memo: Option<String
         memo,
     }
     .emit()
+}
+
+/// Helper struct to create Standard NEAR Event JSON
+///
+/// Arguments:
+/// * `standard`: name of standard e.g. nep171
+/// * `version`: e.g. 1.0.0
+/// * `event`: associate event data
+#[derive(Serialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct NearEvent<T: Serialize> {
+    pub standard: &'static str,
+    pub version: &'static str,
+
+    // `flatten` to not have "event": {<EventLogVariant>} in the JSON, just have the contents of {<EventLogVariant>}.
+    #[serde(flatten)]
+    pub event: T,
 }
 
 #[cfg(test)]
@@ -288,24 +274,30 @@ mod tests {
     #[test]
     fn log_format_renew() {
         let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"renew","data":{"tokens":[21,10,888],"memo":"process1"}}"#;
-        let event = Nep393EventKind::Renew(SbtRenew {
+        let e = SbtRenewRevoke {
             tokens: vec![21, 10, 888],
             memo: Some("process1".to_owned()),
-        });
+        };
+        let event = Nep393EventKind::Renew(e.clone());
         assert_eq!(expected, event.clone().to_json_event_string());
         event.emit();
         assert_eq!(expected, test_utils::get_logs()[0]);
+        e.emit_renew();
+        assert_eq!(expected, test_utils::get_logs()[1]);
     }
 
     #[test]
     fn log_format_revoke() {
         let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"revoke","data":{"tokens":[],"memo":"process2"}}"#;
-        let event = Nep393EventKind::Revoke(SbtRevoke {
+        let e = SbtRenewRevoke {
             tokens: vec![],
             memo: Some("process2".to_owned()),
-        });
+        };
+        let event = Nep393EventKind::Revoke(e.clone());
         assert_eq!(expected, event.clone().to_json_event_string());
         event.emit();
         assert_eq!(expected, test_utils::get_logs()[0]);
+        e.emit_revoke();
+        assert_eq!(expected, test_utils::get_logs()[1]);
     }
 }

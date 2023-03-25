@@ -214,7 +214,7 @@ impl Contract {
             td.metadata = m.into();
             self.token_data.insert(&t_id, &td);
         }
-        SbtRenew { tokens, memo }.emit();
+        SbtRenewRevoke { tokens, memo }.emit_renew();
     }
 
     /// admin: remove SBT from the given accounts.
@@ -234,7 +234,7 @@ impl Contract {
             }
         }
         if !tokens.is_empty() {
-            SbtRevoke { tokens, memo }.emit();
+            SbtRenewRevoke { tokens, memo }.emit_revoke();
         }
     }
 

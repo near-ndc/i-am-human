@@ -8,14 +8,14 @@ pub use crate::events::*;
 pub use crate::metadata::*;
 
 // u64 capacity is more than 1e19. If we will mint 10'000 SBTs per second, than it will take us
-// 58494241 years to get into the capacity.
-// Today, the JS limit is 9e15. It will take us 28561 years to fill that when minting
+// 58'494'241 years to get into the capacity.
+// Today, the JS integer limit is `2^53-1 ~ 9e15`. It will take us 28'561 years to fill that when minting
 // 10'000 SBTs per second.
 // So, we don't need to u128 nor a String type.
 pub type TokenId = u64;
 
 /// This spec can be treated like a version of the standard.
-pub const METADATA_SPEC: &str = "1.0.0";
+pub const SPEC_VERSION: &str = "1.0.0";
 /// This is the name of the SBT standard we're using
 pub const STANDARD_NAME: &str = "nep393";
 
