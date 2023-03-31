@@ -63,8 +63,8 @@ pub struct TokenData {
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct Token {
-    pub token_id: TokenId,
-    pub owner_id: AccountId,
+    pub token: TokenId,
+    pub owner: AccountId,
     pub metadata: TokenMetadata,
 }
 

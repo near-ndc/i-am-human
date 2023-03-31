@@ -17,6 +17,7 @@ pub enum Nep393EventKind<'a> {
     // list of token_ids
     Renew(SbtRenewRevoke),
     Revoke(SbtRenewRevoke),
+    Burn(SbtRenewRevoke),
     // TODO: SoulTransfer(Vec<SoulTransferEvent<'a>>),
 }
 

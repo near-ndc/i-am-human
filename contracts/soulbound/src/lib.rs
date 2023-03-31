@@ -75,8 +75,8 @@ impl Contract {
     pub fn sbt(&self, token_id: TokenId) -> Option<Token> {
         if let Some(metadata) = self.token_metadata.get(&token_id) {
             Some(Token {
-                token_id,
-                owner_id: self.token_to_owner.get(&token_id).unwrap(),
+                token,
+                owner: self.token_to_owner.get(&token_id).unwrap(),
                 metadata,
             })
         } else {

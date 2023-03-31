@@ -90,8 +90,8 @@ impl Contract {
     pub fn sbt(&self, token_id: TokenId) -> Option<Token> {
         self.token_data.get(&token_id).and_then(|t| {
             Some(Token {
-                token_id,
-                owner_id: t.owner,
+                token,
+                owner: t.owner,
                 metadata: t.metadata.v1(),
             })
         })
@@ -133,8 +133,8 @@ impl Contract {
     ) -> Vec<Token> {
         if let Some(t) = self.balances.get(&account_id) {
             return vec![Token {
-                token_id: t,
-                owner_id: account_id,
+                token: t,
+                owner: account_id,
                 metadata: self.token_data.get(&t).unwrap().metadata.v1(),
             }];
         }
