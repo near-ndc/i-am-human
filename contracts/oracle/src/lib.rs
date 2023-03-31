@@ -1,3 +1,5 @@
+use std::num::ParseIntError;
+
 use ed25519_dalek::{PublicKey, Signature, Verifier, PUBLIC_KEY_LENGTH};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedSet};
@@ -38,7 +40,7 @@ pub struct Contract {
     pub sbt_ttl_ms: u64,
     /// ed25519 pub key (could be same as a NEAR pub key)
     pub authority_pubkey: [u8; PUBLIC_KEY_LENGTH], // Vec<u8>,
-    pub used_identities: UnorderedSet<String>,
+    pub used_identities: UnorderedSet<Vec<u8>>,
 
     /// used for backend key rotation
     pub admins: UnorderedSet<AccountId>,
@@ -87,8 +89,8 @@ impl Contract {
      **********/
 
     /// returns information about specific token ID
-    pub fn sbt(&self, token_id: TokenId) -> Option<Token> {
-        self.token_data.get(&token_id).and_then(|t| {
+    pub fn sbt(&self, token: TokenId) -> Option<Token> {
+        self.token_data.get(&token).and_then(|t| {
             Some(Token {
                 token,
                 owner: t.owner,
@@ -203,13 +205,7 @@ impl Contract {
                 "claimer is not the transaction signer".to_string(),
             ));
         }
-        let external_id = claim.external_id.to_lowercase();
-        let external_id = external_id
-            .strip_prefix("0x")
-            .unwrap_or(&external_id)
-            .to_owned();
-        // TODO
-        //let mut iter = $crate::rustc_hex::FromHexIter::new(input);
+        let external_id = normalize_external_id(claim.external_id)?;
 
         if self.used_identities.contains(&external_id) {
             return Err(CtrError::DuplicatedID("external_id".to_string()));
@@ -272,12 +268,28 @@ impl Contract {
         // );
         self.assure_admin();
         self.balances.remove(&owner);
-        self.used_identities.remove(&external_id);
-        self.used_identities.remove(&external_id.to_lowercase());
+        self.used_identities
+            .remove(&normalize_external_id(external_id).unwrap());
     }
 
     // TODO:
     // - fn sbt_renew
+}
+
+fn normalize_external_id(id: String) -> Result<Vec<u8>, CtrError> {
+    let id = id.strip_prefix("0x").unwrap_or(&id).to_lowercase();
+    hex_decode(&id).map_err(|s| CtrError::BadRequest(format!("claim.external_id: {}", s)))
+}
+
+fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
+    if s.len() % 2 != 0 {
+        return Err("invalid length".to_owned());
+    }
+    let r: Result<Vec<u8>, ParseIntError> = (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16))
+        .collect();
+    r.map_err(|err| err.to_string())
 }
 
 fn b64_decode(arg: &str, data: String) -> CtrResult<Vec<u8>> {
@@ -425,7 +437,7 @@ mod tests {
         let (mut ctx, mut ctr, k) = setup(&signer, &predecessor);
 
         // fail: tx signer is not claimer
-        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "id1", &k);
+        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k);
         ctx.signer_account_id = acc_u1();
         testing_env!(ctx.clone());
         match ctr.sbt_mint(c_str.clone(), sig.clone()) {
@@ -486,7 +498,7 @@ mod tests {
     fn test_pubkey_sig() {
         let mut csprng = OsRng {};
         let k = Keypair::generate(&mut csprng);
-        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "id1", &k);
+        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x12", &k);
         let claim_bytes = b64_decode("claim_b64", c_str).unwrap();
         let res = verify_claim(
             &k.public.to_bytes(),
@@ -504,6 +516,42 @@ mod tests {
         let claim2_bz = b64_decode("claim", claim_str).unwrap();
         let claim2 = Claim::try_from_slice(&claim2_bz).unwrap();
         assert_eq!(c, claim2, "serialization should work");
+    }
+
+    fn check_hex(s: &str, r: Vec<u8>) -> Result<(), String> {
+        let b = hex_decode(s)?;
+        assert_eq!(b.len(), r.len());
+        assert_eq!(b, r);
+        Ok(())
+    }
+
+    #[test]
+    fn test_hex_decode() {
+        check_hex("08", vec![8]).unwrap();
+        check_hex("10", vec![16]).unwrap();
+        check_hex("aa", vec![170]).unwrap();
+        check_hex("1203", vec![18, 3]).unwrap();
+        check_hex("1223", vec![18, 35]).unwrap();
+
+        let h = "b4bf0f23c702efb8a9da87a94095e28de3d21cc3";
+        let b = hex_decode(h).unwrap();
+        assert_eq!(b.len(), 20);
+        assert_eq!(b[0], 11 * 16 + 4);
+
+        assert!(hex_decode("8").unwrap_err().contains("invalid len"));
+        assert!(hex_decode("123").unwrap_err().contains("invalid len"));
+        assert_eq!(
+            hex_decode("0x").unwrap_err(),
+            "invalid digit found in string"
+        );
+        assert_eq!(
+            hex_decode("xx").unwrap_err(),
+            "invalid digit found in string"
+        );
+        assert_eq!(
+            hex_decode("1w").unwrap_err(),
+            "invalid digit found in string"
+        );
     }
 
     #[allow(dead_code)]
