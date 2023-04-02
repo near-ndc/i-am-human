@@ -222,7 +222,7 @@ impl Contract {
             self.token_metadata.insert(&t_id, &t);
         }
 
-        SbtRenewRevoke { tokens, memo }.emit_renew();
+        SbtTokensEvent { tokens, memo }.emit_renew();
     }
 
     /**********

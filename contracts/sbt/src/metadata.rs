@@ -5,6 +5,7 @@ use near_sdk::{require, AccountId};
 
 use crate::*;
 
+/// ContractMetadata defines contract wide attributes, which describes the whole contract.
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct ContractMetadata {
@@ -23,15 +24,11 @@ pub enum VerTokenMetadata {
     V1(TokenMetadata),
 }
 
+/// TokenMetadata defines attributes for each SBT token.
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct TokenMetadata {
-    /***
-     TODO: probably title, media and media_hash is not needed - all of it can be in reference
-     pub title: Option<String>, // ex. "Arch Nemesis: Mail Carrier" or "Parcel #5055"
-     pub media: Option<String>, // URL to associated media, preferably to decentralized, content-addressed storage
-     pub media_hash: Option<Base64VecU8>, // Base64-encoded sha256 hash of content referenced by the `media` field.
-    ***/
+    pub class: ClassId,                      // token class
     pub issued_at: Option<u64>, // When token was issued or minted, Unix epoch in milliseconds
     pub expires_at: Option<u64>, // When token expires, Unix epoch in milliseconds
     pub reference: Option<String>, // URL to an off-chain JSON file with more info.
@@ -66,12 +63,6 @@ pub struct Token {
     pub token: TokenId,
     pub owner: AccountId,
     pub metadata: TokenMetadata,
-}
-
-/// trait which every SBT contract with metadata should implement, offering contract details.
-pub trait SBTMetadata {
-    //view call for returning the contract metadata
-    fn sbt_metadata(&self) -> ContractMetadata;
 }
 
 impl ContractMetadata {

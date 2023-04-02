@@ -214,7 +214,7 @@ impl Contract {
             td.metadata = m.into();
             self.token_data.insert(&t_id, &td);
         }
-        SbtRenewRevoke { tokens, memo }.emit_renew();
+        SbtTokensEvent { tokens, memo }.emit_renew();
     }
 
     /// admin: remove SBT from the given accounts.
@@ -234,7 +234,7 @@ impl Contract {
             }
         }
         if !tokens.is_empty() {
-            SbtRenewRevoke { tokens, memo }.emit_revoke();
+            SbtTokensEvent { tokens, memo }.emit_revoke();
         }
     }
 
@@ -274,7 +274,7 @@ impl Contract {
 }
 
 #[near_bindgen]
-impl SBTMetadata for Contract {
+impl SBTContract for Contract {
     fn sbt_metadata(&self) -> ContractMetadata {
         self.metadata.get().unwrap()
     }

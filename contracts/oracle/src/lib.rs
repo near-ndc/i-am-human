@@ -291,7 +291,7 @@ fn verify_claim(
 }
 
 #[near_bindgen]
-impl SBTMetadata for Contract {
+impl SBTContract for Contract {
     fn sbt_metadata(&self) -> ContractMetadata {
         self.metadata.get().unwrap()
     }
