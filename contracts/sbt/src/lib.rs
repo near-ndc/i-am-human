@@ -41,7 +41,7 @@ pub trait SBTContract {
     fn sbt_metadata(&self) -> ContractMetadata;
 }
 
-trait SBTRegistry {
+pub trait SBTRegistry {
     /**********
      * QUERIES
      **********/
@@ -85,6 +85,9 @@ trait SBTRegistry {
         from_class: Option<u64>,
         limit: Option<u32>,
     ) -> Vec<(AccountId, Vec<TokenId>)>;
+
+    /// checks if an `account` was banned by the registry.
+    fn is_banned(&self, account: AccountId) -> bool;
 
     /*************
      * Transactions
