@@ -1,20 +1,24 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LookupMap, UnorderedMap, UnorderedSet, Vector};
-use near_sdk::{env, near_bindgen, AccountId, CryptoHash, PanicOnDefault};
+use near_sdk::collections::{LookupMap, UnorderedSet, Vector};
+use near_sdk::{env, near_bindgen, require, AccountId, CryptoHash, PanicOnDefault};
 
 use sbt::TokenId;
 
-use crate::events::*;
 use crate::storage::*;
 
-mod events;
+mod registry;
 mod storage;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
+    pub admin: AccountId,
+
     /// registry of blacklisted accounts by issuer
-    pub blacklist: UnorderedMap<AccountId, UnorderedSet<AccountId>>,
+    pub sbt_issuers: UnorderedSet<AccountId>,
+
+    /// registry of blacklisted accounts by issuer
+    pub banlist: UnorderedSet<AccountId>,
 
     /// maps user account to list of tokens source info
     pub tokens: LookupMap<AccountId, Vector<TokenSrc>>,
@@ -24,49 +28,27 @@ pub struct Contract {
 #[near_bindgen]
 impl Contract {
     #[init]
-    pub fn new() -> Self {
+    pub fn new(admin: AccountId) -> Self {
         Self {
-            blacklist: UnorderedMap::new(StorageKey::Blacklist),
+            admin,
+            sbt_issuers: UnorderedSet::new(StorageKey::Issuers),
+            banlist: UnorderedSet::new(StorageKey::Banlist),
             tokens: LookupMap::new(StorageKey::Tokens),
         }
     }
 
-    /// Called on SBT mint. Will append token id to the registry.
-    #[allow(unused_variables)]
-    pub fn on_token_mint(&mut self, ctr: AccountId, receipient: AccountId, token: TokenId) {
-        let ctr = env::predecessor_account_id();
-        let mut _s = self.tokens.get(&ctr);
-        // TODO: use proper composed key
-        //.unwrap_or_else(|| Vector::new(receipient.as_bytes()));
+    /// returns false if the `issuer` contract was already registered.
+    pub fn add_sbt_issuer(&mut self, issuer: AccountId) -> bool {
+        // TODO: add admin check
+        self.sbt_issuers.insert(&issuer)
     }
 
-    /// Permission less function -- anyone can call it to claim an account to be blacklisted.
-    /// However, we should recoginze a set of legit contracts who will blacklist accounts to make
-    /// sense of it.
-    /// SBT contracts should blacklist accounts during a recovery process.
-    pub fn blacklist(&mut self, account: AccountId, memo: Option<String>) {
-        // TODO: add storage fees
+    //
+    // Internal
+    //
 
-        let ctr = env::predecessor_account_id();
-        let mut _s = self.blacklist.get(&ctr);
-        // TODO: use proper composed key
-        // .unwrap_or_else(|| UnorderedSet::new(ctr.as_bytes()));
-        // s.insert(account);
-        // self.blacklist.insert(ctr, s);
-
-        Kill {
-            account: &account,
-            memo,
-        }
-        .emit();
-    }
-
-    /// checks if an `account` was blacklisted by `ctr` contract in an event
-    /// of SBT (soulbound token) recovery process.
-    pub fn is_blacklisted(&self, ctr: AccountId, account: AccountId) -> bool {
-        self.blacklist
-            .get(&ctr)
-            .map_or(false, |s| s.contains(&account))
+    pub(crate) fn assert_issuer(&self, contract: &AccountId) {
+        require!(self.sbt_issuers.contains(contract))
     }
 }
 
