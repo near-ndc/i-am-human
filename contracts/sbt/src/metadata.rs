@@ -6,7 +6,8 @@ use near_sdk::{require, AccountId};
 use crate::*;
 
 /// ContractMetadata defines contract wide attributes, which describes the whole contract.
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 #[serde(crate = "near_sdk::serde")]
 pub struct ContractMetadata {
     pub spec: String,              // required, essentially a version like "sbt-1.0.0"
@@ -26,6 +27,7 @@ pub enum VerTokenMetadata {
 
 /// TokenMetadata defines attributes for each SBT token.
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 #[serde(crate = "near_sdk::serde")]
 pub struct TokenMetadata {
     pub class: ClassId,                      // token class
@@ -56,8 +58,20 @@ pub struct TokenData {
     pub metadata: VerTokenMetadata,
 }
 
+impl TokenData {
+    pub fn to_token(self, token: TokenId) -> Token {
+        let metadata: TokenMetadata = self.metadata.v1();
+        Token {
+            token,
+            metadata,
+            owner: self.owner,
+        }
+    }
+}
+
 /// Full information about the token
 #[derive(Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 #[serde(crate = "near_sdk::serde")]
 pub struct Token {
     pub token: TokenId,

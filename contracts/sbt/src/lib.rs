@@ -46,21 +46,25 @@ pub trait SBTRegistry {
      * QUERIES
      **********/
 
-    /// get the information about specific token ID issued by `ctr` SBT contract.
+    /// Get the information about specific token ID issued by `ctr` SBT contract.
     fn sbt(&self, ctr: AccountId, token: TokenId) -> Option<Token>;
 
-    /// returns total amount of tokens issued by `ctr` SBT contract.
+    /// Returns total amount of tokens issued by `ctr` SBT contract, including expired tokens.
+    /// Depending on the implementation, if a revoke removes a token, it then is should not be
+    /// included in the supply.
     fn sbt_supply(&self, ctr: AccountId) -> u64;
 
-    /// returns total amount of tokens of given class minted by this contract
+    /// Returns total amount of tokens of given class minted by `ctr`. See `sbt_supply` for
+    /// information about revoked tokens.
     fn sbt_supply_by_class(&self, ctr: AccountId, class: ClassId) -> u64;
 
-    /// returns total supply of SBTs for a given owner.
+    /// Returns total supply of SBTs for a given owner. See `sbt_supply` for information about
+    /// revoked tokens.
     /// If class is specified, returns only owner supply of the given class -- must be 0 or 1.
     fn sbt_supply_by_owner(
         &self,
-        ctr: AccountId,
         account: AccountId,
+        ctr: AccountId,
         class: Option<ClassId>,
     ) -> u64;
 
@@ -100,7 +104,7 @@ pub trait SBTRegistry {
     /// Must emit `Mint` event.
     /// Must provide enough NEAR to cover registry storage cost.
     // #[payable]
-    fn sbt_mint(&mut self, token_spec: Vec<(AccountId, TokenMetadata)>) -> Vec<TokenId>;
+    fn sbt_mint(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>;
 
     /// sbt_recover reassigns all tokens from the old owner to a new owner,
     /// and registers `old_owner` to a burned addresses registry.
