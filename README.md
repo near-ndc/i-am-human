@@ -4,7 +4,12 @@ Monorepository of base classes for the I am Human proof of humanity protocol.
 
 ## Testnet
 
-- **SBT registry**: `registry.i-am-human.testnet`
+- **SBT registry**: `registry-1.i-am-human.testnet`
+- **Demo SBT Issuer**: `sbt1.i-am-human.testnet` (the soulbound contract)
 - **OG SBT**: `og-sbt-1.i-am-human.testnet`
 - **GoodDollar-SBT**: `gooddollar-v1.i-am-human.testnet`
   verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
+
+Deprecated:
+
+- `registry.i-am-human.testnet`
