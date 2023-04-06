@@ -1,3 +1,7 @@
+// TODO: remove allow unused_variables
+#![allow(dead_code)]
+#![allow(unused_variables)]
+
 use near_sdk::{near_bindgen, AccountId};
 
 use crate::*;
@@ -38,18 +42,25 @@ impl SBTRegistry for Contract {
      * QUERIES
      **********/
 
-    /// get the information about specific token ID issued by `ctr` SBT contract.
     fn sbt(&self, ctr: AccountId, token: TokenId) -> Option<Token> {
-        Some(mock_token_str(token, "alice.near"))
+        let ctr_id = self.ctr_id(&ctr);
+        self.ctr_tokens
+            .get(&CtrTokenId { ctr_id, token })
+            .map(|td| td.to_token(token))
     }
 
-    /// returns total amount of tokens issued by `ctr` SBT contract.
+    // NOTE: we don't delete tokens on revoke, so we can get the supply in an easy way.
     fn sbt_supply(&self, ctr: AccountId) -> u64 {
-        10
+        let ctr_id = match self.sbt_contracts.get(&ctr) {
+            None => return 0,
+            Some(id) => id,
+        };
+        self.next_token_ids.get(&ctr_id).unwrap_or(0)
     }
 
     /// returns total amount of tokens of given class minted by this contract
     fn sbt_supply_by_class(&self, ctr: AccountId, class: ClassId) -> u64 {
+        // TODO: maybe remove, or make it optional?
         2
     }
 
@@ -57,16 +68,41 @@ impl SBTRegistry for Contract {
     /// If class is specified, returns only owner supply of the given class -- must be 0 or 1.
     fn sbt_supply_by_owner(
         &self,
-        ctr: AccountId,
         account: AccountId,
+        ctr: AccountId,
         class: Option<ClassId>,
     ) -> u64 {
-        3
+        // TODO: optimize
+        let balances = self.get_user_balances(&account);
+        let ctr_id = match self.sbt_contracts.get(&ctr) {
+            None => return 0,
+            Some(id) => id,
+        };
+
+        if let Some(class_id) = class {
+            return match balances.get(&CtrClassId { ctr_id, class_id }) {
+                None => 0,
+                _ => 1,
+            };
+        }
+
+        let mut total = 0;
+        for (key, token_id) in balances.iter() {
+            if key.ctr_id > ctr_id {
+                break;
+            }
+            if key.ctr_id < ctr_id {
+                continue;
+            }
+            total += 1;
+        }
+        return total;
     }
 
     /// Query sbt tokens issued by a given contract.
     /// If `from_index` is not specified, then `from_index` should be assumed
     /// to be the first valid token id.
+    /// If limit is not specified, default is used: 100.
     fn sbt_tokens(
         &self,
         ctr: AccountId,
@@ -79,6 +115,7 @@ impl SBTRegistry for Contract {
     /// Query SBT tokens by owner
     /// If `from_class` is not specified, then `from_class` should be assumed to be the first
     /// valid class id.
+    /// If limit is not specified, default is used: 100.
     /// Returns list of pairs: `(Contract address, list of token IDs)`.
     fn sbt_tokens_by_owner(
         &self,
@@ -87,10 +124,60 @@ impl SBTRegistry for Contract {
         from_class: Option<u64>,
         limit: Option<u32>,
     ) -> Vec<(AccountId, Vec<TokenId>)> {
-        vec![
-            (new_acc("alice.near"), vec![1, 2]),
-            (new_acc("bob.near"), vec![3]),
-        ]
+        if from_class.is_some() {
+            require!(
+                ctr.is_some(),
+                "ctr must be defined if from_class is defined"
+            );
+        }
+        let balances = self.get_user_balances(&account);
+        // TODO: check how we can do an index scan
+        // let empty_acc_id = AccountId::new_unchecked("".to_string());
+        let mut resp = Vec::new();
+        let mut tokens = Vec::new();
+        let mut prev_ctr = 0;
+
+        let ctr_id = match ctr {
+            None => 0,
+            Some(addr) => self.ctr_id(&addr),
+        };
+        let from_class = from_class.unwrap_or(0);
+        let mut limit = limit.unwrap_or(100);
+        require!(limit > 0, "limit must be bigger than 0");
+
+        // TODO: optimize with exact ctr_id check
+        // - maybe we can change the layout and use native storage access.
+
+        for (key, token_id) in balances.iter() {
+            // TODO: remove debug
+            println!("{:?} {}", key, token_id);
+            if prev_ctr != key.ctr_id {
+                if tokens.len() > 0 {
+                    let issuer = self.ctr_id_map.get(&prev_ctr).unwrap();
+                    resp.push((issuer, tokens));
+                    tokens = Vec::new();
+                }
+                prev_ctr = key.ctr_id;
+            }
+            if ctr_id != 0 && key.ctr_id != ctr_id {
+                println!(">>>> continue");
+                continue;
+            }
+            if from_class != 0 && key.class_id != from_class {
+                println!(">>>> continue2");
+                continue;
+            }
+            tokens.push(token_id);
+            limit = limit - 1;
+            if limit == 0 {
+                break;
+            }
+        }
+        if prev_ctr != 0 && tokens.len() > 0 {
+            let issuer = self.ctr_id_map.get(&prev_ctr).unwrap();
+            resp.push((issuer, tokens));
+        }
+        return resp;
     }
 
     /// checks if an `account` was banned by the registry.
@@ -109,10 +196,53 @@ impl SBTRegistry for Contract {
     /// Must emit `Mint` event.
     /// Must provide enough NEAR to cover registry storage cost.
     #[payable]
-    fn sbt_mint(&mut self, token_spec: Vec<(AccountId, TokenMetadata)>) -> Vec<TokenId> {
-        let ctr = env::predecessor_account_id();
-        self.assert_issuer(&ctr);
-        vec![4]
+    fn sbt_mint(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId> {
+        // TODO: deposit check
+
+        let ctr = &env::predecessor_account_id();
+        let ctr_id = self.ctr_id(ctr);
+        let mut num_tokens = 0;
+        for el in token_spec.iter() {
+            num_tokens += el.1.len() as u64;
+        }
+        let mut token = self.next_token_id(ctr_id, num_tokens);
+        let ret_token_ids = (token..token + num_tokens).collect();
+
+        for (owner, metadatas) in token_spec {
+            for metadata in metadatas {
+                self.assert_not_banned(&owner);
+                let mut balances = self.get_user_balances(&owner);
+                // println!("balances: {:?}", balances);
+                let prev = balances.insert(
+                    &CtrClassId {
+                        ctr_id,
+                        class_id: metadata.class,
+                    },
+                    &token,
+                );
+                require!(
+                    prev.is_none(),
+                    format! {"{} already has SBT of class {}", &owner, metadata.class}
+                );
+                // TODO: self.balances.insert...
+                // todo: group and insert only at the end
+                self.balances.insert(&owner, &balances);
+
+                self.ctr_tokens.insert(
+                    &CtrTokenId { ctr_id, token },
+                    &TokenData {
+                        owner: owner.clone(),
+                        metadata: metadata.into(),
+                    },
+                );
+
+                token += 1;
+            }
+        }
+
+        // TODO: emit events
+
+        ret_token_ids
     }
 
     /// sbt_recover reassigns all tokens from the old owner to a new owner,
@@ -126,6 +256,7 @@ impl SBTRegistry for Contract {
     fn sbt_recover(&mut self, from: AccountId, to: AccountId) {
         let ctr = env::predecessor_account_id();
         self.assert_issuer(&ctr);
+        env::panic_str("not implemented");
     }
 
     /// sbt_renew will update the expire time of provided tokens.
@@ -135,6 +266,7 @@ impl SBTRegistry for Contract {
     fn sbt_renew(&mut self, tokens: Vec<TokenId>, expires_at: u64) {
         let ctr = env::predecessor_account_id();
         self.assert_issuer(&ctr);
+        env::panic_str("not implemented");
     }
 
     /// Revokes SBT, could potentially burn it or update the expire time.
@@ -144,8 +276,7 @@ impl SBTRegistry for Contract {
     fn sbt_revoke(&mut self, token: u64) -> bool {
         let ctr = env::predecessor_account_id();
         self.assert_issuer(&ctr);
-
-        true
+        env::panic_str("not implemented");
     }
 
     /// Transfers atomically all SBT tokens from one account to another account.
@@ -153,6 +284,6 @@ impl SBTRegistry for Contract {
     /// Must emit `Revoke` event.
     // #[payable]
     fn sbt_soul_transfer(&mut self, to: AccountId) -> bool {
-        true
+        env::panic_str("not implemented");
     }
 }
