@@ -73,7 +73,7 @@ impl Contract {
 
     pub(crate) fn ctr_id(&self, ctr: &AccountId) -> CtrId {
         // TODO: use Result rather than panic
-        self.sbt_contracts.get(ctr).unwrap()
+        self.sbt_contracts.get(ctr).expect("SBT Issuer not found")
     }
 
     pub(crate) fn get_user_balances(&self, user: &AccountId) -> UnorderedMap<CtrClassId, TokenId> {

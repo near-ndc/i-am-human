@@ -19,19 +19,17 @@ fn mock_token(token: TokenId, owner: AccountId) -> Token {
     Token {
         token,
         owner,
-        metadata: TokenMetadata {
-            class: 1,
-            issued_at: Some(1680513165),
-            expires_at: Some(1685776365),
-            reference: Some("https://somelink.com/mydoc".to_owned()),
-            reference_hash: Some(
-                vec![
-                    232, 200, 7, 74, 151, 212, 112, 108, 102, 57, 160, 89, 106, 36, 58, 72, 115,
-                    35, 35, 116, 169, 31, 38, 54, 155, 44, 149, 74, 78, 145, 209, 35,
-                ]
-                .into(),
-            ),
-        },
+        metadata: mock_metadata(),
+    }
+}
+
+fn mock_metadata() -> TokenMetadata {
+    TokenMetadata {
+        class: 100,
+        issued_at: Some(1680513165),
+        expires_at: Some(1685776365),
+        reference: None,      //Some("https://somelink.com/mydoc".to_owned()),
+        reference_hash: None, // Some(vec![232, 200, 7, 74, 151, 212, 112, 108, 102, 57, 160, 89, 106, 36, 58, 72, 115, 35, 35, 116, 169, 31, 38, 54, 155, 44, 149, 74, 78, 145, 209, 35,] .into(),),
     }
 }
 
@@ -153,7 +151,10 @@ impl SBTRegistry for Contract {
             println!("{:?} {}", key, token_id);
             if prev_ctr != key.ctr_id {
                 if tokens.len() > 0 {
-                    let issuer = self.ctr_id_map.get(&prev_ctr).unwrap();
+                    let issuer = self
+                        .ctr_id_map
+                        .get(&prev_ctr)
+                        .expect("internal error: inconsistent sbt issuer map");
                     resp.push((issuer, tokens));
                     tokens = Vec::new();
                 }
@@ -173,7 +174,7 @@ impl SBTRegistry for Contract {
                     ctr_id: key.ctr_id,
                     token: token_id,
                 })
-                .unwrap();
+                .expect("internal error: token data not found");
             tokens.push(OwnedToken {
                 token: token_id,
                 metadata: t.metadata.v1(),
