@@ -1,5 +1,5 @@
 [package]
-name = "soulbound"
+name = "demo-issuer"
 version = "1.0.0"
 authors = ["Robert Zaremba 'https://zaremba.ch/'"]
 edition = "2021"

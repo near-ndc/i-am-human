@@ -4,7 +4,7 @@ members = [
     "community-sbt",
     "oracle",
     "registry",
-    "soulbound",
+    "demo-issuer",
     "soulbound-class",
     "ubi",
 ]
