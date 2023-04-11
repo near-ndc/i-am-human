@@ -1,7 +1,7 @@
 mod events;
 mod metadata;
 
-use near_sdk::{AccountId, Balance, Gas};
+use near_sdk::{ext_contract, AccountId, Balance, Gas};
 
 pub use crate::events::*;
 pub use crate::metadata::*;
@@ -129,4 +129,10 @@ pub trait SBTRegistry {
     /// Must emit `Revoke` event.
     // #[payable]
     fn sbt_soul_transfer(&mut self, to: AccountId) -> bool;
+}
+
+// ext_registry is a helper to make cross contract registry calls
+#[ext_contract(ext_registry)]
+trait ExtRegistry {
+    fn sbt_mint(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>;
 }

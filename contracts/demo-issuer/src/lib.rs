@@ -1,6 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, UnorderedSet};
-use near_sdk::{env, ext_contract, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault};
+use near_sdk::{env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault};
 
 use sbt::*;
 
@@ -102,9 +102,4 @@ impl Contract {
             "not an admin"
         );
     }
-}
-
-#[ext_contract(ext_registry)]
-trait SBTRegistry {
-    fn sbt_mint(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>;
 }

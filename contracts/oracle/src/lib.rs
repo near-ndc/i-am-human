@@ -9,13 +9,11 @@ use sbt::*;
 // use near_sdk::bs58 -- use public key in the base58 format
 
 pub use crate::errors::*;
-pub use crate::ext::*;
 pub use crate::interfaces::*;
 pub use crate::storage::*;
 pub use crate::util::*;
 
 mod errors;
-mod ext;
 mod interfaces;
 mod storage;
 mod util;
