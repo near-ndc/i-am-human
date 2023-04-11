@@ -167,6 +167,10 @@ mod tests {
         }
     }
 
+    fn mk_owned_token(token: TokenId, metadata: TokenMetadata) -> OwnedToken {
+        OwnedToken { token, metadata }
+    }
+
     const START: u64 = 10;
 
     fn setup(predecessor: &AccountId) -> (VMContext, Contract) {
@@ -229,12 +233,25 @@ mod tests {
         assert_eq!(sbt1_3, mk_token(3, alice(), m2_1.clone()));
 
         let sbt2_1 = ctr.sbt(issuer2(), 1).unwrap();
-        assert_eq!(sbt2_1, mk_token(1, alice(), m1_1));
+        assert_eq!(sbt2_1, mk_token(1, alice(), m1_1.clone()));
 
         let alice_sbts = ctr.sbt_tokens_by_owner(alice(), None, None, None);
         assert_eq!(
             alice_sbts,
-            vec![(issuer1(), vec![1, 3, 4]), (issuer2(), vec!(1, 2))]
+            vec![
+                (
+                    issuer1(),
+                    vec![
+                        mk_owned_token(1, m1_1.clone()),
+                        mk_owned_token(3, m2_1.clone()),
+                        mk_owned_token(4, m4_1.clone())
+                    ]
+                ),
+                (
+                    issuer2(),
+                    vec!(mk_owned_token(1, m1_1), mk_owned_token(2, m2_1))
+                )
+            ]
         );
     }
 }

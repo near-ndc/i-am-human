@@ -108,8 +108,8 @@ impl SBTRegistry for Contract {
         ctr: AccountId,
         from_index: Option<u64>,
         limit: Option<u32>,
-    ) -> Vec<TokenId> {
-        vec![1, 2, 3]
+    ) -> Vec<Token> {
+        vec![mock_token_str(1, "alice.near")]
     }
 
     /// Query SBT tokens by owner
@@ -123,7 +123,7 @@ impl SBTRegistry for Contract {
         ctr: Option<AccountId>,
         from_class: Option<u64>,
         limit: Option<u32>,
-    ) -> Vec<(AccountId, Vec<TokenId>)> {
+    ) -> Vec<(AccountId, Vec<OwnedToken>)> {
         if from_class.is_some() {
             require!(
                 ctr.is_some(),
@@ -167,7 +167,17 @@ impl SBTRegistry for Contract {
                 println!(">>>> continue2");
                 continue;
             }
-            tokens.push(token_id);
+            let t = self
+                .ctr_tokens
+                .get(&CtrTokenId {
+                    ctr_id: key.ctr_id,
+                    token: token_id,
+                })
+                .unwrap();
+            tokens.push(OwnedToken {
+                token: token_id,
+                metadata: t.metadata.v1(),
+            });
             limit = limit - 1;
             if limit == 0 {
                 break;

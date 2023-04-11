@@ -71,12 +71,8 @@ pub trait SBTRegistry {
     /// Query sbt tokens issued by a given contract.
     /// If `from_index` is not specified, then `from_index` should be assumed
     /// to be the first valid token id.
-    fn sbt_tokens(
-        &self,
-        ctr: AccountId,
-        from_index: Option<u64>,
-        limit: Option<u32>,
-    ) -> Vec<TokenId>;
+    fn sbt_tokens(&self, ctr: AccountId, from_index: Option<u64>, limit: Option<u32>)
+        -> Vec<Token>;
 
     /// Query SBT tokens by owner
     /// If `from_class` is not specified, then `from_class` should be assumed to be the first
@@ -88,7 +84,7 @@ pub trait SBTRegistry {
         ctr: Option<AccountId>,
         from_class: Option<u64>,
         limit: Option<u32>,
-    ) -> Vec<(AccountId, Vec<TokenId>)>;
+    ) -> Vec<(AccountId, Vec<OwnedToken>)>;
 
     /// checks if an `account` was banned by the registry.
     fn is_banned(&self, account: AccountId) -> bool;
