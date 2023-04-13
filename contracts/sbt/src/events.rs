@@ -162,6 +162,16 @@ pub struct SoulTransfer<'a> {
     pub memo: Option<String>,
 }
 
+impl SoulTransfer<'_> {
+    pub fn emit(self) {
+        Nep393Event::SoulTransfer(self).emit();
+    }
+}
+
+pub fn emit_soul_transfer(from: &AccountId, to: &AccountId, memo: Option<String>) {
+    SoulTransfer { from, to, memo }.emit();
+}
+
 /// Helper function to be used with `NearEvent` to construct NAER Event compatible payload
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
@@ -397,13 +407,16 @@ mod tests {
         let alice = alice();
         let bob = bob();
         let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"soul_transfer","data":{"from":"alice.near","to":"bob.near","memo":"process1"}}"#;
-        let event = Nep393Event::SoulTransfer(SoulTransfer {
+        let e = SoulTransfer {
             from: &alice,
             to: &bob,
             memo: Some("process1".to_owned()),
-        });
+        };
+        let event = Nep393Event::SoulTransfer(e.clone());
         assert_eq!(expected, event.clone().to_json_event_string());
         event.emit();
         assert_eq!(expected, test_utils::get_logs()[0]);
+        e.emit();
+        assert_eq!(expected, test_utils::get_logs()[1]);
     }
 }

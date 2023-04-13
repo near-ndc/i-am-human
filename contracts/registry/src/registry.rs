@@ -70,6 +70,10 @@ impl SBTRegistry for Contract {
         ctr: AccountId,
         class: Option<ClassId>,
     ) -> u64 {
+        if self.ongoing_soul_tx.contains_key(&account) {
+            return 0;
+        }
+
         // TODO: optimize
         let balances = self.get_user_balances(&account);
         let ctr_id = match self.sbt_contracts.get(&ctr) {
@@ -128,6 +132,10 @@ impl SBTRegistry for Contract {
                 "ctr must be defined if from_class is defined"
             );
         }
+        if self.ongoing_soul_tx.contains_key(&account) {
+            return vec![];
+        }
+
         let balances = self.get_user_balances(&account);
         // TODO: check how we can do an index scan
         // let empty_acc_id = AccountId::new_unchecked("".to_string());
@@ -193,7 +201,7 @@ impl SBTRegistry for Contract {
 
     /// checks if an `account` was banned by the registry.
     fn is_banned(&self, account: AccountId) -> bool {
-        self.banlist.contains(&account)
+        self._is_banned(&account)
     }
 
     /*************

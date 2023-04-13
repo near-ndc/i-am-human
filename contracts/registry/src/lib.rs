@@ -2,7 +2,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, UnorderedMap, UnorderedSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
 
-use sbt::{TokenData, TokenId};
+use sbt::{emit_soul_transfer, TokenData, TokenId};
 
 use crate::storage::*;
 
@@ -56,6 +56,11 @@ impl Contract {
         self.sbt_contracts.keys().collect()
     }
 
+    #[inline]
+    fn _is_banned(&self, account: &AccountId) -> bool {
+        self.banlist.contains(account)
+    }
+
     //
     // Transactions
     //
@@ -68,14 +73,33 @@ impl Contract {
     /// User must keeps calling `sbt_soul_transfer` until `true` is returned.
     /// Must emit `SoulTransfer` event.
     #[payable]
-    pub fn sbt_soul_transfer(&mut self, to: AccountId) -> (AccountId, TokenId, bool) {
-        let start = self.ongoing_soul_tx.get(&to).unwrap_or(CtrTokenId {
-            ctr_id: 0,
-            token: 0,
-        });
+    pub fn sbt_soul_transfer(
+        &mut self,
+        to: AccountId,
+        memo: Option<String>,
+    ) -> (AccountId, TokenId, bool) {
+        let owner = env::predecessor_account_id();
+        let start = match self.ongoing_soul_tx.get(&to) {
+            // starting the process
+            None => {
+                // insert into banlist and assuer owner is not already banned.
+                require!(
+                    self.banlist.insert(&owner),
+                    "caller banned: can't make soul transfer"
+                );
+                require!(!self._is_banned(&to), "`to` is banned");
+                emit_soul_transfer(&owner, &to, memo);
+                CtrTokenId {
+                    ctr_id: 0,
+                    token: 0,
+                }
+            }
+            // resuming Soul Transfer process
+            Some(s) => s,
+        };
+
         println!("Starting at: {} {}", start.ctr_id, start.token);
         env::panic_str("not implemented");
-        // TODO: lock `to` account if needed
     }
 
     //
