@@ -103,6 +103,12 @@ impl Contract {
         env::panic_str("not implemented");
     }
 
+    // TODO
+    // pub fn sbt_burn(&mut self, ctr: AccountId, token: TokenId, memo: Option<String>) {
+    //     emit Burn
+    //     env::panic_str("not implemented");
+    // }
+
     //
     // Authority
     //
