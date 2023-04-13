@@ -98,13 +98,13 @@ impl SBTRegistry for Contract {
     }
 
     /// Query sbt tokens issued by a given contract.
-    /// If `from_index` is not specified, then `from_index` should be assumed
+    /// If `from_token` is not specified, then `from_token` should be assumed
     /// to be the first valid token id.
     /// If limit is not specified, default is used: 100.
     fn sbt_tokens(
         &self,
         ctr: AccountId,
-        from_index: Option<u64>,
+        from_token: Option<u64>,
         limit: Option<u32>,
     ) -> Vec<Token> {
         vec![mock_token_str(1, "alice.near")]

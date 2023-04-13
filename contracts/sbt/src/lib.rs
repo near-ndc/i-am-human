@@ -69,9 +69,9 @@ pub trait SBTRegistry {
     ) -> u64;
 
     /// Query sbt tokens issued by a given contract.
-    /// If `from_index` is not specified, then `from_index` should be assumed
+    /// If `from_token` is not specified, then `from_token` should be assumed
     /// to be the first valid token id.
-    fn sbt_tokens(&self, ctr: AccountId, from_index: Option<u64>, limit: Option<u32>)
+    fn sbt_tokens(&self, ctr: AccountId, from_token: Option<u64>, limit: Option<u32>)
         -> Vec<Token>;
 
     /// Query SBT tokens by owner
@@ -113,7 +113,7 @@ pub trait SBTRegistry {
     fn sbt_recover(&mut self, from: AccountId, to: AccountId);
 
     /// sbt_renew will update the expire time of provided tokens.
-    /// `expires_at` is a unix timestamp (in seconds).
+    /// `expires_at` is a unix timestamp (in miliseconds).
     /// Must be called by an SBT contract.
     /// Must emit `Renew` event.
     fn sbt_renew(&mut self, tokens: Vec<TokenId>, expires_at: u64);
