@@ -12,7 +12,8 @@ mod storage;
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
-    pub admin: AccountId,
+    /// Registry admin, expected to be a DAO.
+    pub authority: AccountId,
 
     /// registry of approved SBT contracts to issue tokens
     pub sbt_contracts: UnorderedMap<AccountId, CtrId>,
@@ -34,9 +35,9 @@ pub struct Contract {
 #[near_bindgen]
 impl Contract {
     #[init]
-    pub fn new(admin: AccountId) -> Self {
+    pub fn new(authority: AccountId) -> Self {
         Self {
-            admin,
+            authority,
             sbt_contracts: UnorderedMap::new(StorageKey::SbtContracts),
             ctr_id_map: LookupMap::new(StorageKey::SbtContractsRev),
             banlist: UnorderedSet::new(StorageKey::Banlist),
@@ -103,12 +104,12 @@ impl Contract {
     }
 
     //
-    // Admin
+    // Authority
     //
 
     /// returns false if the `issuer` contract was already registered.
     pub fn admin_add_sbt_issuer(&mut self, issuer: AccountId) -> bool {
-        self.assert_admin();
+        self.assert_authority();
         let previous = self.sbt_contracts.insert(&issuer, &self.next_ctr_id);
         self.ctr_id_map.insert(&self.next_ctr_id, &issuer);
         self.next_ctr_id += 1;
@@ -156,8 +157,11 @@ impl Contract {
         require!(self.sbt_contracts.get(contract).is_some())
     }
 
-    pub(crate) fn assert_admin(&self) {
-        require!(self.admin == env::predecessor_account_id(), "not an admin")
+    pub(crate) fn assert_authority(&self) {
+        require!(
+            self.authority == env::predecessor_account_id(),
+            "not an admin"
+        )
     }
 }
 
