@@ -15,6 +15,7 @@ pub enum StorageKey {
     BalancesMap { owner: AccountId },
     CtrTokens,
     NextTokenId,
+    OngoingSoultTx,
 }
 
 /// contract token id used for collection indexing

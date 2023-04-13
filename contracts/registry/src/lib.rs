@@ -27,6 +27,7 @@ pub struct Contract {
     /// map of SBT contract -> next available token_id
     pub(crate) next_token_ids: LookupMap<CtrId, TokenId>,
     pub(crate) next_ctr_id: CtrId,
+    pub(crate) ongoing_soul_tx: LookupMap<AccountId, CtrTokenId>,
 }
 
 // Implement the contract structure
@@ -43,6 +44,7 @@ impl Contract {
             ctr_tokens: LookupMap::new(StorageKey::CtrTokens),
             next_token_ids: LookupMap::new(StorageKey::NextTokenId),
             next_ctr_id: 1,
+            ongoing_soul_tx: LookupMap::new(StorageKey::OngoingSoultTx),
         }
     }
 
@@ -52,6 +54,28 @@ impl Contract {
 
     pub fn sbt_contracts(&self) -> Vec<AccountId> {
         self.sbt_contracts.keys().collect()
+    }
+
+    //
+    // Transactions
+    //
+
+    /// Transfers atomically all SBT tokens from one account to another account.
+    /// The caller must be an SBT holder and the `to` must not be a banned account.
+    /// Returns the lastly moved SBT identified by it's contract issuer and token ID as well
+    /// a boolean: `true` if the whole process has finished, `false` when the process has not
+    /// finished and should be continued by a subsequent call.
+    /// User must keeps calling `sbt_soul_transfer` until `true` is returned.
+    /// Must emit `SoulTransfer` event.
+    #[payable]
+    pub fn sbt_soul_transfer(&mut self, to: AccountId) -> (AccountId, TokenId, bool) {
+        let start = self.ongoing_soul_tx.get(&to).unwrap_or(CtrTokenId {
+            ctr_id: 0,
+            token: 0,
+        });
+        println!("Starting at: {} {}", start.ctr_id, start.token);
+        env::panic_str("not implemented");
+        // TODO: lock `to` account if needed
     }
 
     //

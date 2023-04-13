@@ -123,12 +123,6 @@ pub trait SBTRegistry {
     /// Must emit one of `Revoke` or `Burn` event.
     /// Returns true if a token is a valid, active SBT. Otherwise returns false.
     fn sbt_revoke(&mut self, token: u64) -> bool;
-
-    /// Transfers atomically all SBT tokens from one account to another account.
-    /// The caller must be an SBT holder and the `to` must not be a banned account.
-    /// Must emit `Revoke` event.
-    // #[payable]
-    fn sbt_soul_transfer(&mut self, to: AccountId) -> bool;
 }
 
 // ext_registry is a helper to make cross contract registry calls

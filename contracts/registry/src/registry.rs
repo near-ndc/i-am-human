@@ -289,12 +289,4 @@ impl SBTRegistry for Contract {
         self.assert_issuer(&ctr);
         env::panic_str("not implemented");
     }
-
-    /// Transfers atomically all SBT tokens from one account to another account.
-    /// The caller must be an SBT holder and the `to` must not be a banned account.
-    /// Must emit `Revoke` event.
-    // #[payable]
-    fn sbt_soul_transfer(&mut self, to: AccountId) -> bool {
-        env::panic_str("not implemented");
-    }
 }
