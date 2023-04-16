@@ -137,17 +137,6 @@ impl Contract {
         self.sbt_contracts.get(ctr).expect("SBT Issuer not found")
     }
 
-    // pub(crate) fn get_user_balances(&self, user: &AccountId) -> UnorderedMap<CtrClassId, TokenId> {
-    //     self.balances
-    //         .get(user)
-    //         // TODO: verify how this works
-    //         .unwrap_or_else(|| {
-    //             UnorderedMap::new(StorageKey::BalancesMap {
-    //                 owner: user.clone(),
-    //             })
-    //         })
-    // }
-
     /// updates the internal token counter based on how many tokens we want to mint (num), and
     /// returns the first valid TokenId for newly minted tokens.
     pub(crate) fn next_token_id(&mut self, ctr_id: CtrId, num: u64) -> TokenId {
@@ -183,7 +172,7 @@ mod tests {
     use near_sdk::{testing_env, VMContext};
     use sbt::*;
 
-    use pretty_assertions::{assert_eq, assert_ne};
+    use pretty_assertions::assert_eq;
 
     use super::*;
 
@@ -355,26 +344,20 @@ mod tests {
         assert_eq!(0, ctr.sbt_supply_by_owner(bob(), issuer3(), None));
         assert_eq!(0, ctr.sbt_supply_by_owner(issuer2(), issuer2(), None));
 
-        assert_eq!(
-            ctr.sbt(issuer2(), 1).unwrap(),
-            mk_token(1, alice(), m1_1.clone())
-        );
-        assert_eq!(
-            ctr.sbt(issuer2(), 2).unwrap(),
-            mk_token(2, bob(), m1_2.clone())
-        );
-        assert_eq!(
-            ctr.sbt(issuer2(), 3).unwrap(),
-            mk_token(3, a_user(), m1_1.clone())
-        );
-        assert_eq!(
-            ctr.sbt(issuer2(), 4).unwrap(),
-            mk_token(4, alice(), m2_1.clone())
-        );
-        assert_eq!(
-            ctr.sbt(issuer3(), 1).unwrap(),
-            mk_token(1, alice(), m1_1.clone())
-        );
+        let t2_all = vec![
+            mk_token(1, alice(), m1_1.clone()),
+            mk_token(2, bob(), m1_2.clone()),
+            mk_token(3, a_user(), m1_1.clone()),
+            mk_token(4, alice(), m2_1.clone()),
+            mk_token(5, alice(), m4_1.clone()),
+        ];
+        let t3_1 = mk_token(1, alice(), m1_1.clone());
+
+        assert_eq!(ctr.sbt(issuer2(), 1).unwrap(), t2_all[0]);
+        assert_eq!(ctr.sbt(issuer2(), 2).unwrap(), t2_all[1]);
+        assert_eq!(ctr.sbt(issuer2(), 3).unwrap(), t2_all[2]);
+        assert_eq!(ctr.sbt(issuer2(), 4).unwrap(), t2_all[3]);
+        assert_eq!(ctr.sbt(issuer3(), 1).unwrap(), t3_1);
 
         // Token checks
 
@@ -441,5 +424,17 @@ mod tests {
             ctr.sbt_tokens_by_owner(alice(), Some(issuer3()), Some(1), None),
             vec![alice_issuer3]
         );
+
+        // check by all tokens
+        assert_eq!(
+            ctr.sbt_tokens(issuer1(), Some(1), None),
+            vec![mk_token(1, a_user(), m1_1.clone())]
+        );
+        assert_eq!(ctr.sbt_tokens(issuer2(), None, None), t2_all,);
+        assert_eq!(ctr.sbt_tokens(issuer2(), None, Some(1)), t2_all[..1]);
+        assert_eq!(ctr.sbt_tokens(issuer2(), None, Some(2)), t2_all[..2]);
+        assert_eq!(ctr.sbt_tokens(issuer2(), Some(2), Some(2)), t2_all[1..3]);
+        assert_eq!(ctr.sbt_tokens(issuer2(), Some(5), Some(5)), t2_all[4..5]);
+        assert_eq!(ctr.sbt_tokens(issuer2(), Some(6), Some(2)), vec![]);
     }
 }

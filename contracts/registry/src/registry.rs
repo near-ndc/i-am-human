@@ -11,32 +11,6 @@ use sbt::*;
 
 const MAX_LIMIT: u32 = 1000;
 
-fn new_acc(a: &str) -> AccountId {
-    AccountId::new_unchecked(a.to_string())
-}
-
-fn mock_token_str(token: TokenId, owner: &str) -> Token {
-    mock_token(token, new_acc(owner))
-}
-
-fn mock_token(token: TokenId, owner: AccountId) -> Token {
-    Token {
-        token,
-        owner,
-        metadata: mock_metadata(),
-    }
-}
-
-fn mock_metadata() -> TokenMetadata {
-    TokenMetadata {
-        class: 100,
-        issued_at: Some(1680513165),
-        expires_at: Some(1685776365),
-        reference: None,      //Some("https://somelink.com/mydoc".to_owned()),
-        reference_hash: None, // Some(vec![232, 200, 7, 74, 151, 212, 112, 108, 102, 57, 160, 89, 106, 36, 58, 72, 115, 35, 35, 116, 169, 31, 38, 54, 155, 44, 149, 74, 78, 145, 209, 35,] .into(),),
-    }
-}
-
 // Implement the contract structure
 #[near_bindgen]
 impl SBTRegistry for Contract {
@@ -103,15 +77,37 @@ impl SBTRegistry for Contract {
     /// Query sbt tokens issued by a given contract.
     /// If `from_token` is not specified, then `from_token` should be assumed
     /// to be the first valid token id.
-    /// If limit is not specified, default is used: 100.
+    /// The function search tokens sequentially. So, if empty list is returned, then a user
+    /// should continue querying the contract by setting `from_token = previous from_token + limit`
+    /// until the `from_token > sbt_supply(ctr)`.
+    /// If limit is not specified, default is used: 1000.
     fn sbt_tokens(
         &self,
         ctr: AccountId,
         from_token: Option<u64>,
         limit: Option<u32>,
     ) -> Vec<Token> {
-        // TODO
-        vec![mock_token_str(1, "alice.near")]
+        let ctr_id = match self.sbt_contracts.get(&ctr) {
+            None => return vec![],
+            Some(i) => i,
+        };
+        let from_token = from_token.unwrap_or(1);
+        require!(from_token > 0, "from_token, if set, must be >= 1");
+        let limit = limit.unwrap_or(MAX_LIMIT);
+        require!(limit > 0, "limit must be bigger than 0");
+        let mut max_id = self.next_token_ids.get(&ctr_id).unwrap_or(0);
+        if max_id < from_token {
+            return vec![];
+        }
+        max_id = std::cmp::min(max_id + 1, from_token + limit as u64);
+
+        let mut resp = Vec::new();
+        for token in from_token..max_id {
+            if let Some(t) = self.ctr_tokens.get(&CtrTokenId { ctr_id, token }) {
+                resp.push(t.to_token(token))
+            }
+        }
+        return resp;
     }
 
     /// Query SBT tokens by owner
@@ -138,6 +134,7 @@ impl SBTRegistry for Contract {
 
         let ctr_id = match ctr {
             None => 0,
+            // use self.sbt_contracts.get when changing to query by ctr_start
             Some(addr) => self.ctr_id(&addr),
         };
         let mut from_class = from_class.unwrap_or(0);
