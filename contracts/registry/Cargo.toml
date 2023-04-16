@@ -13,3 +13,8 @@ near-sdk.workspace = true
 serde_json.workspace = true
 
 sbt = { path = "../sbt" }
+
+
+[dev-dependencies]
+pretty_assertions = "^1.3"
+# assertables = "^7"

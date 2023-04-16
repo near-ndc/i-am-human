@@ -2,10 +2,12 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use near_sdk::{near_bindgen, AccountId};
+use near_sdk::{env::account_balance, near_bindgen, AccountId};
 
 use crate::*;
 use sbt::*;
+
+const MAX_LIMIT: u32 = 1000;
 
 fn new_acc(a: &str) -> AccountId {
     AccountId::new_unchecked(a.to_string())
@@ -74,31 +76,23 @@ impl SBTRegistry for Contract {
             return 0;
         }
 
-        // TODO: optimize
-        let balances = self.get_user_balances(&account);
         let ctr_id = match self.sbt_contracts.get(&ctr) {
+            // early return if the class is not registered
             None => return 0,
             Some(id) => id,
         };
-
         if let Some(class_id) = class {
-            return match balances.get(&CtrClassId { ctr_id, class_id }) {
-                None => 0,
-                _ => 1,
+            return match self.balances.contains_key(&BalanceKey {
+                owner: account,
+                ctr_id,
+                class_id,
+            }) {
+                true => 1,
+                _ => 0,
             };
         }
 
-        let mut total = 0;
-        for (key, token_id) in balances.iter() {
-            if key.ctr_id > ctr_id {
-                break;
-            }
-            if key.ctr_id < ctr_id {
-                continue;
-            }
-            total += 1;
-        }
-        return total;
+        return self.supply_by_owner.get(&(account, ctr_id)).unwrap_or(0);
     }
 
     /// Query sbt tokens issued by a given contract.
@@ -111,6 +105,7 @@ impl SBTRegistry for Contract {
         from_token: Option<u64>,
         limit: Option<u32>,
     ) -> Vec<Token> {
+        // TODO
         vec![mock_token_str(1, "alice.near")]
     }
 
@@ -136,28 +131,34 @@ impl SBTRegistry for Contract {
             return vec![];
         }
 
-        let balances = self.get_user_balances(&account);
-        // TODO: check how we can do an index scan
-        // let empty_acc_id = AccountId::new_unchecked("".to_string());
-        let mut resp = Vec::new();
-        let mut tokens = Vec::new();
-        let mut prev_ctr = 0;
-
         let ctr_id = match ctr {
             None => 0,
             Some(addr) => self.ctr_id(&addr),
         };
-        let from_class = from_class.unwrap_or(0);
-        let mut limit = limit.unwrap_or(100);
+        let mut from_class = from_class.unwrap_or(0);
+        // iter_from starts from exclusive "left end"
+        if from_class != 0 {
+            from_class -= 1;
+        }
+        let mut limit = limit.unwrap_or(MAX_LIMIT);
         require!(limit > 0, "limit must be bigger than 0");
 
-        // TODO: optimize with exact ctr_id check
-        // - maybe we can change the layout and use native storage access.
+        let mut resp = Vec::new();
+        let mut tokens = Vec::new();
+        let mut prev_ctr = ctr_id;
 
-        for (key, token_id) in balances.iter() {
-            // TODO: remove debug
-            println!("{:?} {}", key, token_id);
+        for (key, token_id) in self
+            .balances
+            .iter_from(balance_key(account.clone(), ctr_id, from_class))
+            .take(limit as usize)
+        {
+            if key.owner != account {
+                break;
+            }
             if prev_ctr != key.ctr_id {
+                if ctr_id != 0 {
+                    break;
+                }
                 if tokens.len() > 0 {
                     let issuer = self
                         .ctr_id_map
@@ -167,14 +168,6 @@ impl SBTRegistry for Contract {
                     tokens = Vec::new();
                 }
                 prev_ctr = key.ctr_id;
-            }
-            if ctr_id != 0 && key.ctr_id != ctr_id {
-                println!(">>>> continue");
-                continue;
-            }
-            if from_class != 0 && key.class_id != from_class {
-                println!(">>>> continue2");
-                continue;
             }
             let t = self
                 .ctr_tokens
@@ -230,10 +223,10 @@ impl SBTRegistry for Contract {
         for (owner, metadatas) in token_spec {
             for metadata in metadatas {
                 self.assert_not_banned(&owner);
-                let mut balances = self.get_user_balances(&owner);
-                // println!("balances: {:?}", balances);
-                let prev = balances.insert(
-                    &CtrClassId {
+
+                let prev = self.balances.insert(
+                    &BalanceKey {
+                        owner: owner.clone(),
                         ctr_id,
                         class_id: metadata.class,
                     },
@@ -243,9 +236,6 @@ impl SBTRegistry for Contract {
                     prev.is_none(),
                     format! {"{} already has SBT of class {}", &owner, metadata.class}
                 );
-                // TODO: self.balances.insert...
-                // todo: group and insert only at the end
-                self.balances.insert(&owner, &balances);
 
                 self.ctr_tokens.insert(
                     &CtrTokenId { ctr_id, token },
@@ -254,6 +244,10 @@ impl SBTRegistry for Contract {
                         metadata: metadata.into(),
                     },
                 );
+                // TODO use struct instead of pair
+                let skey = (owner.clone(), ctr_id);
+                let sowner = self.supply_by_owner.get(&skey).unwrap_or(0) + 1;
+                self.supply_by_owner.insert(&skey, &sowner);
 
                 token += 1;
             }

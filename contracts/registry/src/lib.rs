@@ -1,5 +1,5 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LookupMap, UnorderedMap, UnorderedSet};
+use near_sdk::collections::{LookupMap, TreeMap, UnorderedMap, UnorderedSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
 
 use sbt::{emit_soul_transfer, TokenData, TokenId};
@@ -21,8 +21,9 @@ pub struct Contract {
     /// registry of blacklisted accounts by issuer
     pub banlist: UnorderedSet<AccountId>,
 
+    pub(crate) supply_by_owner: LookupMap<(AccountId, CtrId), u64>,
     /// maps user account to list of token source info
-    pub(crate) balances: LookupMap<AccountId, UnorderedMap<CtrClassId, TokenId>>,
+    pub(crate) balances: TreeMap<BalanceKey, TokenId>,
     /// maps SBT contract -> map of tokens
     pub(crate) ctr_tokens: LookupMap<CtrTokenId, TokenData>,
     /// map of SBT contract -> next available token_id
@@ -41,7 +42,8 @@ impl Contract {
             sbt_contracts: UnorderedMap::new(StorageKey::SbtContracts),
             ctr_id_map: LookupMap::new(StorageKey::SbtContractsRev),
             banlist: UnorderedSet::new(StorageKey::Banlist),
-            balances: LookupMap::new(StorageKey::Balances),
+            supply_by_owner: LookupMap::new(StorageKey::Supply),
+            balances: TreeMap::new(StorageKey::Balances),
             ctr_tokens: LookupMap::new(StorageKey::CtrTokens),
             next_token_ids: LookupMap::new(StorageKey::NextTokenId),
             next_ctr_id: 1,
@@ -131,16 +133,16 @@ impl Contract {
         self.sbt_contracts.get(ctr).expect("SBT Issuer not found")
     }
 
-    pub(crate) fn get_user_balances(&self, user: &AccountId) -> UnorderedMap<CtrClassId, TokenId> {
-        self.balances
-            .get(user)
-            // TODO: verify how this works
-            .unwrap_or_else(|| {
-                UnorderedMap::new(StorageKey::BalancesMap {
-                    owner: user.clone(),
-                })
-            })
-    }
+    // pub(crate) fn get_user_balances(&self, user: &AccountId) -> UnorderedMap<CtrClassId, TokenId> {
+    //     self.balances
+    //         .get(user)
+    //         // TODO: verify how this works
+    //         .unwrap_or_else(|| {
+    //             UnorderedMap::new(StorageKey::BalancesMap {
+    //                 owner: user.clone(),
+    //             })
+    //         })
+    // }
 
     /// updates the internal token counter based on how many tokens we want to mint (num), and
     /// returns the first valid TokenId for newly minted tokens.
@@ -173,12 +175,13 @@ impl Contract {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::{testing_env, VMContext};
-    use sbt::{ClassId, SBTRegistry, TokenMetadata};
-
     use sbt::*;
+
+    use pretty_assertions::{assert_eq, assert_ne};
+
+    use super::*;
 
     // TODO
     #[allow(dead_code)]
@@ -187,20 +190,28 @@ mod tests {
         AccountId::new_unchecked("alice.near".to_string())
     }
 
+    fn a_user() -> AccountId {
+        AccountId::new_unchecked("alice.nea".to_string())
+    }
+
     fn bob() -> AccountId {
         AccountId::new_unchecked("bob.near".to_string())
     }
 
     fn issuer1() -> AccountId {
-        AccountId::new_unchecked("sbt1.near".to_string())
+        AccountId::new_unchecked("sbt.ne".to_string())
     }
 
     fn issuer2() -> AccountId {
-        AccountId::new_unchecked("sbt2.near".to_string())
+        AccountId::new_unchecked("sbt.nea".to_string())
     }
 
     fn issuer3() -> AccountId {
-        AccountId::new_unchecked("sbt3.near".to_string())
+        AccountId::new_unchecked("sbt.near".to_string())
+    }
+
+    fn issuer4() -> AccountId {
+        AccountId::new_unchecked("sbt4.near".to_string())
     }
 
     fn admin() -> AccountId {
@@ -242,9 +253,47 @@ mod tests {
         let mut ctr = Contract::new(admin());
         ctr.admin_add_sbt_issuer(issuer1());
         ctr.admin_add_sbt_issuer(issuer2());
+        ctr.admin_add_sbt_issuer(issuer3());
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
+    }
+
+    #[test]
+    fn mint_simple() {
+        let (_, mut ctr) = setup(&issuer1());
+        let m1_1 = mk_metadata(1, Some(START + 10));
+
+        let minted_ids = ctr.sbt_mint(vec![
+            (alice(), vec![m1_1.clone()]),
+            (bob(), vec![m1_1.clone()]),
+        ]);
+        assert_eq!(minted_ids, vec![1, 2]);
+        assert_eq!(2, ctr.sbt_supply(issuer1()));
+        assert_eq!(0, ctr.sbt_supply(issuer2()));
+
+        let sbt1_1 = ctr.sbt(issuer1(), 1).unwrap();
+        assert_eq!(sbt1_1, mk_token(1, alice(), m1_1.clone()));
+        let sbt1_2 = ctr.sbt(issuer1(), 2).unwrap();
+        assert_eq!(sbt1_2, mk_token(2, bob(), m1_1.clone()));
+        assert!(ctr.sbt(issuer2(), 1).is_none());
+        assert!(ctr.sbt(issuer1(), 3).is_none());
+
+        assert_eq!(1, ctr.sbt_supply_by_owner(alice(), issuer1(), None));
+        assert_eq!(1, ctr.sbt_supply_by_owner(alice(), issuer1(), Some(1)));
+        assert_eq!(0, ctr.sbt_supply_by_owner(alice(), issuer1(), Some(2)));
+
+        assert_eq!(1, ctr.sbt_supply_by_owner(bob(), issuer1(), None));
+        assert_eq!(1, ctr.sbt_supply_by_owner(bob(), issuer1(), Some(1)));
+        assert_eq!(0, ctr.sbt_supply_by_owner(bob(), issuer1(), Some(2)));
+
+        let alice_sbts = ctr.sbt_tokens_by_owner(alice(), None, None, None);
+        let expected = vec![(issuer1(), vec![mk_owned_token(1, m1_1.clone())])];
+        assert_eq!(alice_sbts, expected);
+
+        let bob_sbts = ctr.sbt_tokens_by_owner(bob(), None, None, None);
+        let expected = vec![(issuer1(), vec![mk_owned_token(2, m1_1.clone())])];
+        assert_eq!(bob_sbts, expected);
     }
 
     #[test]
@@ -255,61 +304,118 @@ mod tests {
         let m2_1 = mk_metadata(2, Some(START + 14));
         let m4_1 = mk_metadata(4, Some(START + 16));
 
+        // mint an SBT to a user with same prefix as alice
+        let minted_ids = ctr.sbt_mint(vec![(a_user(), vec![m1_1.clone()])]);
+        assert_eq!(minted_ids, vec![1]);
+
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
         let minted_ids = ctr.sbt_mint(vec![
             (alice(), vec![m1_1.clone()]),
             (bob(), vec![m1_2.clone()]),
+            (a_user(), vec![m1_1.clone()]),
             (alice(), vec![m2_1.clone()]),
         ]);
-        assert_eq!(minted_ids, vec![1, 2, 3]);
+        assert_eq!(minted_ids, vec![1, 2, 3, 4]);
 
         // mint again for Alice
         let minted_ids = ctr.sbt_mint(vec![(alice(), vec![m4_1.clone()])]);
-        assert_eq!(minted_ids, vec![4]);
+        assert_eq!(minted_ids, vec![5]);
 
         // change the issuer and mint new tokens for alice
-        ctx.predecessor_account_id = issuer2();
+        ctx.predecessor_account_id = issuer3();
         testing_env!(ctx.clone());
         let minted_ids = ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m2_1.clone()])]);
         // since we minted with different issuer, the new SBT should start with 1
         assert_eq!(minted_ids, vec![1, 2]);
 
-        assert_eq!(4, ctr.sbt_supply(issuer1()));
-        assert_eq!(2, ctr.sbt_supply(issuer2()));
-        assert_eq!(0, ctr.sbt_supply(issuer3()));
+        assert_eq!(1, ctr.sbt_supply(issuer1()));
+        assert_eq!(5, ctr.sbt_supply(issuer2()));
+        assert_eq!(2, ctr.sbt_supply(issuer3()));
+        assert_eq!(0, ctr.sbt_supply(issuer4()));
 
-        assert_eq!(3, ctr.sbt_supply_by_owner(alice(), issuer1(), None));
-        assert_eq!(2, ctr.sbt_supply_by_owner(alice(), issuer2(), None));
-        assert_eq!(1, ctr.sbt_supply_by_owner(bob(), issuer1(), None));
-        assert_eq!(0, ctr.sbt_supply_by_owner(bob(), issuer2(), None));
-        assert_eq!(0, ctr.sbt_supply_by_owner(issuer1(), issuer1(), None));
+        assert_eq!(3, ctr.sbt_supply_by_owner(alice(), issuer2(), None));
+        assert_eq!(2, ctr.sbt_supply_by_owner(alice(), issuer3(), None));
+        assert_eq!(1, ctr.sbt_supply_by_owner(bob(), issuer2(), None));
+        assert_eq!(0, ctr.sbt_supply_by_owner(bob(), issuer3(), None));
+        assert_eq!(0, ctr.sbt_supply_by_owner(issuer2(), issuer2(), None));
 
-        let sbt1_1 = ctr.sbt(issuer1(), 1).unwrap();
+        let sbt1_1 = ctr.sbt(issuer2(), 1).unwrap();
         assert_eq!(sbt1_1, mk_token(1, alice(), m1_1.clone()));
-        let sbt1_2 = ctr.sbt(issuer1(), 2).unwrap();
+        let sbt1_2 = ctr.sbt(issuer2(), 2).unwrap();
         assert_eq!(sbt1_2, mk_token(2, bob(), m1_2.clone()));
-        let sbt1_3 = ctr.sbt(issuer1(), 3).unwrap();
-        assert_eq!(sbt1_3, mk_token(3, alice(), m2_1.clone()));
+        let sbt1_3 = ctr.sbt(issuer2(), 3).unwrap();
+        assert_eq!(sbt1_3, mk_token(3, a_user(), m1_1.clone()));
+        let sbt1_4 = ctr.sbt(issuer2(), 4).unwrap();
+        assert_eq!(sbt1_4, mk_token(4, alice(), m2_1.clone()));
 
-        let sbt2_1 = ctr.sbt(issuer2(), 1).unwrap();
+        let sbt2_1 = ctr.sbt(issuer3(), 1).unwrap();
         assert_eq!(sbt2_1, mk_token(1, alice(), m1_1.clone()));
 
-        let alice_sbts = ctr.sbt_tokens_by_owner(alice(), None, None, None);
+        // Token checks
+
+        let a_tokens = vec![
+            (issuer1(), vec![mk_owned_token(1, m1_1.clone())]),
+            (issuer2(), vec![mk_owned_token(3, m1_1.clone())]),
+        ];
         assert_eq!(
-            alice_sbts,
+            &ctr.sbt_tokens_by_owner(a_user(), None, None, None),
+            &a_tokens
+        );
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(a_user(), Some(issuer1()), None, None),
+            vec![a_tokens[0].clone()],
+        );
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(a_user(), Some(issuer2()), None, None),
+            vec![a_tokens[1].clone()]
+        );
+
+        let alice_issuer2 = (
+            issuer2(),
             vec![
-                (
-                    issuer1(),
-                    vec![
-                        mk_owned_token(1, m1_1.clone()),
-                        mk_owned_token(3, m2_1.clone()),
-                        mk_owned_token(4, m4_1.clone())
-                    ]
-                ),
-                (
-                    issuer2(),
-                    vec!(mk_owned_token(1, m1_1), mk_owned_token(2, m2_1))
-                )
-            ]
+                mk_owned_token(1, m1_1.clone()),
+                mk_owned_token(4, m2_1.clone()),
+                mk_owned_token(5, m4_1.clone()),
+            ],
+        );
+        let alice_issuer3 = (
+            issuer3(),
+            vec![mk_owned_token(1, m1_1.clone()), mk_owned_token(2, m2_1)],
+        );
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice(), None, None, None),
+            vec![alice_issuer2.clone(), alice_issuer3.clone()]
+        );
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None),
+            vec![alice_issuer2.clone()]
+        );
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer3()), None, None),
+            vec![alice_issuer3.clone()]
+        );
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), Some(1), None),
+            vec![alice_issuer2]
+        );
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), Some(4), None),
+            vec![(issuer2(), vec![mk_owned_token(5, m4_1.clone())])]
+        );
+
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), Some(5), None),
+            vec![]
+        );
+
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), Some(5), None),
+            vec![]
+        );
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer3()), Some(1), None),
+            vec![alice_issuer3]
         );
     }
 }

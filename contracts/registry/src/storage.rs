@@ -11,8 +11,8 @@ pub enum StorageKey {
     SbtContracts,
     SbtContractsRev,
     Banlist,
+    Supply,
     Balances,
-    BalancesMap { owner: AccountId },
     CtrTokens,
     NextTokenId,
     OngoingSoultTx,
@@ -25,14 +25,37 @@ pub(crate) struct CtrTokenId {
     pub token: TokenId,
 }
 
-// TODO: remove debug
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
-pub(crate) struct CtrClassId {
+#[derive(BorshSerialize, BorshDeserialize, Eq, Ord, PartialEq, PartialOrd, Clone)]
+pub(crate) struct BalanceKey {
+    pub owner: AccountId,
     pub ctr_id: CtrId,
     pub class_id: ClassId,
 }
 
-// TODO: storage check
+pub(crate) fn balance_key(owner: AccountId, ctr_id: CtrId, class_id: ClassId) -> BalanceKey {
+    BalanceKey {
+        owner,
+        ctr_id,
+        class_id,
+    }
+}
+
+// macro_rules! borsh_be_integer {
+//     ($type: ident) => {
+//         impl BorshSerialize for $type {
+//             #[inline]
+//             fn serialize<W: Write>(&self, writer: &mut W) -> Result<()> {
+//                 let bytes = self.to_be_bytes();
+//                 writer.write_all(&bytes)
+//             }
+//         }
+//     };
+// }
+
+// TODO: implement for
+// borsh_be_integer!(CtrId);
+
+// -----------
 //
 // use near_sdk::CryptoHash;
 //
