@@ -2,6 +2,8 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
+use std::collections::HashMap;
+
 use near_sdk::{env::account_balance, near_bindgen, AccountId};
 
 use crate::*;
@@ -55,13 +57,16 @@ impl SBTRegistry for Contract {
             None => return 0,
             Some(id) => id,
         };
-        self.next_token_ids.get(&ctr_id).unwrap_or(0)
+        self.supply_by_ctr.get(&ctr_id).unwrap_or(0)
     }
 
     /// returns total amount of tokens of given class minted by this contract
     fn sbt_supply_by_class(&self, ctr: AccountId, class: ClassId) -> u64 {
-        // TODO: maybe remove, or make it optional?
-        2
+        let ctr_id = match self.sbt_contracts.get(&ctr) {
+            None => return 0,
+            Some(id) => id,
+        };
+        self.supply_by_class.get(&(ctr_id, class)).unwrap_or(0)
     }
 
     /// returns total supply of SBTs for a given owner.
@@ -219,8 +224,10 @@ impl SBTRegistry for Contract {
         }
         let mut token = self.next_token_id(ctr_id, num_tokens);
         let ret_token_ids = (token..token + num_tokens).collect();
+        let mut supply_by_class = HashMap::new();
 
         for (owner, metadatas) in token_spec {
+            let metadatas_len = metadatas.len();
             for metadata in metadatas {
                 self.assert_not_banned(&owner);
 
@@ -237,6 +244,14 @@ impl SBTRegistry for Contract {
                     format! {"{} already has SBT of class {}", &owner, metadata.class}
                 );
 
+                // update supply by class
+                match supply_by_class.get_mut(&metadata.class) {
+                    None => {
+                        supply_by_class.insert(metadata.class, 1);
+                    }
+                    Some(s) => *s = *s + 1,
+                };
+
                 self.ctr_tokens.insert(
                     &CtrTokenId { ctr_id, token },
                     &TokenData {
@@ -244,14 +259,22 @@ impl SBTRegistry for Contract {
                         metadata: metadata.into(),
                     },
                 );
-                // TODO use struct instead of pair
-                let skey = (owner.clone(), ctr_id);
-                let sowner = self.supply_by_owner.get(&skey).unwrap_or(0) + 1;
-                self.supply_by_owner.insert(&skey, &sowner);
-
                 token += 1;
             }
+            // update supply by owner
+            let skey = (owner, ctr_id);
+            let sowner = self.supply_by_owner.get(&skey).unwrap_or(0) + metadatas_len as u64;
+            self.supply_by_owner.insert(&skey, &sowner);
         }
+
+        for (cls, new_supply) in supply_by_class {
+            let key = (ctr_id, cls);
+            let s = self.supply_by_class.get(&key).unwrap_or(0) + new_supply;
+            self.supply_by_class.insert(&key, &s);
+        }
+
+        let new_supply = self.supply_by_ctr.get(&ctr_id).unwrap_or(0) + num_tokens;
+        self.supply_by_ctr.insert(&ctr_id, &new_supply);
 
         // TODO: emit events
 

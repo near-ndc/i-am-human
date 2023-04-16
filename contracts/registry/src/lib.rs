@@ -2,7 +2,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, TreeMap, UnorderedMap, UnorderedSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
 
-use sbt::{emit_soul_transfer, TokenData, TokenId};
+use sbt::{emit_soul_transfer, ClassId, TokenData, TokenId};
 
 use crate::storage::*;
 
@@ -22,6 +22,8 @@ pub struct Contract {
     pub banlist: UnorderedSet<AccountId>,
 
     pub(crate) supply_by_owner: LookupMap<(AccountId, CtrId), u64>,
+    pub(crate) supply_by_class: LookupMap<(CtrId, ClassId), u64>,
+    pub(crate) supply_by_ctr: LookupMap<CtrId, u64>,
     /// maps user account to list of token source info
     pub(crate) balances: TreeMap<BalanceKey, TokenId>,
     /// maps SBT contract -> map of tokens
@@ -42,7 +44,9 @@ impl Contract {
             sbt_contracts: UnorderedMap::new(StorageKey::SbtContracts),
             ctr_id_map: LookupMap::new(StorageKey::SbtContractsRev),
             banlist: UnorderedSet::new(StorageKey::Banlist),
-            supply_by_owner: LookupMap::new(StorageKey::Supply),
+            supply_by_owner: LookupMap::new(StorageKey::SupplyByOwner),
+            supply_by_class: LookupMap::new(StorageKey::SupplyByClass),
+            supply_by_ctr: LookupMap::new(StorageKey::SupplyByCtr),
             balances: TreeMap::new(StorageKey::Balances),
             ctr_tokens: LookupMap::new(StorageKey::CtrTokens),
             next_token_ids: LookupMap::new(StorageKey::NextTokenId),
@@ -329,10 +333,21 @@ mod tests {
         // since we minted with different issuer, the new SBT should start with 1
         assert_eq!(minted_ids, vec![1, 2]);
 
-        assert_eq!(1, ctr.sbt_supply(issuer1()));
-        assert_eq!(5, ctr.sbt_supply(issuer2()));
-        assert_eq!(2, ctr.sbt_supply(issuer3()));
-        assert_eq!(0, ctr.sbt_supply(issuer4()));
+        assert_eq!(ctr.sbt_supply_by_class(issuer1(), 0), 0);
+        assert_eq!(ctr.sbt_supply_by_class(issuer1(), 1), 1);
+        assert_eq!(ctr.sbt_supply_by_class(issuer1(), 2), 0);
+        assert_eq!(ctr.sbt_supply_by_class(issuer2(), 1), 3);
+        assert_eq!(ctr.sbt_supply_by_class(issuer2(), 2), 1);
+        assert_eq!(ctr.sbt_supply_by_class(issuer2(), 3), 0);
+        assert_eq!(ctr.sbt_supply_by_class(issuer2(), 4), 1);
+        assert_eq!(ctr.sbt_supply_by_class(issuer2(), 5), 0);
+        assert_eq!(ctr.sbt_supply_by_class(issuer3(), 1), 1);
+        assert_eq!(ctr.sbt_supply_by_class(issuer3(), 2), 1);
+
+        assert_eq!(ctr.sbt_supply(issuer1()), 1);
+        assert_eq!(ctr.sbt_supply(issuer2()), 5);
+        assert_eq!(ctr.sbt_supply(issuer3()), 2);
+        assert_eq!(ctr.sbt_supply(issuer4()), 0);
 
         assert_eq!(3, ctr.sbt_supply_by_owner(alice(), issuer2(), None));
         assert_eq!(2, ctr.sbt_supply_by_owner(alice(), issuer3(), None));
@@ -340,17 +355,26 @@ mod tests {
         assert_eq!(0, ctr.sbt_supply_by_owner(bob(), issuer3(), None));
         assert_eq!(0, ctr.sbt_supply_by_owner(issuer2(), issuer2(), None));
 
-        let sbt1_1 = ctr.sbt(issuer2(), 1).unwrap();
-        assert_eq!(sbt1_1, mk_token(1, alice(), m1_1.clone()));
-        let sbt1_2 = ctr.sbt(issuer2(), 2).unwrap();
-        assert_eq!(sbt1_2, mk_token(2, bob(), m1_2.clone()));
-        let sbt1_3 = ctr.sbt(issuer2(), 3).unwrap();
-        assert_eq!(sbt1_3, mk_token(3, a_user(), m1_1.clone()));
-        let sbt1_4 = ctr.sbt(issuer2(), 4).unwrap();
-        assert_eq!(sbt1_4, mk_token(4, alice(), m2_1.clone()));
-
-        let sbt2_1 = ctr.sbt(issuer3(), 1).unwrap();
-        assert_eq!(sbt2_1, mk_token(1, alice(), m1_1.clone()));
+        assert_eq!(
+            ctr.sbt(issuer2(), 1).unwrap(),
+            mk_token(1, alice(), m1_1.clone())
+        );
+        assert_eq!(
+            ctr.sbt(issuer2(), 2).unwrap(),
+            mk_token(2, bob(), m1_2.clone())
+        );
+        assert_eq!(
+            ctr.sbt(issuer2(), 3).unwrap(),
+            mk_token(3, a_user(), m1_1.clone())
+        );
+        assert_eq!(
+            ctr.sbt(issuer2(), 4).unwrap(),
+            mk_token(4, alice(), m2_1.clone())
+        );
+        assert_eq!(
+            ctr.sbt(issuer3(), 1).unwrap(),
+            mk_token(1, alice(), m1_1.clone())
+        );
 
         // Token checks
 
