@@ -1,8 +1,10 @@
+use std::collections::HashSet;
+
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, TreeMap, UnorderedMap, UnorderedSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
 
-use sbt::{emit_soul_transfer, ClassId, TokenData, TokenId};
+use sbt::{emit_soul_transfer, ClassId, SbtTokensEvent, TokenData, TokenId};
 
 use crate::storage::*;
 
@@ -109,11 +111,61 @@ impl Contract {
         env::panic_str("not implemented");
     }
 
-    // TODO
-    // pub fn sbt_burn(&mut self, ctr: AccountId, token: TokenId, memo: Option<String>) {
-    //     emit Burn
-    //     env::panic_str("not implemented");
-    // }
+    pub fn sbt_burn(&mut self, ctr: AccountId, tokens: Vec<TokenId>, memo: Option<String>) {
+        let owner = env::predecessor_account_id();
+        require!(
+            !self.ongoing_soul_tx.contains_key(&owner),
+            "can't burn tokens while in soul_transfer"
+        );
+
+        let ctr_id = self.ctr_id(&ctr);
+        let token_len = tokens.len() as u64;
+        let mut token_ids = HashSet::new();
+        for tid in tokens.iter() {
+            require!(
+                !token_ids.contains(tid),
+                format!("duplicated token_id in tokens: {}", tid)
+            );
+            token_ids.insert(tid);
+
+            let ct_key = &CtrTokenId {
+                ctr_id,
+                token: *tid,
+            };
+            let t = self
+                .ctr_tokens
+                .get(ct_key)
+                .expect(&format!("tokenID={} not found", tid));
+            require!(
+                t.owner == owner,
+                &format!("not an owner of tokenID={}", tid)
+            );
+
+            self.ctr_tokens.remove(ct_key);
+            let class_id = t.metadata.v1().class;
+            self.balances
+                .remove(&balance_key(owner.clone(), ctr_id, class_id));
+
+            // update supply by class
+            let key = (ctr_id, class_id);
+            let mut supply = self.supply_by_class.get(&key).unwrap();
+            supply -= 1;
+            self.supply_by_class.insert(&key, &supply);
+        }
+
+        // update supply by owner
+        let key = (owner, ctr_id);
+        let mut supply = self.supply_by_owner.get(&key).unwrap();
+        supply -= token_len;
+        self.supply_by_owner.insert(&key, &supply);
+
+        // update total supply by issuer
+        let mut supply = self.supply_by_ctr.get(&ctr_id).unwrap();
+        supply -= token_len;
+        self.supply_by_ctr.insert(&ctr_id, &supply);
+
+        SbtTokensEvent { ctr, tokens, memo }.emit_burn();
+    }
 
     //
     // Authority
@@ -175,9 +227,6 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use super::*;
-
-    // TODO
-    #[allow(dead_code)]
 
     fn alice() -> AccountId {
         AccountId::new_unchecked("alice.near".to_string())
@@ -346,10 +395,11 @@ mod tests {
         assert_eq!(ctr.sbt_supply_by_class(issuer3(), 1), 1);
         assert_eq!(ctr.sbt_supply_by_class(issuer3(), 2), 1);
 
-        assert_eq!(ctr.sbt_supply(issuer1()), 1);
-        assert_eq!(ctr.sbt_supply(issuer2()), 5);
-        assert_eq!(ctr.sbt_supply(issuer3()), 2);
-        assert_eq!(ctr.sbt_supply(issuer4()), 0);
+        let mut supply_by_issuer = vec![1, 5, 2, 0];
+        assert_eq!(ctr.sbt_supply(issuer1()), supply_by_issuer[0]);
+        assert_eq!(ctr.sbt_supply(issuer2()), supply_by_issuer[1]);
+        assert_eq!(ctr.sbt_supply(issuer3()), supply_by_issuer[2]);
+        assert_eq!(ctr.sbt_supply(issuer4()), supply_by_issuer[3]);
 
         assert_eq!(3, ctr.sbt_supply_by_owner(alice(), issuer2(), None));
         assert_eq!(2, ctr.sbt_supply_by_owner(alice(), issuer3(), None));
@@ -401,7 +451,10 @@ mod tests {
         );
         let alice_issuer3 = (
             issuer3(),
-            vec![mk_owned_token(1, m1_1.clone()), mk_owned_token(2, m2_1)],
+            vec![
+                mk_owned_token(1, m1_1.clone()),
+                mk_owned_token(2, m2_1.clone()),
+            ],
         );
         assert_eq!(
             ctr.sbt_tokens_by_owner(alice(), None, None, None),
@@ -435,7 +488,7 @@ mod tests {
         );
         assert_eq!(
             ctr.sbt_tokens_by_owner(alice(), Some(issuer3()), Some(1), None),
-            vec![alice_issuer3]
+            vec![alice_issuer3.clone()]
         );
 
         // check by all tokens
@@ -449,5 +502,63 @@ mod tests {
         assert_eq!(ctr.sbt_tokens(issuer2(), Some(2), Some(2)), t2_all[1..3]);
         assert_eq!(ctr.sbt_tokens(issuer2(), Some(5), Some(5)), t2_all[4..5]);
         assert_eq!(ctr.sbt_tokens(issuer2(), Some(6), Some(2)), vec![]);
+
+        //
+        // now let's test buring
+        //
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+
+        ctr.sbt_burn(issuer2(), vec![1, 5], Some("alice burning".to_owned()));
+        assert_eq!(
+            test_utils::get_logs(),
+            mk_log_str(
+                "burn",
+                r#"{"ctr":"sbt.ne","tokens":[1,5],"memo":"alice burning"}"#
+            )
+        );
+
+        supply_by_issuer[1] -= 2;
+        assert_eq!(ctr.sbt_supply(issuer1()), supply_by_issuer[0]);
+        assert_eq!(ctr.sbt_supply(issuer2()), supply_by_issuer[1]);
+        assert_eq!(ctr.sbt_supply(issuer3()), supply_by_issuer[2]);
+        assert_eq!(ctr.sbt_supply(issuer4()), supply_by_issuer[3]);
+
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 1);
+        assert_eq!(
+            ctr.sbt_supply_by_owner(alice(), issuer2(), Some(m2_1.clone().class)),
+            1
+        );
+        assert_eq!(
+            ctr.sbt_supply_by_owner(alice(), issuer2(), Some(m1_1.clone().class)),
+            0
+        );
+
+        let alice_issuer2 = (issuer2(), vec![mk_owned_token(4, m2_1.clone())]);
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice(), None, None, None),
+            vec![alice_issuer2.clone(), alice_issuer3.clone()]
+        );
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None),
+            vec![alice_issuer2.clone()]
+        );
+    }
+    #[test]
+    fn test_mk_log() {
+        let l = mk_log_str("abc", "[1,2,3]");
+        assert_eq!(
+            l,
+            vec![
+                r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"abc","data":[1,2,3]}"#
+            ],
+        )
+    }
+
+    fn mk_log_str(event: &str, data: &str) -> Vec<String> {
+        vec![format!(
+            "EVENT_JSON:{{\"standard\":\"nep393\",\"version\":\"1.0.0\",\"event\":\"{}\",\"data\":{}}}",
+            event,data
+        )]
     }
 }

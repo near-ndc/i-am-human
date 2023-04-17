@@ -117,7 +117,7 @@ impl SbtRecover<'_> {
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 #[serde(crate = "near_sdk::serde")]
 pub struct SbtTokensEvent {
-    ctr: AccountId, // SBT Contract account address
+    pub ctr: AccountId, // SBT Contract account address
     pub tokens: Vec<TokenId>,
 
     #[serde(skip_serializing_if = "Option::is_none")]

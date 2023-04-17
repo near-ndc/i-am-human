@@ -1,5 +1,4 @@
 // TODO: remove allow unused_variables
-#![allow(dead_code)]
 #![allow(unused_variables)]
 
 use std::collections::HashMap;
