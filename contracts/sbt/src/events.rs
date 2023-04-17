@@ -70,9 +70,6 @@ impl Nep393Event<'_> {
 pub struct SbtMint<'a> {
     pub ctr: &'a AccountId,
     pub tokens: Vec<(&'a AccountId, &'a Vec<TokenId>)>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memo: Option<String>,
 }
 impl SbtMint<'_> {
     pub fn emit(self) {
@@ -88,7 +85,6 @@ impl SbtMint<'_> {
 /// * `ctr`: SBT smart contract initiating the token recovery.
 /// * `old_owner`: source account from which we recover the tokens.
 /// * `new_owner`: destination account for recevered tokens.
-/// * `memo`: optional message
 #[derive(Serialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 #[serde(crate = "near_sdk::serde")]
@@ -96,9 +92,6 @@ pub struct SbtRecover<'a> {
     pub ctr: &'a AccountId,
     pub old_owner: &'a AccountId,
     pub new_owner: &'a AccountId,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memo: Option<String>,
 }
 
 impl SbtRecover<'_> {
@@ -112,16 +105,12 @@ impl SbtRecover<'_> {
 /// Arguments:
 /// * `ctr`: SBT smart contract initiating the SBT state change.
 /// * `tokens`: list of tokens concering the transaction emitting the event.
-/// * `memo`: optional message
 #[derive(Serialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 #[serde(crate = "near_sdk::serde")]
 pub struct SbtTokensEvent {
     pub ctr: AccountId, // SBT Contract account address
     pub tokens: Vec<TokenId>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memo: Option<String>,
 }
 
 impl SbtTokensEvent {
@@ -147,9 +136,6 @@ impl SbtTokensEvent {
 #[serde(crate = "near_sdk::serde")]
 pub struct AccountBan<'a> {
     pub account: &'a AccountId,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memo: Option<String>,
 }
 
 /// An event emitted when soul transfer is happening: all SBTs owned by `from` are transferred
@@ -162,9 +148,6 @@ pub struct AccountBan<'a> {
 pub struct SoulTransfer<'a> {
     pub from: &'a AccountId,
     pub to: &'a AccountId,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub memo: Option<String>,
 }
 
 impl SoulTransfer<'_> {
@@ -173,8 +156,8 @@ impl SoulTransfer<'_> {
     }
 }
 
-pub fn emit_soul_transfer(from: &AccountId, to: &AccountId, memo: Option<String>) {
-    SoulTransfer { from, to, memo }.emit();
+pub fn emit_soul_transfer(from: &AccountId, to: &AccountId) {
+    SoulTransfer { from, to }.emit();
 }
 
 /// Helper function to be used with `NearEvent` to construct NAER Event compatible payload
@@ -311,13 +294,12 @@ mod tests {
     fn log_format_mint() {
         let bob = bob();
         let issuer = sbt_issuer();
-        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"mint","data":{"ctr":"sbt.near","tokens":[["bob.near",[821,10]],["bob.near",[1]]],"memo":"process1"}}"#;
+        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"mint","data":{"ctr":"sbt.near","tokens":[["bob.near",[821,10]],["bob.near",[1]]]}}"#;
         let bob1_tokens = vec![821, 10];
         let bob2_tokens = vec![1];
         let event = Nep393Event::Mint(SbtMint {
             ctr: &issuer,
             tokens: vec![(&bob, &bob1_tokens), (&bob, &bob2_tokens)],
-            memo: Some("process1".to_owned()),
         });
         assert_eq!(expected, event.clone().to_json_event_string());
         event.emit();
@@ -334,7 +316,6 @@ mod tests {
             ctr: &ctr,
             old_owner: &bob,
             new_owner: &charlie,
-            memo: None,
         });
         assert_eq!(expected, event.clone().to_json_event_string());
         event.emit();
@@ -343,11 +324,10 @@ mod tests {
 
     #[test]
     fn log_format_renew() {
-        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"renew","data":{"ctr":"sbt.near","tokens":[21,10,888],"memo":"process1"}}"#;
+        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"renew","data":{"ctr":"sbt.near","tokens":[21,10,888]}}"#;
         let e = SbtTokensEvent {
             ctr: sbt_issuer(),
             tokens: vec![21, 10, 888],
-            memo: Some("process1".to_owned()),
         };
         let event = Nep393Event::Renew(e.clone());
         assert_eq!(expected, event.clone().to_json_event_string());
@@ -359,11 +339,10 @@ mod tests {
 
     #[test]
     fn log_format_revoke() {
-        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"revoke","data":{"ctr":"sbt.near","tokens":[19853,1],"memo":"process2"}}"#;
+        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"revoke","data":{"ctr":"sbt.near","tokens":[19853,1]}}"#;
         let e = SbtTokensEvent {
             ctr: sbt_issuer(),
             tokens: vec![19853, 1],
-            memo: Some("process2".to_owned()),
         };
         let event = Nep393Event::Revoke(e.clone());
         assert_eq!(expected, event.clone().to_json_event_string());
@@ -375,11 +354,10 @@ mod tests {
 
     #[test]
     fn log_format_burn() {
-        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"burn","data":{"ctr":"sbt.near","tokens":[19853,12],"memo":"process2"}}"#;
+        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"burn","data":{"ctr":"sbt.near","tokens":[19853,12]}}"#;
         let e = SbtTokensEvent {
             ctr: sbt_issuer(),
             tokens: vec![19853, 12],
-            memo: Some("process2".to_owned()),
         };
         let event = Nep393Event::Burn(e.clone());
         assert_eq!(expected, event.clone().to_json_event_string());
@@ -393,16 +371,10 @@ mod tests {
     fn log_format_ban() {
         let alice = alice();
         let bob = bob();
-        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"ban","data":[{"account":"alice.near","memo":"process1"},{"account":"bob.near"}]}"#;
+        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"ban","data":[{"account":"alice.near"},{"account":"bob.near"}]}"#;
         let event = Nep393Event::Ban(vec![
-            AccountBan {
-                account: &alice,
-                memo: Some("process1".to_owned()),
-            },
-            AccountBan {
-                account: &bob,
-                memo: None,
-            },
+            AccountBan { account: &alice },
+            AccountBan { account: &bob },
         ]);
         assert_eq!(expected, event.clone().to_json_event_string());
         event.emit();
@@ -413,11 +385,10 @@ mod tests {
     fn log_soul_transfer() {
         let alice = alice();
         let bob = bob();
-        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"soul_transfer","data":{"from":"alice.near","to":"bob.near","memo":"process1"}}"#;
+        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"soul_transfer","data":{"from":"alice.near","to":"bob.near"}}"#;
         let e = SoulTransfer {
             from: &alice,
             to: &bob,
-            memo: Some("process1".to_owned()),
         };
         let event = Nep393Event::SoulTransfer(e.clone());
         assert_eq!(expected, event.clone().to_json_event_string());

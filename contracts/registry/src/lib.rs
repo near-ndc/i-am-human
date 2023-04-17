@@ -97,7 +97,7 @@ impl Contract {
                     "caller banned: can't make soul transfer"
                 );
                 require!(!self._is_banned(&to), "`to` is banned");
-                emit_soul_transfer(&owner, &to, memo);
+                emit_soul_transfer(&owner, &to);
                 CtrTokenId {
                     ctr_id: 0,
                     token: 0,
@@ -164,7 +164,7 @@ impl Contract {
         supply -= token_len;
         self.supply_by_ctr.insert(&ctr_id, &supply);
 
-        SbtTokensEvent { ctr, tokens, memo }.emit_burn();
+        SbtTokensEvent { ctr, tokens }.emit_burn();
     }
 
     //
@@ -518,10 +518,7 @@ mod tests {
         ctr.sbt_burn(issuer2(), vec![1, 5], Some("alice burning".to_owned()));
         assert_eq!(
             test_utils::get_logs(),
-            mk_log_str(
-                "burn",
-                r#"{"ctr":"sbt.ne","tokens":[1,5],"memo":"alice burning"}"#
-            )
+            mk_log_str("burn", r#"{"ctr":"sbt.ne","tokens":[1,5]}"#)
         );
 
         supply_by_issuer[1] -= 2;

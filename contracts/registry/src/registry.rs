@@ -291,7 +291,6 @@ impl SBTRegistry for Contract {
         SbtMint {
             ctr: &ctr,
             tokens: minted,
-            memo: None,
         }
         .emit();
 
