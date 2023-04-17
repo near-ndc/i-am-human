@@ -118,11 +118,11 @@ pub trait SBTRegistry {
     /// Must emit `Renew` event.
     fn sbt_renew(&mut self, tokens: Vec<TokenId>, expires_at: u64);
 
-    /// Revokes SBT, could potentially burn it or update the expire time.
+    /// Revokes SBT, could potentially burn an SBT or update SBT expire time.
     /// Must be called by an SBT contract.
     /// Must emit one of `Revoke` or `Burn` event.
     /// Returns true if a token is a valid, active SBT. Otherwise returns false.
-    fn sbt_revoke(&mut self, token: u64) -> bool;
+    fn sbt_revoke(&mut self, token: Vec<TokenId>) -> bool;
 }
 
 // ext_registry is a helper to make cross contract registry calls

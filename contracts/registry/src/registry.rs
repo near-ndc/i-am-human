@@ -50,6 +50,7 @@ impl SBTRegistry for Contract {
         ctr: AccountId,
         class: Option<ClassId>,
     ) -> u64 {
+        // we don't check banlist because we should still enable banned accounts to query their tokens
         if self.ongoing_soul_tx.contains_key(&account) {
             return 0;
         }
@@ -127,6 +128,7 @@ impl SBTRegistry for Contract {
                 "ctr must be defined if from_class is defined"
             );
         }
+        // we don't check banlist because we should still enable banned accounts to query their tokens
         if self.ongoing_soul_tx.contains_key(&account) {
             return vec![];
         }
@@ -225,7 +227,9 @@ impl SBTRegistry for Contract {
         let mut per_recipient: HashMap<AccountId, Vec<TokenId>> = HashMap::new();
 
         for (owner, metadatas) in token_spec {
+            // no need to check ongoing_soult_tx, because it will automatically ban the source account
             self.assert_not_banned(&owner);
+
             let recipient_tokens = per_recipient.entry(owner.clone()).or_default();
             let metadatas_len = metadatas.len();
 
@@ -301,7 +305,12 @@ impl SBTRegistry for Contract {
     fn sbt_recover(&mut self, from: AccountId, to: AccountId) {
         let ctr = env::predecessor_account_id();
         self.assert_issuer(&ctr);
+        self.assert_not_banned(&from);
+        self.assert_not_banned(&to);
+        // no need to check ongoing_soult_tx, because it will automatically ban the source account
+
         env::panic_str("not implemented");
+        // add events
     }
 
     /// sbt_renew will update the expire time of provided tokens.
@@ -312,15 +321,18 @@ impl SBTRegistry for Contract {
         let ctr = env::predecessor_account_id();
         self.assert_issuer(&ctr);
         env::panic_str("not implemented");
+        // must not renew tokens from banned accounts
+        // add events
     }
 
     /// Revokes SBT, could potentially burn it or update the expire time.
     /// Must be called by an SBT contract.
     /// Must emit one of `Revoke` or `Burn` event.
     /// Returns true if a token is a valid, active SBT. Otherwise returns false.
-    fn sbt_revoke(&mut self, token: u64) -> bool {
+    fn sbt_revoke(&mut self, token: Vec<TokenId>) -> bool {
         let ctr = env::predecessor_account_id();
         self.assert_issuer(&ctr);
         env::panic_str("not implemented");
+        // add events
     }
 }
