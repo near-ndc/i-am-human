@@ -3,7 +3,7 @@ use near_sdk::{AccountId, BorshStorageKey};
 use sbt::{ClassId, TokenId};
 
 /// Issuer contract ID based on the SBT Contract address -> u16 map.
-pub type IssuerId = u16;
+pub type IssuerId = u32;
 
 /// Helper structure for keys of the persistent collections.
 #[derive(BorshSerialize, BorshStorageKey)]
