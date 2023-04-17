@@ -21,7 +21,9 @@ mod util;
 /// 1s in nano seconds.
 pub const SECOND: u64 = 1_000_000_000;
 pub const CLASS: ClassId = 1;
+// the diff: 0.001 NEAR will go to this contract for storage deposit
 pub const MINT_COST: Balance = 8_000_000000000000000000; // 0.008 NEAR
+pub const MINT_COST_REG: Balance = 7_000_000000000000000000; // 0.007 NEAR
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -29,7 +31,7 @@ pub struct Contract {
     // contract metadata
     pub metadata: LazyOption<ContractMetadata>,
 
-    /// registry of burned accounts.
+    /// SBT registry
     pub registry: AccountId,
 
     /// max duration (in seconds) a claim is valid for processing
@@ -149,8 +151,8 @@ impl Contract {
 
         self.used_identities.insert(&external_id);
         ext_registry::ext(self.registry.clone())
-            .with_attached_deposit(MINT_COST)
-            .with_static_gas(Gas::ONE_TERA * 5) // 5 TGas
+            .with_attached_deposit(MINT_COST_REG)
+            .with_static_gas(Gas::ONE_TERA * 6)
             .sbt_mint(vec![(claim.claimer, vec![metadata])]);
 
         // TODO: add callback to undo identity insert if the minting didn't work because of a duplicate mint.
