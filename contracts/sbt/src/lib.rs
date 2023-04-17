@@ -46,17 +46,17 @@ pub trait SBTRegistry {
      * QUERIES
      **********/
 
-    /// Get the information about specific token ID issued by `ctr` SBT contract.
-    fn sbt(&self, ctr: AccountId, token: TokenId) -> Option<Token>;
+    /// Get the information about specific token ID issued by `issuer` SBT contract.
+    fn sbt(&self, issuer: AccountId, token: TokenId) -> Option<Token>;
 
-    /// Returns total amount of tokens issued by `ctr` SBT contract, including expired tokens.
-    /// Depending on the implementation, if a revoke removes a token, it then is should not be
-    /// included in the supply.
-    fn sbt_supply(&self, ctr: AccountId) -> u64;
+    /// Returns total amount of tokens issued by `issuer` SBT contract, including expired
+    /// tokens. Depending on the implementation, if a revoke removes a token, it then is should
+    /// not be included in the supply.
+    fn sbt_supply(&self, issuer: AccountId) -> u64;
 
-    /// Returns total amount of tokens of given class minted by `ctr`. See `sbt_supply` for
+    /// Returns total amount of tokens of given class minted by `issuer`. See `sbt_supply` for
     /// information about revoked tokens.
-    fn sbt_supply_by_class(&self, ctr: AccountId, class: ClassId) -> u64;
+    fn sbt_supply_by_class(&self, issuer: AccountId, class: ClassId) -> u64;
 
     /// Returns total supply of SBTs for a given owner. See `sbt_supply` for information about
     /// revoked tokens.
@@ -64,15 +64,19 @@ pub trait SBTRegistry {
     fn sbt_supply_by_owner(
         &self,
         account: AccountId,
-        ctr: AccountId,
+        issuer: AccountId,
         class: Option<ClassId>,
     ) -> u64;
 
     /// Query sbt tokens issued by a given contract.
     /// If `from_token` is not specified, then `from_token` should be assumed
     /// to be the first valid token id.
-    fn sbt_tokens(&self, ctr: AccountId, from_token: Option<u64>, limit: Option<u32>)
-        -> Vec<Token>;
+    fn sbt_tokens(
+        &self,
+        issuer: AccountId,
+        from_token: Option<u64>,
+        limit: Option<u32>,
+    ) -> Vec<Token>;
 
     /// Query SBT tokens by owner
     /// If `from_class` is not specified, then `from_class` should be assumed to be the first
@@ -81,7 +85,7 @@ pub trait SBTRegistry {
     fn sbt_tokens_by_owner(
         &self,
         account: AccountId,
-        ctr: Option<AccountId>,
+        issuer: Option<AccountId>,
         from_class: Option<u64>,
         limit: Option<u32>,
     ) -> Vec<(AccountId, Vec<OwnedToken>)>;

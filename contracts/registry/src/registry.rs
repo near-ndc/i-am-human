@@ -16,29 +16,28 @@ impl SBTRegistry for Contract {
      * QUERIES
      **********/
 
-    fn sbt(&self, ctr: AccountId, token: TokenId) -> Option<Token> {
-        let ctr_id = self.ctr_id(&ctr);
-        self.ctr_tokens
-            .get(&CtrTokenId { ctr_id, token })
+    fn sbt(&self, issuer: AccountId, token: TokenId) -> Option<Token> {
+        let issuer_id = self.issuer_id(&issuer);
+        self.issuer_tokens
+            .get(&IssuerTokenId { issuer_id, token })
             .map(|td| td.to_token(token))
     }
 
-    // NOTE: we don't delete tokens on revoke, so we can get the supply in an easy way.
-    fn sbt_supply(&self, ctr: AccountId) -> u64 {
-        let ctr_id = match self.sbt_contracts.get(&ctr) {
+    fn sbt_supply(&self, issuer: AccountId) -> u64 {
+        let issuer_id = match self.sbt_issuers.get(&issuer) {
             None => return 0,
             Some(id) => id,
         };
-        self.supply_by_ctr.get(&ctr_id).unwrap_or(0)
+        self.supply_by_issuer.get(&issuer_id).unwrap_or(0)
     }
 
     /// returns total amount of tokens of given class minted by this contract
-    fn sbt_supply_by_class(&self, ctr: AccountId, class: ClassId) -> u64 {
-        let ctr_id = match self.sbt_contracts.get(&ctr) {
+    fn sbt_supply_by_class(&self, issuer: AccountId, class: ClassId) -> u64 {
+        let issuer_id = match self.sbt_issuers.get(&issuer) {
             None => return 0,
             Some(id) => id,
         };
-        self.supply_by_class.get(&(ctr_id, class)).unwrap_or(0)
+        self.supply_by_class.get(&(issuer_id, class)).unwrap_or(0)
     }
 
     /// returns total supply of SBTs for a given owner.
@@ -46,7 +45,7 @@ impl SBTRegistry for Contract {
     fn sbt_supply_by_owner(
         &self,
         account: AccountId,
-        ctr: AccountId,
+        issuer: AccountId,
         class: Option<ClassId>,
     ) -> u64 {
         // we don't check banlist because we should still enable banned accounts to query their tokens
@@ -54,23 +53,22 @@ impl SBTRegistry for Contract {
             return 0;
         }
 
-        let ctr_id = match self.sbt_contracts.get(&ctr) {
+        let issuer_id = match self.sbt_issuers.get(&issuer) {
             // early return if the class is not registered
             None => return 0,
             Some(id) => id,
         };
         if let Some(class_id) = class {
-            return match self.balances.contains_key(&BalanceKey {
-                owner: account,
-                ctr_id,
-                class_id,
-            }) {
+            return match self
+                .balances
+                .contains_key(&balance_key(account, issuer_id, class_id))
+            {
                 true => 1,
                 _ => 0,
             };
         }
 
-        return self.supply_by_owner.get(&(account, ctr_id)).unwrap_or(0);
+        return self.supply_by_owner.get(&(account, issuer_id)).unwrap_or(0);
     }
 
     /// Query sbt tokens issued by a given contract.
@@ -78,15 +76,15 @@ impl SBTRegistry for Contract {
     /// to be the first valid token id.
     /// The function search tokens sequentially. So, if empty list is returned, then a user
     /// should continue querying the contract by setting `from_token = previous from_token + limit`
-    /// until the `from_token > sbt_supply(ctr)`.
+    /// until the `from_token > sbt_supply(issuer)`.
     /// If limit is not specified, default is used: 1000.
     fn sbt_tokens(
         &self,
-        ctr: AccountId,
+        issuer: AccountId,
         from_token: Option<u64>,
         limit: Option<u32>,
     ) -> Vec<Token> {
-        let ctr_id = match self.sbt_contracts.get(&ctr) {
+        let issuer_id = match self.sbt_issuers.get(&issuer) {
             None => return vec![],
             Some(i) => i,
         };
@@ -94,7 +92,7 @@ impl SBTRegistry for Contract {
         require!(from_token > 0, "from_token, if set, must be >= 1");
         let limit = limit.unwrap_or(MAX_LIMIT);
         require!(limit > 0, "limit must be bigger than 0");
-        let mut max_id = self.next_token_ids.get(&ctr_id).unwrap_or(0);
+        let mut max_id = self.next_token_ids.get(&issuer_id).unwrap_or(0);
         if max_id < from_token {
             return vec![];
         }
@@ -102,7 +100,7 @@ impl SBTRegistry for Contract {
 
         let mut resp = Vec::new();
         for token in from_token..max_id {
-            if let Some(t) = self.ctr_tokens.get(&CtrTokenId { ctr_id, token }) {
+            if let Some(t) = self.issuer_tokens.get(&IssuerTokenId { issuer_id, token }) {
                 resp.push(t.to_token(token))
             }
         }
@@ -117,14 +115,14 @@ impl SBTRegistry for Contract {
     fn sbt_tokens_by_owner(
         &self,
         account: AccountId,
-        ctr: Option<AccountId>,
+        issuer: Option<AccountId>,
         from_class: Option<u64>,
         limit: Option<u32>,
     ) -> Vec<(AccountId, Vec<OwnedToken>)> {
         if from_class.is_some() {
             require!(
-                ctr.is_some(),
-                "ctr must be defined if from_class is defined"
+                issuer.is_some(),
+                "issuer must be defined if from_class is defined"
             );
         }
         // we don't check banlist because we should still enable banned accounts to query their tokens
@@ -132,10 +130,10 @@ impl SBTRegistry for Contract {
             return vec![];
         }
 
-        let ctr_id = match ctr {
+        let issuer_id = match issuer {
             None => 0,
-            // use self.sbt_contracts.get when changing to query by ctr_start
-            Some(addr) => self.ctr_id(&addr),
+            // use self.sbt_contracts.get when changing to query by issuer_start
+            Some(addr) => self.issuer_id(&addr),
         };
         let mut from_class = from_class.unwrap_or(0);
         // iter_from starts from exclusive "left end"
@@ -147,35 +145,35 @@ impl SBTRegistry for Contract {
 
         let mut resp = Vec::new();
         let mut tokens = Vec::new();
-        let mut prev_ctr = ctr_id;
+        let mut prev_issuer = issuer_id;
 
         for (key, token_id) in self
             .balances
-            .iter_from(balance_key(account.clone(), ctr_id, from_class))
+            .iter_from(balance_key(account.clone(), issuer_id, from_class))
             .take(limit as usize)
         {
             // TODO: maybe we should continue the scan?
             if key.owner != account {
                 break;
             }
-            if prev_ctr != key.ctr_id {
-                if ctr_id != 0 {
+            if prev_issuer != key.issuer_id {
+                if issuer_id != 0 {
                     break;
                 }
                 if tokens.len() > 0 {
                     let issuer = self
-                        .ctr_id_map
-                        .get(&prev_ctr)
+                        .issuer_id_map
+                        .get(&prev_issuer)
                         .expect("internal error: inconsistent sbt issuer map");
                     resp.push((issuer, tokens));
                     tokens = Vec::new();
                 }
-                prev_ctr = key.ctr_id;
+                prev_issuer = key.issuer_id;
             }
             let t = self
-                .ctr_tokens
-                .get(&CtrTokenId {
-                    ctr_id: key.ctr_id,
+                .issuer_tokens
+                .get(&IssuerTokenId {
+                    issuer_id: key.issuer_id,
                     token: token_id,
                 })
                 .expect("internal error: token data not found");
@@ -188,8 +186,8 @@ impl SBTRegistry for Contract {
                 break;
             }
         }
-        if prev_ctr != 0 && tokens.len() > 0 {
-            let issuer = self.ctr_id_map.get(&prev_ctr).unwrap();
+        if prev_issuer != 0 && tokens.len() > 0 {
+            let issuer = self.issuer_id_map.get(&prev_issuer).unwrap();
             resp.push((issuer, tokens));
         }
         return resp;
@@ -219,13 +217,13 @@ impl SBTRegistry for Contract {
             "min required storage deposit: 0.006 NEAR"
         );
 
-        let ctr = &env::predecessor_account_id();
-        let ctr_id = self.ctr_id(ctr);
+        let issuer = &env::predecessor_account_id();
+        let issuer_id = self.issuer_id(issuer);
         let mut num_tokens = 0;
         for el in token_spec.iter() {
             num_tokens += el.1.len() as u64;
         }
-        let mut token = self.next_token_id(ctr_id, num_tokens);
+        let mut token = self.next_token_id(issuer_id, num_tokens);
         let ret_token_ids = (token..token + num_tokens).collect();
         let mut supply_by_class = HashMap::new();
         let mut per_recipient: HashMap<AccountId, Vec<TokenId>> = HashMap::new();
@@ -239,11 +237,7 @@ impl SBTRegistry for Contract {
 
             for metadata in metadatas {
                 let prev = self.balances.insert(
-                    &BalanceKey {
-                        owner: owner.clone(),
-                        ctr_id,
-                        class_id: metadata.class,
-                    },
+                    &balance_key(owner.clone(), issuer_id, metadata.class),
                     &token,
                 );
                 require!(
@@ -259,8 +253,8 @@ impl SBTRegistry for Contract {
                     Some(s) => *s = *s + 1,
                 };
 
-                self.ctr_tokens.insert(
-                    &CtrTokenId { ctr_id, token },
+                self.issuer_tokens.insert(
+                    &IssuerTokenId { issuer_id, token },
                     &TokenData {
                         owner: owner.clone(),
                         metadata: metadata.into(),
@@ -272,24 +266,24 @@ impl SBTRegistry for Contract {
             }
 
             // update supply by owner
-            let skey = (owner, ctr_id);
+            let skey = (owner, issuer_id);
             let sowner = self.supply_by_owner.get(&skey).unwrap_or(0) + metadatas_len as u64;
             self.supply_by_owner.insert(&skey, &sowner);
         }
 
         for (cls, new_supply) in supply_by_class {
-            let key = (ctr_id, cls);
+            let key = (issuer_id, cls);
             let s = self.supply_by_class.get(&key).unwrap_or(0) + new_supply;
             self.supply_by_class.insert(&key, &s);
         }
 
-        let new_supply = self.supply_by_ctr.get(&ctr_id).unwrap_or(0) + num_tokens;
-        self.supply_by_ctr.insert(&ctr_id, &new_supply);
+        let new_supply = self.supply_by_issuer.get(&issuer_id).unwrap_or(0) + num_tokens;
+        self.supply_by_issuer.insert(&issuer_id, &new_supply);
 
         let mut minted: Vec<(&AccountId, &Vec<TokenId>)> = per_recipient.iter().collect();
         minted.sort_by(|a, b| a.0.cmp(b.0));
         SbtMint {
-            ctr: &ctr,
+            issuer: &issuer,
             tokens: minted,
         }
         .emit();
@@ -316,8 +310,8 @@ impl SBTRegistry for Contract {
     /// Requires attaching enough tokens to cover the storage growth.
     #[payable]
     fn sbt_recover(&mut self, from: AccountId, to: AccountId) {
-        let ctr = env::predecessor_account_id();
-        self.assert_issuer(&ctr);
+        let issuer = env::predecessor_account_id();
+        self.assert_issuer(&issuer);
         self.assert_not_banned(&from);
         self.assert_not_banned(&to);
         // no need to check ongoing_soult_tx, because it will automatically ban the source account
@@ -331,8 +325,8 @@ impl SBTRegistry for Contract {
     /// Must be called by an SBT contract.
     /// Must emit `Renew` event.
     fn sbt_renew(&mut self, tokens: Vec<TokenId>, expires_at: u64) {
-        let ctr = env::predecessor_account_id();
-        self.assert_issuer(&ctr);
+        let issuer = env::predecessor_account_id();
+        self.assert_issuer(&issuer);
         env::panic_str("not implemented");
         // must not renew tokens from banned accounts
         // add events
@@ -343,8 +337,8 @@ impl SBTRegistry for Contract {
     /// Must emit one of `Revoke` or `Burn` event.
     /// Returns true if a token is a valid, active SBT. Otherwise returns false.
     fn sbt_revoke(&mut self, token: Vec<TokenId>) -> bool {
-        let ctr = env::predecessor_account_id();
-        self.assert_issuer(&ctr);
+        let issuer = env::predecessor_account_id();
+        self.assert_issuer(&issuer);
         env::panic_str("not implemented");
         // add events
     }

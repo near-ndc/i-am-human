@@ -3,41 +3,42 @@ use near_sdk::{AccountId, BorshStorageKey};
 use sbt::{ClassId, TokenId};
 
 /// Issuer contract ID based on the SBT Contract address -> u16 map.
-pub type CtrId = u16;
+pub type IssuerId = u16;
 
 /// Helper structure for keys of the persistent collections.
 #[derive(BorshSerialize, BorshStorageKey)]
 pub enum StorageKey {
-    SbtContracts,
-    SbtContractsRev,
+    SbtIssuers,
+    SbtIssuersRev,
     Banlist,
     SupplyByOwner,
     SupplyByClass,
-    SupplyByCtr,
+    SupplyByIssuer,
     Balances,
-    CtrTokens,
+    IssuerTokens,
     NextTokenId,
     OngoingSoultTx,
 }
 
-/// contract token id used for collection indexing
+/// Composition of issuer address and token id used for indexing
 #[derive(BorshSerialize, BorshDeserialize)]
-pub(crate) struct CtrTokenId {
-    pub ctr_id: CtrId,
+pub(crate) struct IssuerTokenId {
+    pub issuer_id: IssuerId,
     pub token: TokenId,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Eq, Ord, PartialEq, PartialOrd, Clone)]
 pub(crate) struct BalanceKey {
     pub owner: AccountId,
-    pub ctr_id: CtrId,
+    pub issuer_id: IssuerId,
     pub class_id: ClassId,
 }
 
-pub(crate) fn balance_key(owner: AccountId, ctr_id: CtrId, class_id: ClassId) -> BalanceKey {
+#[inline]
+pub(crate) fn balance_key(owner: AccountId, issuer_id: IssuerId, class_id: ClassId) -> BalanceKey {
     BalanceKey {
         owner,
-        ctr_id,
+        issuer_id,
         class_id,
     }
 }

@@ -61,14 +61,14 @@ impl Nep393Event<'_> {
 
 /// An event emitted when an SBT token issuance succeeded.
 /// Arguments:
-/// * `ctr`: SBT smart contract initiating the token issuance.
+/// * `issuer`: SBT smart contract initiating the token issuance.
 /// * `tokens`: list of pairs (token owner, TokenId[])
 /// * `memo`: optional message
 #[derive(Serialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 #[serde(crate = "near_sdk::serde")]
 pub struct SbtMint<'a> {
-    pub ctr: &'a AccountId,
+    pub issuer: &'a AccountId,
     pub tokens: Vec<(&'a AccountId, &'a Vec<TokenId>)>,
 }
 impl SbtMint<'_> {
@@ -82,14 +82,14 @@ impl SbtMint<'_> {
 /// and doesn't trigger Soul Transfer. Registry recovers all tokens assigned to `old_owner`,
 /// hence we don't need to enumerate them.
 /// Must be emitted by an SBT registry.
-/// * `ctr`: SBT smart contract initiating the token recovery.
+/// * `issuer`: SBT smart contract initiating the token recovery.
 /// * `old_owner`: source account from which we recover the tokens.
 /// * `new_owner`: destination account for recevered tokens.
 #[derive(Serialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 #[serde(crate = "near_sdk::serde")]
 pub struct SbtRecover<'a> {
-    pub ctr: &'a AccountId,
+    pub issuer: &'a AccountId,
     pub old_owner: &'a AccountId,
     pub new_owner: &'a AccountId,
 }
@@ -103,13 +103,13 @@ impl SbtRecover<'_> {
 /// A common structure for the following events:
 /// renew, revoke, burn.
 /// Arguments:
-/// * `ctr`: SBT smart contract initiating the SBT state change.
+/// * `issuer`: SBT smart contract initiating the SBT state change.
 /// * `tokens`: list of tokens concering the transaction emitting the event.
 #[derive(Serialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 #[serde(crate = "near_sdk::serde")]
 pub struct SbtTokensEvent {
-    pub ctr: AccountId, // SBT Contract account address
+    pub issuer: AccountId, // SBT Contract account address
     pub tokens: Vec<TokenId>,
 }
 
@@ -294,11 +294,11 @@ mod tests {
     fn log_format_mint() {
         let bob = bob();
         let issuer = sbt_issuer();
-        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"mint","data":{"ctr":"sbt.near","tokens":[["bob.near",[821,10]],["bob.near",[1]]]}}"#;
+        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"mint","data":{"issuer":"sbt.near","tokens":[["bob.near",[821,10]],["bob.near",[1]]]}}"#;
         let bob1_tokens = vec![821, 10];
         let bob2_tokens = vec![1];
         let event = Nep393Event::Mint(SbtMint {
-            ctr: &issuer,
+            issuer: &issuer,
             tokens: vec![(&bob, &bob1_tokens), (&bob, &bob2_tokens)],
         });
         assert_eq!(expected, event.clone().to_json_event_string());
@@ -310,10 +310,10 @@ mod tests {
     fn log_format_recovery() {
         let bob = bob();
         let charlie = charlie();
-        let ctr = sbt_issuer();
-        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"recover","data":{"ctr":"sbt.near","old_owner":"bob.near","new_owner":"charlie.near"}}"#;
+        let issuer = sbt_issuer();
+        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"recover","data":{"issuer":"sbt.near","old_owner":"bob.near","new_owner":"charlie.near"}}"#;
         let event = Nep393Event::Recover(SbtRecover {
-            ctr: &ctr,
+            issuer: &issuer,
             old_owner: &bob,
             new_owner: &charlie,
         });
@@ -324,9 +324,9 @@ mod tests {
 
     #[test]
     fn log_format_renew() {
-        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"renew","data":{"ctr":"sbt.near","tokens":[21,10,888]}}"#;
+        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"renew","data":{"issuer":"sbt.near","tokens":[21,10,888]}}"#;
         let e = SbtTokensEvent {
-            ctr: sbt_issuer(),
+            issuer: sbt_issuer(),
             tokens: vec![21, 10, 888],
         };
         let event = Nep393Event::Renew(e.clone());
@@ -339,9 +339,9 @@ mod tests {
 
     #[test]
     fn log_format_revoke() {
-        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"revoke","data":{"ctr":"sbt.near","tokens":[19853,1]}}"#;
+        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"revoke","data":{"issuer":"sbt.near","tokens":[19853,1]}}"#;
         let e = SbtTokensEvent {
-            ctr: sbt_issuer(),
+            issuer: sbt_issuer(),
             tokens: vec![19853, 1],
         };
         let event = Nep393Event::Revoke(e.clone());
@@ -354,9 +354,9 @@ mod tests {
 
     #[test]
     fn log_format_burn() {
-        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"burn","data":{"ctr":"sbt.near","tokens":[19853,12]}}"#;
+        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"burn","data":{"issuer":"sbt.near","tokens":[19853,12]}}"#;
         let e = SbtTokensEvent {
-            ctr: sbt_issuer(),
+            issuer: sbt_issuer(),
             tokens: vec![19853, 12],
         };
         let event = Nep393Event::Burn(e.clone());

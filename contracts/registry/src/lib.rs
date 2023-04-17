@@ -18,22 +18,22 @@ pub struct Contract {
     pub authority: AccountId,
 
     /// registry of approved SBT contracts to issue tokens
-    pub sbt_contracts: UnorderedMap<AccountId, CtrId>,
-    pub ctr_id_map: LookupMap<CtrId, AccountId>, // reverse index
+    pub sbt_issuers: UnorderedMap<AccountId, IssuerId>,
+    pub issuer_id_map: LookupMap<IssuerId, AccountId>, // reverse index
     /// registry of blacklisted accounts by issuer
     pub banlist: UnorderedSet<AccountId>,
 
-    pub(crate) supply_by_owner: LookupMap<(AccountId, CtrId), u64>,
-    pub(crate) supply_by_class: LookupMap<(CtrId, ClassId), u64>,
-    pub(crate) supply_by_ctr: LookupMap<CtrId, u64>,
+    pub(crate) supply_by_owner: LookupMap<(AccountId, IssuerId), u64>,
+    pub(crate) supply_by_class: LookupMap<(IssuerId, ClassId), u64>,
+    pub(crate) supply_by_issuer: LookupMap<IssuerId, u64>,
     /// maps user account to list of token source info
     pub(crate) balances: TreeMap<BalanceKey, TokenId>,
     /// maps SBT contract -> map of tokens
-    pub(crate) ctr_tokens: LookupMap<CtrTokenId, TokenData>,
+    pub(crate) issuer_tokens: LookupMap<IssuerTokenId, TokenData>,
     /// map of SBT contract -> next available token_id
-    pub(crate) next_token_ids: LookupMap<CtrId, TokenId>,
-    pub(crate) next_ctr_id: CtrId,
-    pub(crate) ongoing_soul_tx: LookupMap<AccountId, CtrTokenId>,
+    pub(crate) next_token_ids: LookupMap<IssuerId, TokenId>,
+    pub(crate) next_issuer_id: IssuerId,
+    pub(crate) ongoing_soul_tx: LookupMap<AccountId, IssuerTokenId>,
 }
 
 // Implement the contract structure
@@ -43,16 +43,16 @@ impl Contract {
     pub fn new(authority: AccountId) -> Self {
         Self {
             authority,
-            sbt_contracts: UnorderedMap::new(StorageKey::SbtContracts),
-            ctr_id_map: LookupMap::new(StorageKey::SbtContractsRev),
+            sbt_issuers: UnorderedMap::new(StorageKey::SbtIssuers),
+            issuer_id_map: LookupMap::new(StorageKey::SbtIssuersRev),
             banlist: UnorderedSet::new(StorageKey::Banlist),
             supply_by_owner: LookupMap::new(StorageKey::SupplyByOwner),
             supply_by_class: LookupMap::new(StorageKey::SupplyByClass),
-            supply_by_ctr: LookupMap::new(StorageKey::SupplyByCtr),
+            supply_by_issuer: LookupMap::new(StorageKey::SupplyByIssuer),
             balances: TreeMap::new(StorageKey::Balances),
-            ctr_tokens: LookupMap::new(StorageKey::CtrTokens),
+            issuer_tokens: LookupMap::new(StorageKey::IssuerTokens),
             next_token_ids: LookupMap::new(StorageKey::NextTokenId),
-            next_ctr_id: 1,
+            next_issuer_id: 1,
             ongoing_soul_tx: LookupMap::new(StorageKey::OngoingSoultTx),
         }
     }
@@ -62,7 +62,7 @@ impl Contract {
     //
 
     pub fn sbt_contracts(&self) -> Vec<AccountId> {
-        self.sbt_contracts.keys().collect()
+        self.sbt_issuers.keys().collect()
     }
 
     #[inline]
@@ -98,8 +98,8 @@ impl Contract {
                 );
                 require!(!self._is_banned(&to), "`to` is banned");
                 emit_soul_transfer(&owner, &to);
-                CtrTokenId {
-                    ctr_id: 0,
+                IssuerTokenId {
+                    issuer_id: 0,
                     token: 0,
                 }
             }
@@ -107,18 +107,18 @@ impl Contract {
             Some(s) => s,
         };
 
-        println!("Starting at: {} {}", start.ctr_id, start.token);
+        println!("Starting at: {} {}", start.issuer_id, start.token);
         env::panic_str("not implemented");
     }
 
-    pub fn sbt_burn(&mut self, ctr: AccountId, tokens: Vec<TokenId>, memo: Option<String>) {
+    pub fn sbt_burn(&mut self, issuer: AccountId, tokens: Vec<TokenId>, memo: Option<String>) {
         let owner = env::predecessor_account_id();
         require!(
             !self.ongoing_soul_tx.contains_key(&owner),
             "can't burn tokens while in soul_transfer"
         );
 
-        let ctr_id = self.ctr_id(&ctr);
+        let issuer_id = self.issuer_id(&issuer);
         let token_len = tokens.len() as u64;
         let mut token_ids = HashSet::new();
         for tid in tokens.iter() {
@@ -128,12 +128,12 @@ impl Contract {
             );
             token_ids.insert(tid);
 
-            let ct_key = &CtrTokenId {
-                ctr_id,
+            let ct_key = &IssuerTokenId {
+                issuer_id,
                 token: *tid,
             };
             let t = self
-                .ctr_tokens
+                .issuer_tokens
                 .get(ct_key)
                 .expect(&format!("tokenID={} not found", tid));
             require!(
@@ -141,30 +141,30 @@ impl Contract {
                 &format!("not an owner of tokenID={}", tid)
             );
 
-            self.ctr_tokens.remove(ct_key);
+            self.issuer_tokens.remove(ct_key);
             let class_id = t.metadata.v1().class;
             self.balances
-                .remove(&balance_key(owner.clone(), ctr_id, class_id));
+                .remove(&balance_key(owner.clone(), issuer_id, class_id));
 
             // update supply by class
-            let key = (ctr_id, class_id);
+            let key = (issuer_id, class_id);
             let mut supply = self.supply_by_class.get(&key).unwrap();
             supply -= 1;
             self.supply_by_class.insert(&key, &supply);
         }
 
         // update supply by owner
-        let key = (owner, ctr_id);
+        let key = (owner, issuer_id);
         let mut supply = self.supply_by_owner.get(&key).unwrap();
         supply -= token_len;
         self.supply_by_owner.insert(&key, &supply);
 
         // update total supply by issuer
-        let mut supply = self.supply_by_ctr.get(&ctr_id).unwrap();
+        let mut supply = self.supply_by_issuer.get(&issuer_id).unwrap();
         supply -= token_len;
-        self.supply_by_ctr.insert(&ctr_id, &supply);
+        self.supply_by_issuer.insert(&issuer_id, &supply);
 
-        SbtTokensEvent { ctr, tokens }.emit_burn();
+        SbtTokensEvent { issuer, tokens }.emit_burn();
     }
 
     //
@@ -174,9 +174,9 @@ impl Contract {
     /// returns false if the `issuer` contract was already registered.
     pub fn admin_add_sbt_issuer(&mut self, issuer: AccountId) -> bool {
         self.assert_authority();
-        let previous = self.sbt_contracts.insert(&issuer, &self.next_ctr_id);
-        self.ctr_id_map.insert(&self.next_ctr_id, &issuer);
-        self.next_ctr_id += 1;
+        let previous = self.sbt_issuers.insert(&issuer, &self.next_issuer_id);
+        self.issuer_id_map.insert(&self.next_issuer_id, &issuer);
+        self.next_issuer_id += 1;
         previous.is_none()
     }
 
@@ -184,16 +184,16 @@ impl Contract {
     // Internal
     //
 
-    pub(crate) fn ctr_id(&self, ctr: &AccountId) -> CtrId {
+    pub(crate) fn issuer_id(&self, issuer: &AccountId) -> IssuerId {
         // TODO: use Result rather than panic
-        self.sbt_contracts.get(ctr).expect("SBT Issuer not found")
+        self.sbt_issuers.get(issuer).expect("SBT Issuer not found")
     }
 
     /// updates the internal token counter based on how many tokens we want to mint (num), and
     /// returns the first valid TokenId for newly minted tokens.
-    pub(crate) fn next_token_id(&mut self, ctr_id: CtrId, num: u64) -> TokenId {
-        let tid = self.next_token_ids.get(&ctr_id).unwrap_or(0);
-        self.next_token_ids.insert(&ctr_id, &(tid + num));
+    pub(crate) fn next_token_id(&mut self, issuer_id: IssuerId, num: u64) -> TokenId {
+        let tid = self.next_token_ids.get(&issuer_id).unwrap_or(0);
+        self.next_token_ids.insert(&issuer_id, &(tid + num));
         tid + 1
     }
 
@@ -205,9 +205,9 @@ impl Contract {
         );
     }
 
-    /// note: use ctr_id() if you need ctr_id
+    /// note: use issuer_id() if you need issuer_id
     pub(crate) fn assert_issuer(&self, contract: &AccountId) {
-        require!(self.sbt_contracts.get(contract).is_some())
+        require!(self.sbt_issuers.get(contract).is_some())
     }
 
     pub(crate) fn assert_authority(&self) {
@@ -356,7 +356,7 @@ mod tests {
         assert_eq!(
             test_utils::get_logs(),
             vec![
-                r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"mint","data":{"ctr":"sbt.n","tokens":[["alice.nea",[1]]]}}"#
+                r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"mint","data":{"issuer":"sbt.n","tokens":[["alice.nea",[1]]]}}"#
             ]
         );
 
@@ -374,7 +374,7 @@ mod tests {
         assert_eq!(
             test_utils::get_logs(),
             vec![
-                r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"mint","data":{"ctr":"sbt.ne","tokens":[["alice.nea",[3]],["alice.near",[1,4]],["bob.near",[2]]]}}"#
+                r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"mint","data":{"issuer":"sbt.ne","tokens":[["alice.nea",[3]],["alice.near",[1,4]],["bob.near",[2]]]}}"#
             ]
         );
 
@@ -518,7 +518,7 @@ mod tests {
         ctr.sbt_burn(issuer2(), vec![1, 5], Some("alice burning".to_owned()));
         assert_eq!(
             test_utils::get_logs(),
-            mk_log_str("burn", r#"{"ctr":"sbt.ne","tokens":[1,5]}"#)
+            mk_log_str("burn", r#"{"issuer":"sbt.ne","tokens":[1,5]}"#)
         );
 
         supply_by_issuer[1] -= 2;
