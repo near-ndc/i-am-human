@@ -106,7 +106,7 @@ impl Contract {
     ) -> Result<(), CtrError> {
         require!(
             env::attached_deposit() == MINT_COST,
-            "Requires attached deposit of exactly 0.01 NEAR"
+            "Requires attached deposit of exactly 0.008 NEAR"
         );
 
         let sig = b64_decode("claim_sig", claim_sig)?;
