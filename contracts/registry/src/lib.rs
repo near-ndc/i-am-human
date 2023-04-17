@@ -168,7 +168,7 @@ impl Contract {
 
 #[cfg(test)]
 mod tests {
-    use near_sdk::test_utils::VMContextBuilder;
+    use near_sdk::test_utils::{self, VMContextBuilder};
     use near_sdk::{testing_env, VMContext};
     use sbt::*;
 
@@ -192,15 +192,15 @@ mod tests {
     }
 
     fn issuer1() -> AccountId {
-        AccountId::new_unchecked("sbt.ne".to_string())
+        AccountId::new_unchecked("sbt.n".to_string())
     }
 
     fn issuer2() -> AccountId {
-        AccountId::new_unchecked("sbt.nea".to_string())
+        AccountId::new_unchecked("sbt.ne".to_string())
     }
 
     fn issuer3() -> AccountId {
-        AccountId::new_unchecked("sbt.near".to_string())
+        AccountId::new_unchecked("sbt.nea".to_string())
     }
 
     fn issuer4() -> AccountId {
@@ -300,6 +300,12 @@ mod tests {
         // mint an SBT to a user with same prefix as alice
         let minted_ids = ctr.sbt_mint(vec![(a_user(), vec![m1_1.clone()])]);
         assert_eq!(minted_ids, vec![1]);
+        assert_eq!(
+            test_utils::get_logs(),
+            vec![
+                r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"mint","data":{"ctr":"sbt.n","tokens":[["alice.nea",[1]]]}}"#
+            ]
+        );
 
         ctx.predecessor_account_id = issuer2();
         testing_env!(ctx.clone());
@@ -310,6 +316,13 @@ mod tests {
             (alice(), vec![m2_1.clone()]),
         ]);
         assert_eq!(minted_ids, vec![1, 2, 3, 4]);
+        assert_eq!(test_utils::get_logs().len(), 1);
+        assert_eq!(
+            test_utils::get_logs(),
+            vec![
+                r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"mint","data":{"ctr":"sbt.ne","tokens":[["alice.nea",[3]],["alice.near",[1,4]],["bob.near",[2]]]}}"#
+            ]
+        );
 
         // mint again for Alice
         let minted_ids = ctr.sbt_mint(vec![(alice(), vec![m4_1.clone()])]);

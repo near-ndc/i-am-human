@@ -154,6 +154,7 @@ impl SBTRegistry for Contract {
             .iter_from(balance_key(account.clone(), ctr_id, from_class))
             .take(limit as usize)
         {
+            // TODO: maybe we should continue the scan?
             if key.owner != account {
                 break;
             }
@@ -222,12 +223,14 @@ impl SBTRegistry for Contract {
         let mut token = self.next_token_id(ctr_id, num_tokens);
         let ret_token_ids = (token..token + num_tokens).collect();
         let mut supply_by_class = HashMap::new();
+        let mut per_recipient: HashMap<AccountId, Vec<TokenId>> = HashMap::new();
 
         for (owner, metadatas) in token_spec {
+            self.assert_not_banned(&owner);
+            let recipient_tokens = per_recipient.entry(owner.clone()).or_default();
             let metadatas_len = metadatas.len();
-            for metadata in metadatas {
-                self.assert_not_banned(&owner);
 
+            for metadata in metadatas {
                 let prev = self.balances.insert(
                     &BalanceKey {
                         owner: owner.clone(),
@@ -238,7 +241,7 @@ impl SBTRegistry for Contract {
                 );
                 require!(
                     prev.is_none(),
-                    format! {"{} already has SBT of class {}", &owner, metadata.class}
+                    format! {"{} already has SBT of class {}", owner, metadata.class}
                 );
 
                 // update supply by class
@@ -256,8 +259,11 @@ impl SBTRegistry for Contract {
                         metadata: metadata.into(),
                     },
                 );
+                recipient_tokens.push(token);
+
                 token += 1;
             }
+
             // update supply by owner
             let skey = (owner, ctr_id);
             let sowner = self.supply_by_owner.get(&skey).unwrap_or(0) + metadatas_len as u64;
@@ -273,7 +279,14 @@ impl SBTRegistry for Contract {
         let new_supply = self.supply_by_ctr.get(&ctr_id).unwrap_or(0) + num_tokens;
         self.supply_by_ctr.insert(&ctr_id, &new_supply);
 
-        // TODO: emit events
+        let mut minted: Vec<(&AccountId, &Vec<TokenId>)> = per_recipient.iter().collect();
+        minted.sort_by(|a, b| a.0.cmp(b.0));
+        SbtMint {
+            ctr: &ctr,
+            tokens: minted,
+            memo: None,
+        }
+        .emit();
 
         ret_token_ids
     }
