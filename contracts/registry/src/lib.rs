@@ -221,7 +221,7 @@ impl Contract {
 #[cfg(test)]
 mod tests {
     use near_sdk::test_utils::{self, VMContextBuilder};
-    use near_sdk::{testing_env, VMContext};
+    use near_sdk::{testing_env, Balance, VMContext};
     use sbt::*;
 
     use pretty_assertions::assert_eq;
@@ -283,14 +283,18 @@ mod tests {
     }
 
     const START: u64 = 10;
+    const MINT_DEPOSIT: Balance = 6 * MILI_NEAR;
 
-    fn setup(predecessor: &AccountId) -> (VMContext, Contract) {
+    fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
             // .attached_deposit(deposit_dec.into())
             .block_timestamp(START)
             .is_view(false)
             .build();
+        if deposit > 0 {
+            ctx.attached_deposit = deposit
+        }
         testing_env!(ctx.clone());
         let mut ctr = Contract::new(admin());
         ctr.admin_add_sbt_issuer(issuer1());
@@ -303,7 +307,7 @@ mod tests {
 
     #[test]
     fn mint_simple() {
-        let (_, mut ctr) = setup(&issuer1());
+        let (_, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
         let m1_1 = mk_metadata(1, Some(START + 10));
 
         let minted_ids = ctr.sbt_mint(vec![
@@ -340,7 +344,7 @@ mod tests {
 
     #[test]
     fn mint() {
-        let (mut ctx, mut ctr) = setup(&issuer1());
+        let (mut ctx, mut ctr) = setup(&issuer1(), MINT_DEPOSIT);
         let m1_1 = mk_metadata(1, Some(START + 10));
         let m1_2 = mk_metadata(1, Some(START + 12));
         let m2_1 = mk_metadata(2, Some(START + 14));
@@ -357,6 +361,7 @@ mod tests {
         );
 
         ctx.predecessor_account_id = issuer2();
+        ctx.attached_deposit = 4 * MINT_DEPOSIT;
         testing_env!(ctx.clone());
         let minted_ids = ctr.sbt_mint(vec![
             (alice(), vec![m1_1.clone()]),
@@ -379,6 +384,7 @@ mod tests {
 
         // change the issuer and mint new tokens for alice
         ctx.predecessor_account_id = issuer3();
+        ctx.attached_deposit = 2 * MINT_DEPOSIT;
         testing_env!(ctx.clone());
         let minted_ids = ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m2_1.clone()])]);
         // since we minted with different issuer, the new SBT should start with 1

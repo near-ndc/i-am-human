@@ -3,14 +3,13 @@
 
 use std::collections::HashMap;
 
-use near_sdk::{env::account_balance, near_bindgen, AccountId};
+use near_sdk::{near_bindgen, AccountId};
 
 use crate::*;
 use sbt::*;
 
 const MAX_LIMIT: u32 = 1000;
 
-// Implement the contract structure
 #[near_bindgen]
 impl SBTRegistry for Contract {
     /**********
@@ -213,7 +212,12 @@ impl SBTRegistry for Contract {
     /// Must provide enough NEAR to cover registry storage cost.
     #[payable]
     fn sbt_mint(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId> {
-        // TODO: deposit check
+        let storage_start = env::storage_usage();
+        let storage_deposit = env::attached_deposit();
+        require!(
+            storage_deposit >= 6 * MILI_NEAR,
+            "min required storage deposit: 0.006 NEAR"
+        );
 
         let ctr = &env::predecessor_account_id();
         let ctr_id = self.ctr_id(ctr);
@@ -290,6 +294,16 @@ impl SBTRegistry for Contract {
             memo: None,
         }
         .emit();
+
+        let required_deposit =
+            (env::storage_usage() - storage_start) as u128 * env::storage_byte_cost();
+        require!(
+            storage_deposit >= required_deposit,
+            format!(
+                "not enough NEAR storage depost, required: {}",
+                required_deposit
+            )
+        );
 
         ret_token_ids
     }
