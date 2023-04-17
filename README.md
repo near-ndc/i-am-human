@@ -2,6 +2,12 @@
 
 Monorepository of base classes for the I am Human proof of humanity protocol.
 
+## Mainnet
+
+- **SBT registry**: `registry.i-am-human.near`
+- **GoodDollar-SBT**: `gooddollar-v1.i-am-human.near`
+  verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
+
 ## Testnet
 
 - **SBT registry**: `registry-1.i-am-human.testnet`
