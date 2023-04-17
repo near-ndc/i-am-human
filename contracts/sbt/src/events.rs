@@ -69,10 +69,15 @@ impl Nep393Event<'_> {
 #[serde(crate = "near_sdk::serde")]
 pub struct SbtMint<'a> {
     pub ctr: &'a AccountId,
-    pub tokens: Vec<(&'a AccountId, Vec<TokenId>)>,
+    pub tokens: Vec<(&'a AccountId, &'a Vec<TokenId>)>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memo: Option<String>,
+}
+impl SbtMint<'_> {
+    pub fn emit(self) {
+        Nep393Event::Mint(self).emit();
+    }
 }
 
 /// An event emitted when a recovery process succeeded to reassign SBT, usually due to account
@@ -289,17 +294,17 @@ mod tests {
             token_ids: &["1123"],
             memo: Some("something"),
         };
-        let sbt_log = from_nftmint(&nft_log);
-        let sbt_log2 = from_nftmint(&nft_log);
+        let log = from_nftmint(&nft_log);
+        let log2 = from_nftmint(&nft_log);
 
         nft_log.emit();
         assert_eq!(3, test_utils::get_logs().len());
         assert_eq!(expected, test_utils::get_logs()[2]);
 
-        sbt_log.emit();
+        log.emit();
         assert_eq!(4, test_utils::get_logs().len());
         assert_eq!(expected, test_utils::get_logs()[3]);
-        assert_eq!(expected, sbt_log2.to_json_event_string());
+        assert_eq!(expected, log2.to_json_event_string());
     }
 
     #[test]
@@ -307,9 +312,11 @@ mod tests {
         let bob = bob();
         let issuer = sbt_issuer();
         let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"mint","data":{"ctr":"sbt.near","tokens":[["bob.near",[821,10]],["bob.near",[1]]],"memo":"process1"}}"#;
+        let bob1_tokens = vec![821, 10];
+        let bob2_tokens = vec![1];
         let event = Nep393Event::Mint(SbtMint {
             ctr: &issuer,
-            tokens: vec![(&bob, vec![821, 10]), (&bob, vec![1])],
+            tokens: vec![(&bob, &bob1_tokens), (&bob, &bob2_tokens)],
             memo: Some("process1".to_owned()),
         });
         assert_eq!(expected, event.clone().to_json_event_string());
