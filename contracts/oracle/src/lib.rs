@@ -1,7 +1,7 @@
 use ed25519_dalek::{PublicKey, Signature, Verifier, PUBLIC_KEY_LENGTH};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, UnorderedSet};
-use near_sdk::{env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault};
+use near_sdk::{env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, PromiseResult, log, Promise};
 
 use sbt::*;
 
@@ -105,7 +105,7 @@ impl Contract {
         claim_b64: String,
         claim_sig: String,
         memo: Option<String>,
-    ) -> Result<(), CtrError> {
+    ) -> Result<Promise, CtrError> {
         require!(
             env::attached_deposit() == MINT_COST,
             "Requires attached deposit of exactly 0.008 NEAR"
@@ -150,17 +150,26 @@ impl Contract {
         };
 
         self.used_identities.insert(&external_id);
-        ext_registry::ext(self.registry.clone())
+        let result = ext_registry::ext(self.registry.clone())
             .with_attached_deposit(MINT_COST_REG)
             .with_static_gas(Gas::ONE_TERA * 6)
-            .sbt_mint(vec![(claim.claimer, vec![metadata])]);
-
-        // TODO: add callback to undo identity insert if the minting didn't work because of a duplicate mint.
+            .sbt_mint(vec![(claim.claimer, vec![metadata])]).then(Self::ext(env::current_account_id()).sbt_mint_callback(&external_id));
+        
         if let Some(memo) = memo {
             env::log_str(&format!("SBT mint memo: {}", memo));
         }
+        Ok(result)
+    }
 
-        Ok(())
+    #[private]
+    pub fn sbt_mint_callback(&mut self, external_id: &Vec<u8>, #[callback_result] last_result: Result<TokenId, near_sdk::PromiseError>) -> TokenId {
+        if let Ok(result) = last_result {
+            log!(format!("The last result is {result}"));
+            result
+        } else {
+            self.used_identities.remove(&external_id);
+            env::panic_str("ERR_CALL_FAILED");
+        }
     }
 
     /**********
@@ -314,51 +323,51 @@ mod tests {
         let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k);
         ctx.signer_account_id = acc_u1();
         testing_env!(ctx.clone());
-        match ctr.sbt_mint(c_str.clone(), sig.clone()) {
+        match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
             Err(CtrError::BadRequest(s)) => assert_eq!(s, "claimer is not the transaction signer"),
-            resp @ _ => panic!("expected BadRequest, got: {:?}", resp),
+            _resp @ _ => panic!("expected BadRequest"),
         }
 
         // fail: claim_ttl passed
         ctx.signer_account_id = signer.clone();
         ctx.block_timestamp = start() + CLAIM_TTL * SECOND;
         testing_env!(ctx.clone());
-        match ctr.sbt_mint(c_str.clone(), sig.clone()) {
+        match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
             Err(CtrError::BadRequest(s)) => {
                 assert_eq!("claim expired", s, "wrong BadRequest: {}", s)
             }
-            resp @ _ => panic!("expected BadRequest, got: {:?}", resp),
+            _resp @ _ => panic!("expected BadRequest"),
         }
 
         // fail: claim_ttl passed way more
         ctx.signer_account_id = signer.clone();
         ctx.block_timestamp = start() + CLAIM_TTL * 10 * SECOND;
         testing_env!(ctx.clone());
-        match ctr.sbt_mint(c_str.clone(), sig.clone()) {
+        match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
             Err(CtrError::BadRequest(s)) => {
                 assert_eq!("claim expired", s, "wrong BadRequest: {}", s)
             }
-            resp @ _ => panic!("expected BadRequest, got: {:?}", resp),
+            _resp @ _ => panic!("expected BadRequest"),
         }
 
         // test case: claim.timestamp can't be in the future
         ctx.block_timestamp = start() - SECOND;
         testing_env!(ctx.clone());
-        match ctr.sbt_mint(c_str.clone(), sig.clone()) {
+        match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
             Err(CtrError::BadRequest(s)) => assert_eq!("claim.timestamp in the future", s),
-            resp @ _ => panic!("expected BadRequest, got: {:?}", resp),
+            _resp @ _ => panic!("expected BadRequest"),
         }
 
         // should create a SBT for a valid claim
         ctx.block_timestamp = start() + SECOND;
         testing_env!(ctx.clone());
-        let resp = ctr.sbt_mint(c_str.clone(), sig.clone());
-        assert!(resp.is_ok(), "should accept valid claim, {:?}", resp);
+        let resp = ctr.sbt_mint(c_str.clone(), sig.clone(), None);
+        assert!(resp.is_ok(), "should accept valid claim");
 
         // fail: signer already has SBT
-        match ctr.sbt_mint(c_str.clone(), sig.clone()) {
+        match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
             Err(CtrError::DuplicatedID(_)) => (),
-            resp @ _ => panic!("DuplicatedID, got: {:?}", resp),
+            _resp @ _ => panic!("DuplicatedID"),
         }
     }
 
