@@ -1,7 +1,7 @@
 use ed25519_dalek::{PublicKey, Signature, Verifier, PUBLIC_KEY_LENGTH};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, UnorderedSet};
-use near_sdk::{env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, PromiseResult, log, Promise};
+use near_sdk::{env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise};
 
 use sbt::*;
 
@@ -154,7 +154,6 @@ impl Contract {
             .with_attached_deposit(MINT_COST_REG)
             .with_static_gas(Gas::ONE_TERA * 6)
             .sbt_mint(vec![(claim.claimer, vec![metadata])]).then(Self::ext(env::current_account_id()).sbt_mint_callback(&external_id));
-        
         if let Some(memo) = memo {
             env::log_str(&format!("SBT mint memo: {}", memo));
         }
@@ -162,13 +161,13 @@ impl Contract {
     }
 
     #[private]
-    pub fn sbt_mint_callback(&mut self, external_id: &Vec<u8>, #[callback_result] last_result: Result<TokenId, near_sdk::PromiseError>) -> TokenId {
+    #[handle_result]
+    pub fn sbt_mint_callback(&mut self, external_id: &Vec<u8>, #[callback_result] last_result: Result<TokenId, near_sdk::PromiseError>) -> Result<TokenId, near_sdk::PromiseError> {
         if let Ok(result) = last_result {
-            log!(format!("The last result is {result}"));
-            result
+            Ok(result)
         } else {
             self.used_identities.remove(&external_id);
-            env::panic_str("ERR_CALL_FAILED");
+            last_result
         }
     }
 
@@ -325,7 +324,8 @@ mod tests {
         testing_env!(ctx.clone());
         match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
             Err(CtrError::BadRequest(s)) => assert_eq!(s, "claimer is not the transaction signer"),
-            _resp @ _ => panic!("expected BadRequest"),
+            Err(error)=> panic!("expected BadRequest, got: {:?}", error),
+            Ok(_) => (),
         }
 
         // fail: claim_ttl passed
@@ -336,7 +336,8 @@ mod tests {
             Err(CtrError::BadRequest(s)) => {
                 assert_eq!("claim expired", s, "wrong BadRequest: {}", s)
             }
-            _resp @ _ => panic!("expected BadRequest"),
+            Err(error)=> panic!("expected BadRequest, got: {:?}", error),
+            Ok(_) => (),
         }
 
         // fail: claim_ttl passed way more
@@ -347,7 +348,8 @@ mod tests {
             Err(CtrError::BadRequest(s)) => {
                 assert_eq!("claim expired", s, "wrong BadRequest: {}", s)
             }
-            _resp @ _ => panic!("expected BadRequest"),
+            Err(error)=> panic!("expected BadRequest, got: {:?}", error),
+            Ok(_) => (),
         }
 
         // test case: claim.timestamp can't be in the future
@@ -355,7 +357,8 @@ mod tests {
         testing_env!(ctx.clone());
         match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
             Err(CtrError::BadRequest(s)) => assert_eq!("claim.timestamp in the future", s),
-            _resp @ _ => panic!("expected BadRequest"),
+            Err(error)=> panic!("expected BadRequest, got: {:?}", error),
+            Ok(_) => (),
         }
 
         // should create a SBT for a valid claim
@@ -367,7 +370,8 @@ mod tests {
         // fail: signer already has SBT
         match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
             Err(CtrError::DuplicatedID(_)) => (),
-            _resp @ _ => panic!("DuplicatedID"),
+            Err(error)=> panic!("expected DuplicatedID, got: {:?}", error),
+            Ok(_) => (),
         }
     }
 
