@@ -326,7 +326,7 @@ mod tests {
         match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
             Err(CtrError::BadRequest(s)) => assert_eq!(s, "claimer is not the transaction signer"),
             Err(error)=> panic!("expected BadRequest, got: {:?}", error),
-            Ok(_) => (),
+            Ok(_) => panic!("expected BadRequest, got: Ok"),
         }
 
         // fail: claim_ttl passed
