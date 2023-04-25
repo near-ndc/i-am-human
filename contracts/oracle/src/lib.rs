@@ -166,12 +166,10 @@ impl Contract {
     #[private]
     #[handle_result]
     pub fn sbt_mint_callback(&mut self, external_id: &Vec<u8>, #[callback_result] last_result: Result<TokenId, near_sdk::PromiseError>) -> Result<TokenId, near_sdk::PromiseError> {
-        if let Ok(result) = last_result {
-            Ok(result)
-        } else {
+        if lasat_result.is_er() {
             self.used_identities.remove(&external_id);
-            last_result
         }
+        last_result
     }
 
     /**********
