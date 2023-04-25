@@ -338,7 +338,7 @@ mod tests {
                 assert_eq!("claim expired", s, "wrong BadRequest: {}", s)
             }
             Err(error)=> panic!("expected BadRequest, got: {:?}", error),
-            Ok(_) => (),
+            Ok(_) => panic!("expected BadRequest, got: Ok"),
         }
 
         // fail: claim_ttl passed way more
@@ -350,7 +350,7 @@ mod tests {
                 assert_eq!("claim expired", s, "wrong BadRequest: {}", s)
             }
             Err(error)=> panic!("expected BadRequest, got: {:?}", error),
-            Ok(_) => (),
+            Ok(_) => panic!("expected BadRequest, got: Ok"),
         }
 
         // test case: claim.timestamp can't be in the future
@@ -359,7 +359,7 @@ mod tests {
         match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
             Err(CtrError::BadRequest(s)) => assert_eq!("claim.timestamp in the future", s),
             Err(error)=> panic!("expected BadRequest, got: {:?}", error),
-            Ok(_) => (),
+            Ok(_) => panic!("expected BadRequest, got: Ok"),
         }
 
         // should create a SBT for a valid claim
@@ -372,7 +372,7 @@ mod tests {
         match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
             Err(CtrError::DuplicatedID(_)) => (),
             Err(error)=> panic!("expected DuplicatedID, got: {:?}", error),
-            Ok(_) => (),
+            Ok(_) => panic!("expected DuplicatedID, got: Ok"),
         }
     }
 
