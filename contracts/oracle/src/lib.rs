@@ -150,13 +150,16 @@ impl Contract {
         };
 
         self.used_identities.insert(&external_id);
+
+        if let Some(memo) = memo {
+            env::log_str(&format!("SBT mint memo: {}", memo));
+        }
+
         let result = ext_registry::ext(self.registry.clone())
             .with_attached_deposit(MINT_COST_REG)
             .with_static_gas(Gas::ONE_TERA * 6)
             .sbt_mint(vec![(claim.claimer, vec![metadata])]).then(Self::ext(env::current_account_id()).sbt_mint_callback(&external_id));
-        if let Some(memo) = memo {
-            env::log_str(&format!("SBT mint memo: {}", memo));
-        }
+        
         Ok(result)
     }
 
