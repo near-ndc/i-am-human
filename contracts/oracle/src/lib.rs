@@ -159,14 +159,14 @@ impl Contract {
             .with_attached_deposit(MINT_COST_REG)
             .with_static_gas(Gas::ONE_TERA * 6)
             .sbt_mint(vec![(claim.claimer, vec![metadata])]).then(Self::ext(env::current_account_id()).sbt_mint_callback(&external_id));
-        
+
         Ok(result)
     }
 
     #[private]
     #[handle_result]
     pub fn sbt_mint_callback(&mut self, external_id: &Vec<u8>, #[callback_result] last_result: Result<TokenId, near_sdk::PromiseError>) -> Result<TokenId, near_sdk::PromiseError> {
-        if lasat_result.is_er() {
+        if last_result.is_err() {
             self.used_identities.remove(&external_id);
         }
         last_result
