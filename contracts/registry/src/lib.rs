@@ -85,7 +85,7 @@ impl Contract {
     pub fn sbt_soul_transfer(
         &mut self,
         to: AccountId,
-        memo: Option<String>,
+        #[allow(unused_variables)] memo: Option<String>,
     ) -> (AccountId, TokenId, bool) {
         let owner = env::predecessor_account_id();
         let start = match self.ongoing_soul_tx.get(&to) {
@@ -111,7 +111,12 @@ impl Contract {
         env::panic_str("not implemented");
     }
 
-    pub fn sbt_burn(&mut self, issuer: AccountId, tokens: Vec<TokenId>, memo: Option<String>) {
+    pub fn sbt_burn(
+        &mut self,
+        issuer: AccountId,
+        tokens: Vec<TokenId>,
+        #[allow(unused_variables)] memo: Option<String>,
+    ) {
         let owner = env::predecessor_account_id();
         require!(
             !self.ongoing_soul_tx.contains_key(&owner),
