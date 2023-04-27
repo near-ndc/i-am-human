@@ -76,7 +76,7 @@ impl Contract {
 
     /// Transfers atomically all SBT tokens from one account to another account.
     /// The caller must be an SBT holder and the `to` must not be a banned account.
-    /// Returns amount of tokens transferred as well a boolean: `true` if the whole
+    /// Returns the amount of tokens transferred and a boolean: `true` if the whole
     /// process has finished, `false` when the process has not
     /// finished and should be continued by a subsequent call.
     /// User must keeps calling `sbt_soul_transfer` until `true` is returned.
