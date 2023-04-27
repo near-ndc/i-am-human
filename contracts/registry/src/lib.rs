@@ -104,7 +104,7 @@ impl Contract {
             // starting the process
             None => {
                 require!(!self._is_banned(&recipient), "`to` is banned");
-                // insert into banlist and assuer owner is not already banned.
+                // insert into banlist and assure the owner is not already banned.
                 require!(
                     self.banlist.insert(&owner),
                     "caller banned: can't make soul transfer"
