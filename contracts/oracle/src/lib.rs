@@ -158,14 +158,19 @@ impl Contract {
         let result = ext_registry::ext(self.registry.clone())
             .with_attached_deposit(MINT_COST_REG)
             .with_static_gas(Gas::ONE_TERA * 6)
-            .sbt_mint(vec![(claim.claimer, vec![metadata])]).then(Self::ext(env::current_account_id()).sbt_mint_callback(&external_id));
+            .sbt_mint(vec![(claim.claimer, vec![metadata])])
+            .then(Self::ext(env::current_account_id()).sbt_mint_callback(&external_id));
 
         Ok(result)
     }
 
     #[private]
     #[handle_result]
-    pub fn sbt_mint_callback(&mut self, external_id: &Vec<u8>, #[callback_result] last_result: Result<TokenId, near_sdk::PromiseError>) -> Result<TokenId, near_sdk::PromiseError> {
+    pub fn sbt_mint_callback(
+        &mut self,
+        external_id: &Vec<u8>,
+        #[callback_result] last_result: Result<TokenId, near_sdk::PromiseError>,
+    ) -> Result<TokenId, near_sdk::PromiseError> {
         if last_result.is_err() {
             self.used_identities.remove(&external_id);
         }
@@ -325,7 +330,7 @@ mod tests {
         testing_env!(ctx.clone());
         match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
             Err(CtrError::BadRequest(s)) => assert_eq!(s, "claimer is not the transaction signer"),
-            Err(error)=> panic!("expected BadRequest, got: {:?}", error),
+            Err(error) => panic!("expected BadRequest, got: {:?}", error),
             Ok(_) => panic!("expected BadRequest, got: Ok"),
         }
 
@@ -337,7 +342,7 @@ mod tests {
             Err(CtrError::BadRequest(s)) => {
                 assert_eq!("claim expired", s, "wrong BadRequest: {}", s)
             }
-            Err(error)=> panic!("expected BadRequest, got: {:?}", error),
+            Err(error) => panic!("expected BadRequest, got: {:?}", error),
             Ok(_) => panic!("expected BadRequest, got: Ok"),
         }
 
@@ -349,7 +354,7 @@ mod tests {
             Err(CtrError::BadRequest(s)) => {
                 assert_eq!("claim expired", s, "wrong BadRequest: {}", s)
             }
-            Err(error)=> panic!("expected BadRequest, got: {:?}", error),
+            Err(error) => panic!("expected BadRequest, got: {:?}", error),
             Ok(_) => panic!("expected BadRequest, got: Ok"),
         }
 
@@ -358,7 +363,7 @@ mod tests {
         testing_env!(ctx.clone());
         match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
             Err(CtrError::BadRequest(s)) => assert_eq!("claim.timestamp in the future", s),
-            Err(error)=> panic!("expected BadRequest, got: {:?}", error),
+            Err(error) => panic!("expected BadRequest, got: {:?}", error),
             Ok(_) => panic!("expected BadRequest, got: Ok"),
         }
 
@@ -371,7 +376,7 @@ mod tests {
         // fail: signer already has SBT
         match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
             Err(CtrError::DuplicatedID(_)) => (),
-            Err(error)=> panic!("expected DuplicatedID, got: {:?}", error),
+            Err(error) => panic!("expected DuplicatedID, got: {:?}", error),
             Ok(_) => panic!("expected DuplicatedID, got: Ok"),
         }
     }
