@@ -118,7 +118,7 @@ impl Contract {
             "can't burn tokens while in soul_transfer"
         );
 
-        let issuer_id = self.issuer_id(&issuer);
+        let issuer_id = self.assert_issuer(&issuer);
         let token_len = tokens.len() as u64;
         let mut token_ids = HashSet::new();
         for tid in tokens.iter() {
@@ -184,9 +184,11 @@ impl Contract {
     // Internal
     //
 
-    pub(crate) fn issuer_id(&self, issuer: &AccountId) -> IssuerId {
-        // TODO: use Result rather than panic
-        self.sbt_issuers.get(issuer).expect("SBT Issuer not found")
+    /// Queries a given token. Panics if token doesn't exist
+    pub(crate) fn get_token(&self, issuer_id: IssuerId, token: TokenId) -> TokenData {
+        self.issuer_tokens
+            .get(&IssuerTokenId { issuer_id, token })
+            .expect(&format!("token {} not found", token))
     }
 
     /// updates the internal token counter based on how many tokens we want to mint (num), and
@@ -206,8 +208,11 @@ impl Contract {
     }
 
     /// note: use issuer_id() if you need issuer_id
-    pub(crate) fn assert_issuer(&self, contract: &AccountId) {
-        require!(self.sbt_issuers.get(contract).is_some())
+    pub(crate) fn assert_issuer(&self, issuer: &AccountId) -> IssuerId {
+        // TODO: use Result rather than panic
+        self.sbt_issuers
+            .get(issuer)
+            .expect("must be called by a registered SBT Issuer")
     }
 
     pub(crate) fn assert_authority(&self) {

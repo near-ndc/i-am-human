@@ -17,7 +17,7 @@ impl SBTRegistry for Contract {
      **********/
 
     fn sbt(&self, issuer: AccountId, token: TokenId) -> Option<Token> {
-        let issuer_id = self.issuer_id(&issuer);
+        let issuer_id = self.assert_issuer(&issuer);
         self.issuer_tokens
             .get(&IssuerTokenId { issuer_id, token })
             .map(|td| td.to_token(token))
@@ -133,7 +133,7 @@ impl SBTRegistry for Contract {
         let issuer_id = match issuer {
             None => 0,
             // use self.sbt_contracts.get when changing to query by issuer_start
-            Some(addr) => self.issuer_id(&addr),
+            Some(addr) => self.assert_issuer(&addr),
         };
         let mut from_class = from_class.unwrap_or(0);
         // iter_from starts from exclusive "left end"
@@ -170,13 +170,7 @@ impl SBTRegistry for Contract {
                 }
                 prev_issuer = key.issuer_id;
             }
-            let t = self
-                .issuer_tokens
-                .get(&IssuerTokenId {
-                    issuer_id: key.issuer_id,
-                    token: token_id,
-                })
-                .expect("internal error: token data not found");
+            let t = self.get_token(key.issuer_id, token_id);
             tokens.push(OwnedToken {
                 token: token_id,
                 metadata: t.metadata.v1(),
@@ -218,7 +212,7 @@ impl SBTRegistry for Contract {
         );
 
         let issuer = &env::predecessor_account_id();
-        let issuer_id = self.issuer_id(issuer);
+        let issuer_id = self.assert_issuer(issuer);
         let mut num_tokens = 0;
         for el in token_spec.iter() {
             num_tokens += el.1.len() as u64;
@@ -301,9 +295,10 @@ impl SBTRegistry for Contract {
         ret_token_ids
     }
 
-    /// sbt_recover reassigns all tokens from the old owner to a new owner,
-    /// and registers `old_owner` to a burned addresses registry.
-    /// Must be called by an SBT contract.
+    /// sbt_recover reassigns all tokens issued by the caller, from the old owner to a new owner.
+    /// Adds `old_owner` to a banned accounts list.
+    /// Caller must be a valid issuer.
+    /// Must be called by a valid SBT issuer.
     /// Must emit `Recover` event.
     /// Must be called by an operator.
     /// Must provide enough NEAR to cover registry storage cost.
@@ -326,13 +321,21 @@ impl SBTRegistry for Contract {
     /// Must emit `Renew` event.
     fn sbt_renew(&mut self, tokens: Vec<TokenId>, expires_at: u64) {
         let issuer = env::predecessor_account_id();
-        self.assert_issuer(&issuer);
-        env::panic_str("not implemented");
-        // must not renew tokens from banned accounts
-        // add events
+        let issuer_id = self.assert_issuer(&issuer);
+        for token in &tokens {
+            let token = token.clone();
+            let mut t = self.get_token(issuer_id, token);
+            self.assert_not_banned(&t.owner);
+            let mut m = t.metadata.v1();
+            m.expires_at = Some(expires_at);
+            t.metadata = m.into();
+            self.issuer_tokens
+                .insert(&IssuerTokenId { issuer_id, token }, &t);
+        }
+        SbtTokensEvent { issuer, tokens }.emit_renew();
     }
 
-    /// Revokes SBT, could potentially burn it or update the expire time.
+    /// Revokes SBT by burns it.
     /// Must be called by an SBT contract.
     /// Must emit one of `Revoke` or `Burn` event.
     /// Returns true if a token is a valid, active SBT. Otherwise returns false.

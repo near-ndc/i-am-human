@@ -35,9 +35,12 @@ pub type TokenId = u64;
 /// Minimum valid `ClassId` must be 1.
 pub type ClassId = u64;
 
-/// trait which every SBT contract with metadata should implement, offering contract details.
+/// SBTContract is the minimum required interface to be implemented by issuer.
+/// Other methods, such as a mint function, which requests the registry to proceed with token
+/// minting, is specific to an Issuer implementation (similarly, mint is not part of the FT
+/// standard).
 pub trait SBTContract {
-    //view call for returning the contract metadata
+    /// returns contract metadata
     fn sbt_metadata(&self) -> ContractMetadata;
 }
 
@@ -106,9 +109,10 @@ pub trait SBTRegistry {
     // #[payable]
     fn sbt_mint(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>;
 
-    /// sbt_recover reassigns all tokens from the old owner to a new owner,
-    /// and registers `old_owner` to a burned addresses registry.
-    /// Must be called by an SBT contract.
+    /// sbt_recover reassigns all tokens issued by the caller, from the old owner to a new owner.
+    /// Adds `old_owner` to a banned accounts list.
+    /// Caller must be a valid issuer.
+    /// Must be called by a valid SBT issuer.
     /// Must emit `Recover` event.
     /// Must be called by an operator.
     /// Must provide enough NEAR to cover registry storage cost.
@@ -122,9 +126,9 @@ pub trait SBTRegistry {
     /// Must emit `Renew` event.
     fn sbt_renew(&mut self, tokens: Vec<TokenId>, expires_at: u64);
 
-    /// Revokes SBT, could potentially burn an SBT or update SBT expire time.
+    /// Revokes SBT by burning the token or updating its expire time.
     /// Must be called by an SBT contract.
-    /// Must emit one of `Revoke` or `Burn` event.
+    /// Must emit one of `Revoke` or `Burn` (if the token is removed) event.
     /// Returns true if a token is a valid, active SBT. Otherwise returns false.
     fn sbt_revoke(&mut self, token: Vec<TokenId>) -> bool;
 }
