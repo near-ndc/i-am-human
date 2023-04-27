@@ -365,9 +365,14 @@ mod tests {
         assert_eq!(minted_ids, vec![1]);
         assert_eq!(
             test_utils::get_logs(),
-            vec![
-                r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"mint","data":{"issuer":"sbt.n","tokens":[["alice.nea",[1]]]}}"#
-            ]
+            mk_log_str(
+                "mint",
+                &format!(
+                    r#"{{"issuer":"{}","tokens":[["{}",[1]]]}}"#,
+                    issuer1(),
+                    alice2()
+                )
+            )
         );
 
         ctx.predecessor_account_id = issuer2();
@@ -383,9 +388,16 @@ mod tests {
         assert_eq!(test_utils::get_logs().len(), 1);
         assert_eq!(
             test_utils::get_logs(),
-            vec![
-                r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"mint","data":{"issuer":"sbt.ne","tokens":[["alice.nea",[3]],["alice.near",[1,4]],["bob.near",[2]]]}}"#
-            ]
+            mk_log_str(
+                "mint",
+                &format!(
+                    r#"{{"issuer":"{}","tokens":[["{}",[3]],["{}",[1,4]],["{}",[2]]]}}"#,
+                    issuer2(),
+                    alice2(),
+                    alice(),
+                    bob()
+                )
+            )
         );
 
         // mint again for Alice
