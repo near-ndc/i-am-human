@@ -1,6 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, UnorderedSet};
-use near_sdk::{env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault};
+use near_sdk::{env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise};
 
 use sbt::*;
 
@@ -59,7 +59,7 @@ impl Contract {
      **********/
 
     #[payable]
-    pub fn sbt_mint(&mut self, receiver: AccountId, memo: Option<String>) {
+    pub fn sbt_mint(&mut self, receiver: AccountId, memo: Option<String>) -> Promise {
         self.assert_admin();
         require!(
             env::attached_deposit() == MINT_COST,
@@ -75,18 +75,33 @@ impl Contract {
             reference_hash: None,
         };
 
-        ext_registry::ext(self.registry.clone())
-            .with_attached_deposit(MINT_COST)
-            .with_static_gas(Gas::ONE_TERA * 5) // 5 TGas
-            .sbt_mint(vec![(receiver, vec![metadata])]);
-
-        // TODO: add callback to undo identity insert if the minting didn't work because of a duplicate mint.
         if let Some(memo) = memo {
             env::log_str(&format!("SBT mint memo: {}", memo));
         }
+
+        ext_registry::ext(self.registry.clone())
+            .with_attached_deposit(MINT_COST)
+            .with_static_gas(Gas::ONE_TERA * 5) // 5 TGas
+            .sbt_mint(vec![(receiver, vec![metadata])])
+            .then(Self::ext(env::current_account_id()).sbt_mint_callback())
     }
 
-    pub fn add_admin(&mut self, account: AccountId, memo: Option<String>) {
+    #[private]
+    pub fn sbt_mint_callback(
+        &mut self,
+        #[callback_result] last_result: Result<Vec<TokenId>, near_sdk::PromiseError>,
+    ) -> Vec<TokenId> {
+        match last_result {
+            Err(_) => env::panic_str("ERR: Mint failed"),
+            Ok(res) => res,
+        }
+    }
+
+    pub fn add_admin(
+        &mut self,
+        account: AccountId,
+        #[allow(unused_variables)] memo: Option<String>,
+    ) {
         self.assert_admin();
         self.admins.insert(&account);
     }

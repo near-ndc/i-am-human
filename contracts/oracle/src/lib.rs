@@ -1,7 +1,9 @@
 use ed25519_dalek::{PublicKey, Signature, Verifier, PUBLIC_KEY_LENGTH};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, UnorderedSet};
-use near_sdk::{env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise};
+use near_sdk::{
+    env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
+};
 
 use sbt::*;
 
@@ -159,22 +161,20 @@ impl Contract {
             .with_attached_deposit(MINT_COST_REG)
             .with_static_gas(Gas::ONE_TERA * 6)
             .sbt_mint(vec![(claim.claimer, vec![metadata])])
-            .then(Self::ext(env::current_account_id()).sbt_mint_callback(&external_id));
+            .then(Self::ext(env::current_account_id()).sbt_mint_callback());
 
         Ok(result)
     }
 
     #[private]
-    #[handle_result]
     pub fn sbt_mint_callback(
         &mut self,
-        external_id: &Vec<u8>,
-        #[callback_result] last_result: Result<TokenId, near_sdk::PromiseError>,
-    ) -> Result<TokenId, near_sdk::PromiseError> {
-        if last_result.is_err() {
-            self.used_identities.remove(&external_id);
+        #[callback_result] last_result: Result<TokenId, PromiseError>,
+    ) -> Option<TokenId> {
+        if last_result.is_ok() {
+            return last_result.ok();
         }
-        last_result
+        None
     }
 
     /**********
