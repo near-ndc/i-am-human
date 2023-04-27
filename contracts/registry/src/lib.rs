@@ -4,7 +4,9 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, TreeMap, UnorderedMap, UnorderedSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
 
-use sbt::{emit_soul_transfer, ClassId, SBTRegistry, SbtTokensEvent, TokenData, TokenId};
+use sbt::{
+    emit_soul_transfer, ClassId, Nep393Event, SBTRegistry, SbtTokensEvent, TokenData, TokenId,
+};
 
 use crate::storage::*;
 
@@ -105,6 +107,8 @@ impl Contract {
                     self.banlist.insert(&owner),
                     "caller banned: can't make soul transfer"
                 );
+                Nep393Event::Ban(vec![&owner]).emit();
+
                 (
                     false,
                     IssuerTokenId {
@@ -695,13 +699,12 @@ mod tests {
         let ret = ctr.sbt_soul_transfer(alice2(), None);
         assert_eq!((3, true), ret);
 
-        assert_eq!(
-            test_utils::get_logs(),
-            mk_log_str(
-                "soul_transfer",
-                &format!("{{\"from\":\"{}\",\"to\":\"{}\"}}", alice(), alice2())
-            )
+        let log1 = mk_log_str("ban", &format!(r#"["{}"]"#, alice()));
+        let log2 = mk_log_str(
+            "soul_transfer",
+            &format!(r#"{{"from":"{}","to":"{}"}}"#, alice(), alice2()),
         );
+        assert_eq!(test_utils::get_logs(), vec![log1, log2].concat());
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
         assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 2);
         assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer2(), None), 1);
