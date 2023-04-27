@@ -92,7 +92,7 @@ impl Contract {
         #[callback_result] last_result: Result<Vec<TokenId>, near_sdk::PromiseError>,
     ) -> Option<Vec<TokenId>> {
         if last_result.is_err() {
-            env::panic_str("ERR_CALL_FAILED")
+            env::panic_str("ERR: Mint failed")
         }
         last_result.ok()
     }
