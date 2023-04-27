@@ -76,8 +76,8 @@ impl Contract {
 
     /// Transfers atomically all SBT tokens from one account to another account.
     /// The caller must be an SBT holder and the `to` must not be a banned account.
-    /// Returns the lastly moved SBT identified by it's contract issuer and token ID as well
-    /// a boolean: `true` if the whole process has finished, `false` when the process has not
+    /// Returns amount of tokens transferred as well a boolean: `true` if the whole
+    /// process has finished, `false` when the process has not
     /// finished and should be continued by a subsequent call.
     /// User must keeps calling `sbt_soul_transfer` until `true` is returned.
     /// Must emit `SoulTransfer` event.
@@ -86,18 +86,14 @@ impl Contract {
         &mut self,
         to: AccountId,
         #[allow(unused_variables)] memo: Option<String>,
-    ) -> (AccountId, TokenId, bool) {
+    ) -> (u32, bool) {
         // TODO: test what is the max safe amount of updates
         self._sbt_soul_transfer(to, 200)
     }
 
     // execution of the sbt_soult_transfer in this function to parametrize `max_updates` in
     // order to facilitate tests.
-    pub(crate) fn _sbt_soul_transfer(
-        &mut self,
-        to: AccountId,
-        max_updates: usize,
-    ) -> (AccountId, TokenId, bool) {
+    pub(crate) fn _sbt_soul_transfer(&mut self, to: AccountId, limit: usize) -> (u32, bool) {
         let owner = env::predecessor_account_id();
         let (resumed, start) = match self.ongoing_soul_tx.get(&to) {
             // starting the process
@@ -127,7 +123,7 @@ impl Contract {
                 issuer_id: start.issuer_id,
                 class_id: start.token,
             })
-            .take(max_updates)
+            .take(limit)
             .collect();
 
         let mut b_new = BalanceKey {
@@ -145,6 +141,7 @@ impl Contract {
 
             if prev_issuer != b.issuer_id {
                 prev_issuer = b.issuer_id;
+                // update user token supply map
                 match self.supply_by_owner.remove(&(owner.clone(), prev_issuer)) {
                     None => (),
                     Some(supply_owner) => {
@@ -160,6 +157,7 @@ impl Contract {
             b_new.issuer_id = b.issuer_id;
             b_new.class_id = b.class_id;
             // TODO: decide if we should overwrite or panic if receipient already had a token.
+            // now we overwrite.
             self.balances.insert(&b_new, tid);
             self.balances.remove(&b);
 
@@ -172,7 +170,7 @@ impl Contract {
             self.issuer_tokens.insert(&i_key, &td);
         }
 
-        let completed = i != max_updates;
+        let completed = i != limit;
         // we emit the event only once the operation is completed
         if completed {
             self.ongoing_soul_tx.remove(&owner);
@@ -183,11 +181,10 @@ impl Contract {
         // edge case: caller doesn't have any token or resumed by but there is no more tokens
         // to transfer
         if i == 0 {
-            return (AccountId::new_unchecked("".to_string()), 0, false);
+            return (0, false);
         }
 
-        let last = &batch[i];
-        return (self.issuer_by_id(last.0.issuer_id), last.1, completed);
+        return (i as u32, completed);
     }
 
     pub fn sbt_burn(
@@ -661,6 +658,60 @@ mod tests {
             ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None),
             vec![alice_issuer2.clone()]
         );
+    }
+
+    #[test]
+    fn soul_transfer1() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+
+        // test1: simple case: alice has one token and she owns alice2 account as well. She
+        // will do transfer from alice -> alice2
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        let m2_1 = mk_metadata(2, Some(START + 10));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m2_1.clone()])]);
+
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+
+        // make soul transfer
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        let ret = ctr.sbt_soul_transfer(alice2(), None);
+        assert_eq!((3, true), ret);
+
+        assert_eq!(
+            test_utils::get_logs(),
+            mk_log_str(
+                "soul_transfer",
+                &format!("{{\"from\":\"{}\",\"to\":\"{}\"}}", alice(), alice2())
+            )
+        );
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 2);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer2(), None), 1);
+
+        assert!(ctr.is_banned(alice()));
+        assert!(!ctr.is_banned(alice2()));
+
+        assert_eq!(ctr.sbt_tokens_by_owner(alice(), None, None, None), vec![]);
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice2(), None, None, None),
+            vec![
+                (
+                    issuer1(),
+                    vec![
+                        mk_owned_token(1, m1_1.clone()),
+                        mk_owned_token(2, m2_1.clone())
+                    ]
+                ),
+                (issuer2(), vec![mk_owned_token(1, m1_1.clone())]),
+            ]
+        );
+
+        // tests:
+        // + test soult transfer with "continuation" - use the internal _sbt_soul_transfer to control limit
+        // + find all edge cases
     }
 
     #[test]
