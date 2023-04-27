@@ -335,7 +335,7 @@ impl SBTRegistry for Contract {
         SbtTokensEvent { issuer, tokens }.emit_renew();
     }
 
-    /// Revokes SBT by burns it.
+    /// Revokes SBT by burning it.
     /// Must be called by an SBT contract.
     /// Must emit one of `Revoke` or `Burn` event.
     /// Returns true if a token is a valid, active SBT. Otherwise returns false.
