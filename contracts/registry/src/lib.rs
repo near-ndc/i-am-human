@@ -83,25 +83,27 @@ impl Contract {
     /// process has finished, `false` when the process has not
     /// finished and should be continued by a subsequent call.
     /// User must keeps calling `sbt_soul_transfer` until `true` is returned.
-    /// Must emit `SoulTransfer` event.
+    /// Emits `SoulTransfer` event only if the caller was in possession of at least one SBT
+    /// (if caller doesn't have any tokens, the function won't transfer anything, ban the
+    /// recipient, emit Ban, and NOT emit SoulTransfer).
     #[payable]
     pub fn sbt_soul_transfer(
         &mut self,
-        to: AccountId,
+        recipient: AccountId,
         #[allow(unused_variables)] memo: Option<String>,
     ) -> (u32, bool) {
         // TODO: test what is the max safe amount of updates
-        self._sbt_soul_transfer(to, 200)
+        self._sbt_soul_transfer(recipient, 200)
     }
 
     // execution of the sbt_soult_transfer in this function to parametrize `max_updates` in
     // order to facilitate tests.
-    pub(crate) fn _sbt_soul_transfer(&mut self, to: AccountId, limit: usize) -> (u32, bool) {
+    pub(crate) fn _sbt_soul_transfer(&mut self, recipient: AccountId, limit: usize) -> (u32, bool) {
         let owner = env::predecessor_account_id();
         let (resumed, start) = match self.ongoing_soul_tx.get(&owner) {
             // starting the process
             None => {
-                require!(!self._is_banned(&to), "`to` is banned");
+                require!(!self._is_banned(&recipient), "`to` is banned");
                 // insert into banlist and assuer owner is not already banned.
                 require!(
                     self.banlist.insert(&owner),
@@ -131,26 +133,26 @@ impl Contract {
             .take(limit)
             .collect();
 
-        let mut b_new = BalanceKey {
-            owner: to.clone(),
+        let mut key_new = BalanceKey {
+            owner: recipient.clone(),
             issuer_id: 0,
             class_id: 0,
         };
         let mut prev_issuer: IssuerId = 0;
         let mut i = 0;
-        for (b, tid) in &batch {
-            if b.owner != owner {
+        for (key, token_id) in &batch {
+            if key.owner != owner {
                 break;
             }
             i += 1;
 
-            if prev_issuer != b.issuer_id {
-                prev_issuer = b.issuer_id;
+            if prev_issuer != key.issuer_id {
+                prev_issuer = key.issuer_id;
                 // update user token supply map
                 match self.supply_by_owner.remove(&(owner.clone(), prev_issuer)) {
                     None => (),
                     Some(supply_owner) => {
-                        let key = &(to.clone(), prev_issuer);
+                        let key = &(recipient.clone(), prev_issuer);
                         let supply_to = self.supply_by_owner.get(key).unwrap_or(0);
                         self.supply_by_owner
                             .insert(key, &(supply_owner + supply_to));
@@ -158,20 +160,20 @@ impl Contract {
                 }
             }
 
-            self.balances.remove(b);
-            b_new.issuer_id = b.issuer_id;
-            b_new.class_id = b.class_id;
+            self.balances.remove(key);
+            key_new.issuer_id = key.issuer_id;
+            key_new.class_id = key.class_id;
             // TODO: decide if we should overwrite or panic if receipient already had a token.
             // now we overwrite.
-            self.balances.insert(&b_new, tid);
-            self.balances.remove(&b);
+            self.balances.insert(&key_new, token_id);
+            self.balances.remove(&key);
 
             let i_key = IssuerTokenId {
-                issuer_id: b.issuer_id,
-                token: tid.clone(),
+                issuer_id: key.issuer_id,
+                token: token_id.clone(),
             };
             let mut td = self.issuer_tokens.get(&i_key).unwrap();
-            td.owner = to.clone();
+            td.owner = recipient.clone();
             self.issuer_tokens.insert(&i_key, &td);
         }
 
@@ -185,7 +187,7 @@ impl Contract {
             // we emit the event only once the operation is completed and only if some tokens were
             // transferred
             if resumed || i > 0 {
-                emit_soul_transfer(&owner, &to);
+                emit_soul_transfer(&owner, &recipient);
             }
         } else {
             let last = &batch[i];
