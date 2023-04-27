@@ -87,15 +87,14 @@ impl Contract {
     }
 
     #[private]
-    #[handle_result]
     pub fn sbt_mint_callback(
         &mut self,
         #[callback_result] last_result: Result<Vec<TokenId>, near_sdk::PromiseError>,
-    ) -> Result<Vec<TokenId>, near_sdk::PromiseError> {
+    ) -> Option<Vec<TokenId>> {
         if last_result.is_err() {
             env::panic_str("ERR_CALL_FAILED")
         }
-        last_result
+        last_result.ok()
     }
 
     pub fn add_admin(&mut self, account: AccountId, memo: Option<String>) {
