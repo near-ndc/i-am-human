@@ -4,7 +4,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, TreeMap, UnorderedMap, UnorderedSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
 
-use sbt::{emit_soul_transfer, ClassId, SbtTokensEvent, TokenData, TokenId};
+use sbt::{emit_soul_transfer, ClassId, SBTRegistry, SbtTokensEvent, TokenData, TokenId};
 
 use crate::storage::*;
 
@@ -21,19 +21,19 @@ pub struct Contract {
     pub sbt_issuers: UnorderedMap<AccountId, IssuerId>,
     pub issuer_id_map: LookupMap<IssuerId, AccountId>, // reverse index
     /// registry of blacklisted accounts by issuer
-    pub banlist: UnorderedSet<AccountId>,
+    pub(crate) banlist: UnorderedSet<AccountId>,
+    pub(crate) ongoing_soul_tx: LookupMap<AccountId, IssuerTokenId>,
 
     pub(crate) supply_by_owner: LookupMap<(AccountId, IssuerId), u64>,
     pub(crate) supply_by_class: LookupMap<(IssuerId, ClassId), u64>,
     pub(crate) supply_by_issuer: LookupMap<IssuerId, u64>,
-    /// maps user account to list of token source info
+
     pub(crate) balances: TreeMap<BalanceKey, TokenId>,
-    /// maps SBT contract -> map of tokens
     pub(crate) issuer_tokens: LookupMap<IssuerTokenId, TokenData>,
+
     /// map of SBT contract -> next available token_id
     pub(crate) next_token_ids: LookupMap<IssuerId, TokenId>,
     pub(crate) next_issuer_id: IssuerId,
-    pub(crate) ongoing_soul_tx: LookupMap<AccountId, IssuerTokenId>,
 }
 
 // Implement the contract structure
@@ -87,28 +87,107 @@ impl Contract {
         to: AccountId,
         #[allow(unused_variables)] memo: Option<String>,
     ) -> (AccountId, TokenId, bool) {
+        // TODO: test what is the max safe amount of updates
+        self._sbt_soul_transfer(to, 200)
+    }
+
+    // execution of the sbt_soult_transfer in this function to parametrize `max_updates` in
+    // order to facilitate tests.
+    pub(crate) fn _sbt_soul_transfer(
+        &mut self,
+        to: AccountId,
+        max_updates: usize,
+    ) -> (AccountId, TokenId, bool) {
         let owner = env::predecessor_account_id();
-        let start = match self.ongoing_soul_tx.get(&to) {
+        let (resumed, start) = match self.ongoing_soul_tx.get(&to) {
             // starting the process
             None => {
+                require!(!self._is_banned(&to), "`to` is banned");
                 // insert into banlist and assuer owner is not already banned.
                 require!(
                     self.banlist.insert(&owner),
                     "caller banned: can't make soul transfer"
                 );
-                require!(!self._is_banned(&to), "`to` is banned");
-                emit_soul_transfer(&owner, &to);
-                IssuerTokenId {
-                    issuer_id: 0,
-                    token: 0,
-                }
+                (
+                    false,
+                    IssuerTokenId {
+                        issuer_id: 0,
+                        token: 0, // NOTE: this is class ID
+                    },
+                )
             }
             // resuming Soul Transfer process
-            Some(s) => s,
+            Some(s) => (true, s),
         };
 
-        println!("Starting at: {} {}", start.issuer_id, start.token);
-        env::panic_str("not implemented");
+        let batch: Vec<(BalanceKey, TokenId)> = self
+            .balances
+            .iter_from(BalanceKey {
+                owner: owner.clone(),
+                issuer_id: start.issuer_id,
+                class_id: start.token,
+            })
+            .take(max_updates)
+            .collect();
+
+        let mut b_new = BalanceKey {
+            owner: to.clone(),
+            issuer_id: 0,
+            class_id: 0,
+        };
+        let mut prev_issuer: IssuerId = 0;
+        let mut i = 0;
+        for (b, tid) in &batch {
+            if b.owner != owner {
+                break;
+            }
+            i += 1;
+
+            if prev_issuer != b.issuer_id {
+                prev_issuer = b.issuer_id;
+                match self.supply_by_owner.remove(&(owner.clone(), prev_issuer)) {
+                    None => (),
+                    Some(supply_owner) => {
+                        let key = &(to.clone(), prev_issuer);
+                        let supply_to = self.supply_by_owner.get(key).unwrap_or(0);
+                        self.supply_by_owner
+                            .insert(key, &(supply_owner + supply_to));
+                    }
+                }
+            }
+
+            self.balances.remove(b);
+            b_new.issuer_id = b.issuer_id;
+            b_new.class_id = b.class_id;
+            // TODO: decide if we should overwrite or panic if receipient already had a token.
+            self.balances.insert(&b_new, tid);
+            self.balances.remove(&b);
+
+            let i_key = IssuerTokenId {
+                issuer_id: b.issuer_id,
+                token: tid.clone(),
+            };
+            let mut td = self.issuer_tokens.get(&i_key).unwrap();
+            td.owner = to.clone();
+            self.issuer_tokens.insert(&i_key, &td);
+        }
+
+        let completed = i != max_updates;
+        // we emit the event only once the operation is completed
+        if completed {
+            self.ongoing_soul_tx.remove(&owner);
+            if resumed || i > 0 {
+                emit_soul_transfer(&owner, &to);
+            }
+        }
+        // edge case: caller doesn't have any token or resumed by but there is no more tokens
+        // to transfer
+        if i == 0 {
+            return (AccountId::new_unchecked("".to_string()), 0, false);
+        }
+
+        let last = &batch[i];
+        return (self.issuer_by_id(last.0.issuer_id), last.1, completed);
     }
 
     pub fn sbt_burn(
@@ -220,6 +299,12 @@ impl Contract {
             .expect("must be called by a registered SBT Issuer")
     }
 
+    pub(crate) fn issuer_by_id(&self, id: IssuerId) -> AccountId {
+        self.issuer_id_map
+            .get(&id)
+            .expect("internal error: inconsistent sbt issuer map")
+    }
+
     pub(crate) fn assert_authority(&self) {
         require!(
             self.authority == env::predecessor_account_id(),
@@ -242,7 +327,7 @@ mod tests {
         AccountId::new_unchecked("alice.near".to_string())
     }
 
-    fn a_user() -> AccountId {
+    fn alice2() -> AccountId {
         AccountId::new_unchecked("alice.nea".to_string())
     }
 
@@ -290,6 +375,14 @@ mod tests {
 
     fn mk_owned_token(token: TokenId, metadata: TokenMetadata) -> OwnedToken {
         OwnedToken { token, metadata }
+    }
+
+    fn mk_balance_key(owner: AccountId, issuer_id: IssuerId, class_id: ClassId) -> BalanceKey {
+        BalanceKey {
+            owner,
+            issuer_id,
+            class_id,
+        }
     }
 
     const START: u64 = 10;
@@ -361,7 +454,7 @@ mod tests {
         let m4_1 = mk_metadata(4, Some(START + 16));
 
         // mint an SBT to a user with same prefix as alice
-        let minted_ids = ctr.sbt_mint(vec![(a_user(), vec![m1_1.clone()])]);
+        let minted_ids = ctr.sbt_mint(vec![(alice2(), vec![m1_1.clone()])]);
         assert_eq!(minted_ids, vec![1]);
         assert_eq!(
             test_utils::get_logs(),
@@ -381,7 +474,7 @@ mod tests {
         let minted_ids = ctr.sbt_mint(vec![
             (alice(), vec![m1_1.clone()]),
             (bob(), vec![m1_2.clone()]),
-            (a_user(), vec![m1_1.clone()]),
+            (alice2(), vec![m1_1.clone()]),
             (alice(), vec![m2_1.clone()]),
         ]);
         assert_eq!(minted_ids, vec![1, 2, 3, 4]);
@@ -438,7 +531,7 @@ mod tests {
         let t2_all = vec![
             mk_token(1, alice(), m1_1.clone()),
             mk_token(2, bob(), m1_2.clone()),
-            mk_token(3, a_user(), m1_1.clone()),
+            mk_token(3, alice2(), m1_1.clone()),
             mk_token(4, alice(), m2_1.clone()),
             mk_token(5, alice(), m4_1.clone()),
         ];
@@ -457,15 +550,15 @@ mod tests {
             (issuer2(), vec![mk_owned_token(3, m1_1.clone())]),
         ];
         assert_eq!(
-            &ctr.sbt_tokens_by_owner(a_user(), None, None, None),
+            &ctr.sbt_tokens_by_owner(alice2(), None, None, None),
             &a_tokens
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(a_user(), Some(issuer1()), None, None),
+            ctr.sbt_tokens_by_owner(alice2(), Some(issuer1()), None, None),
             vec![a_tokens[0].clone()],
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(a_user(), Some(issuer2()), None, None),
+            ctr.sbt_tokens_by_owner(alice2(), Some(issuer2()), None, None),
             vec![a_tokens[1].clone()]
         );
 
@@ -522,7 +615,7 @@ mod tests {
         // check by all tokens
         assert_eq!(
             ctr.sbt_tokens(issuer1(), Some(1), None),
-            vec![mk_token(1, a_user(), m1_1.clone())]
+            vec![mk_token(1, alice2(), m1_1.clone())]
         );
         assert_eq!(ctr.sbt_tokens(issuer2(), None, None), t2_all,);
         assert_eq!(ctr.sbt_tokens(issuer2(), None, Some(1)), t2_all[..1]);
@@ -569,6 +662,7 @@ mod tests {
             vec![alice_issuer2.clone()]
         );
     }
+
     #[test]
     fn test_mk_log() {
         let l = mk_log_str("abc", "[1,2,3]");
@@ -585,5 +679,27 @@ mod tests {
             "EVENT_JSON:{{\"standard\":\"nep393\",\"version\":\"1.0.0\",\"event\":\"{}\",\"data\":{}}}",
             event,data
         )]
+    }
+
+    #[test]
+    fn check_tree_iterator() {
+        let (_, mut ctr) = setup(&issuer1(), MINT_DEPOSIT);
+        ctr.balances.insert(&mk_balance_key(alice2(), 1, 1), &101);
+        ctr.balances.insert(&mk_balance_key(alice(), 1, 1), &102);
+        ctr.balances.insert(&mk_balance_key(bob(), 1, 1), &103);
+
+        let bs: Vec<(BalanceKey, u64)> = ctr
+            .balances
+            .iter_from(mk_balance_key(alice(), 0, 0))
+            .collect();
+        assert_eq!(bs.len(), 2, "bob must be included in the prefix scan");
+        assert_eq!(
+            bs[0].0.owner,
+            alice(),
+            "alice must be first in the iterator"
+        );
+        assert_eq!(bs[0].1, 102, "alice must be first in the iterator");
+        assert_eq!(bs[1].0.owner, bob(), "bob must be second in the iterator");
+        assert_eq!(bs[1].1, 103, "alice must be first in the iterator");
     }
 }
