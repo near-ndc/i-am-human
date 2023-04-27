@@ -22,6 +22,7 @@ pub struct Contract {
     pub issuer_id_map: LookupMap<IssuerId, AccountId>, // reverse index
     /// registry of blacklisted accounts by issuer
     pub(crate) banlist: UnorderedSet<AccountId>,
+    /// store ongoing soul transfers by "old owner"
     pub(crate) ongoing_soul_tx: LookupMap<AccountId, IssuerTokenId>,
 
     pub(crate) supply_by_owner: LookupMap<(AccountId, IssuerId), u64>,
@@ -95,7 +96,7 @@ impl Contract {
     // order to facilitate tests.
     pub(crate) fn _sbt_soul_transfer(&mut self, to: AccountId, limit: usize) -> (u32, bool) {
         let owner = env::predecessor_account_id();
-        let (resumed, start) = match self.ongoing_soul_tx.get(&to) {
+        let (resumed, start) = match self.ongoing_soul_tx.get(&owner) {
             // starting the process
             None => {
                 require!(!self._is_banned(&to), "`to` is banned");
@@ -171,12 +172,26 @@ impl Contract {
         }
 
         let completed = i != limit;
-        // we emit the event only once the operation is completed
         if completed {
-            self.ongoing_soul_tx.remove(&owner);
+            if resumed {
+                // insert is happening when we need to continue, so don't need to remove if
+                // the process finishes in the same transaction.
+                self.ongoing_soul_tx.remove(&owner);
+            }
+            // we emit the event only once the operation is completed and only if some tokens were
+            // transferred
             if resumed || i > 0 {
                 emit_soul_transfer(&owner, &to);
             }
+        } else {
+            let last = &batch[i];
+            self.ongoing_soul_tx.insert(
+                &owner,
+                &IssuerTokenId {
+                    issuer_id: last.0.issuer_id,
+                    token: last.1,
+                },
+            );
         }
         // edge case: caller doesn't have any token or resumed by but there is no more tokens
         // to transfer
