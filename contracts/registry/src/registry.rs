@@ -161,10 +161,7 @@ impl SBTRegistry for Contract {
                     break;
                 }
                 if tokens.len() > 0 {
-                    let issuer = self
-                        .issuer_id_map
-                        .get(&prev_issuer)
-                        .expect("internal error: inconsistent sbt issuer map");
+                    let issuer = self.issuer_by_id(prev_issuer);
                     resp.push((issuer, tokens));
                     tokens = Vec::new();
                 }
@@ -181,7 +178,7 @@ impl SBTRegistry for Contract {
             }
         }
         if prev_issuer != 0 && tokens.len() > 0 {
-            let issuer = self.issuer_id_map.get(&prev_issuer).unwrap();
+            let issuer = self.issuer_by_id(prev_issuer);
             resp.push((issuer, tokens));
         }
         return resp;
