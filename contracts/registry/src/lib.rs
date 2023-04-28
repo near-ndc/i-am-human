@@ -102,23 +102,7 @@ impl Contract {
         let owner = env::predecessor_account_id();
         let (resumed, start) = match self.ongoing_soul_tx.get(&owner) {
             // starting the process
-            None => {
-                require!(!self._is_banned(&recipient), "`to` is banned");
-                // insert into banlist and assure the owner is not already banned.
-                require!(
-                    self.banlist.insert(&owner),
-                    "caller banned: can't make soul transfer"
-                );
-                Nep393Event::Ban(vec![&owner]).emit();
-
-                (
-                    false,
-                    IssuerTokenId {
-                        issuer_id: 0,
-                        token: 0, // NOTE: this is class ID
-                    },
-                )
-            }
+            None => (false, self.start_soul_transfer(&owner, &recipient)),
             // resuming Soul Transfer process
             Some(s) => (true, s),
         };
@@ -139,24 +123,20 @@ impl Contract {
             class_id: 0,
         };
         let mut prev_issuer: IssuerId = 0;
-        let mut i = 0;
+        let mut token_counter = 0;
         for (key, token_id) in &batch {
             if key.owner != owner {
                 break;
             }
-            i += 1;
+            token_counter += 1;
 
             if prev_issuer != key.issuer_id {
                 prev_issuer = key.issuer_id;
                 // update user token supply map
-                match self.supply_by_owner.remove(&(owner.clone(), prev_issuer)) {
-                    None => (),
-                    Some(supply_owner) => {
-                        let key = &(recipient.clone(), prev_issuer);
-                        let supply_to = self.supply_by_owner.get(key).unwrap_or(0);
-                        self.supply_by_owner
-                            .insert(key, &(supply_owner + supply_to));
-                    }
+                if let Some(s) = self.supply_by_owner.remove(&(owner.clone(), prev_issuer)) {
+                    let key = &(recipient.clone(), prev_issuer);
+                    let supply_to = self.supply_by_owner.get(key).unwrap_or(0);
+                    self.supply_by_owner.insert(key, &(s + supply_to));
                 }
             }
 
@@ -170,14 +150,14 @@ impl Contract {
 
             let i_key = IssuerTokenId {
                 issuer_id: key.issuer_id,
-                token: token_id.clone(),
+                token: *token_id,
             };
             let mut td = self.issuer_tokens.get(&i_key).unwrap();
             td.owner = recipient.clone();
             self.issuer_tokens.insert(&i_key, &td);
         }
 
-        let completed = i != limit;
+        let completed = token_counter != limit;
         if completed {
             if resumed {
                 // insert is happening when we need to continue, so don't need to remove if
@@ -186,11 +166,11 @@ impl Contract {
             }
             // we emit the event only once the operation is completed and only if some tokens were
             // transferred
-            if resumed || i > 0 {
+            if resumed || token_counter > 0 {
                 emit_soul_transfer(&owner, &recipient);
             }
         } else {
-            let last = &batch[i];
+            let last = &batch[token_counter];
             self.ongoing_soul_tx.insert(
                 &owner,
                 &IssuerTokenId {
@@ -199,13 +179,27 @@ impl Contract {
                 },
             );
         }
-        // edge case: caller doesn't have any token or resumed by but there is no more tokens
-        // to transfer
-        if i == 0 {
-            return (0, false);
-        }
 
-        return (i as u32, completed);
+        return (token_counter as u32, completed);
+    }
+
+    pub(crate) fn start_soul_transfer(
+        &mut self,
+        owner: &AccountId,
+        recipient: &AccountId,
+    ) -> IssuerTokenId {
+        require!(!self._is_banned(&recipient), "`to` is banned");
+        // insert into banlist and assure the owner is not already banned.
+        require!(
+            self.banlist.insert(&owner),
+            "caller banned: can't make soul transfer"
+        );
+        Nep393Event::Ban(vec![&owner]).emit();
+
+        IssuerTokenId {
+            issuer_id: 0,
+            token: 0, // NOTE: this is class ID
+        }
     }
 
     pub fn sbt_burn(
@@ -731,6 +725,8 @@ mod tests {
 
         // tests:
         // + test soult transfer with "continuation" - use the internal _sbt_soul_transfer to control limit
+        // + edge case: caller doesn't have any token
+        // + edge case: soul_transfer resumed but there is no more tokens (must emit event in the last resumed call)
         // + find all edge cases
     }
 
