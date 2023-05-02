@@ -4,8 +4,6 @@ use near_sdk::{env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefau
 
 use sbt::*;
 
-pub const MINT_COST: Balance = 8_000_000000000000000000; // 0.008 NEAR
-
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
@@ -54,6 +52,8 @@ impl Contract {
      * QUERIES
      **********/
 
+    // token queries should go through the registry contract
+
     /**********
      * ADMIN
      **********/
@@ -63,7 +63,7 @@ impl Contract {
         self.assert_admin();
         require!(
             env::attached_deposit() == MINT_COST,
-            "Requires attached deposit of exactly 0.008 NEAR"
+            format!("Requires attached deposit of exactly {} yNEAR", MINT_COST)
         );
 
         let now_ms = env::block_timestamp_ms();
@@ -81,9 +81,13 @@ impl Contract {
 
         ext_registry::ext(self.registry.clone())
             .with_attached_deposit(MINT_COST)
-            .with_static_gas(Gas::ONE_TERA * 5) // 5 TGas
+            .with_static_gas(MINT_GAS)
             .sbt_mint(vec![(receiver, vec![metadata])])
-            .then(Self::ext(env::current_account_id()).sbt_mint_callback())
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(Gas::ONE_TERA * 3)
+                    .sbt_mint_callback(),
+            )
     }
 
     #[private]

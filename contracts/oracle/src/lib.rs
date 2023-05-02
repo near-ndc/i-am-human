@@ -20,12 +20,9 @@ mod interfaces;
 mod storage;
 mod util;
 
-/// 1s in nano seconds.
-pub const SECOND: u64 = 1_000_000_000;
 pub const CLASS: ClassId = 1;
-// the diff: 0.001 NEAR will go to this contract for storage deposit
-pub const MINT_COST: Balance = 8_000_000000000000000000; // 0.008 NEAR
-pub const MINT_COST_REG: Balance = 7_000_000000000000000000; // 0.007 NEAR
+// Total storage deposit cost
+pub const MINT_TOTAL_COST: Balance = MINT_COST + MILI_NEAR;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -109,7 +106,7 @@ impl Contract {
         memo: Option<String>,
     ) -> Result<Promise, CtrError> {
         require!(
-            env::attached_deposit() == MINT_COST,
+            env::attached_deposit() == MINT_TOTAL_COST,
             "Requires attached deposit of exactly 0.008 NEAR"
         );
 
@@ -158,10 +155,14 @@ impl Contract {
         }
 
         let result = ext_registry::ext(self.registry.clone())
-            .with_attached_deposit(MINT_COST_REG)
-            .with_static_gas(Gas::ONE_TERA * 6)
+            .with_attached_deposit(MINT_COST)
+            .with_static_gas(MINT_GAS)
             .sbt_mint(vec![(claim.claimer, vec![metadata])])
-            .then(Self::ext(env::current_account_id()).sbt_mint_callback());
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(Gas::ONE_TERA * 3)
+                    .sbt_mint_callback(),
+            );
 
         Ok(result)
     }
@@ -268,7 +269,7 @@ mod tests {
         let ctx = VMContextBuilder::new()
             .signer_account_id(signer.clone())
             .predecessor_account_id(predecessor.clone())
-            // .attached_deposit(deposit_dec.into())
+            .attached_deposit(MINT_TOTAL_COST)
             .block_timestamp(start())
             .is_view(false)
             .build();
@@ -318,6 +319,36 @@ mod tests {
         return (c, c_str, sig);
     }
 
+    // TODO: find out how to test out of gas.
+    /*
+    #[test]
+    #[should_panic(expected = "todo")]
+    fn mint_not_enough_gas() {
+        let signer = acc_claimer();
+        let (mut ctx, mut ctr, k) = setup(&signer, &acc_u1());
+
+        ctx.prepaid_gas = MINT_GAS - Gas(1);
+        testing_env!(ctx);
+        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k);
+        let _ = ctr.sbt_mint(c_str.clone(), sig.clone(), None);
+    }
+    */
+
+    #[test]
+    #[should_panic(expected = "Requires attached deposit of exactly 0.008 NEAR")]
+    fn mint_not_enough_storage_deposit() {
+        let signer = acc_claimer();
+        let (mut ctx, mut ctr, k) = setup(&signer, &acc_u1());
+
+        // fail: not enough storage deposit
+        ctx.attached_deposit = MINT_TOTAL_COST - 1;
+        testing_env!(ctx);
+        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k);
+        let _ = ctr
+            .sbt_mint(c_str.clone(), sig.clone(), None)
+            .expect("must panic");
+    }
+
     #[test]
     fn flow1() {
         let signer = acc_claimer();
@@ -325,11 +356,12 @@ mod tests {
         let (mut ctx, mut ctr, k) = setup(&signer, &predecessor);
 
         // fail: tx signer is not claimer
-        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k);
         ctx.signer_account_id = acc_u1();
         testing_env!(ctx.clone());
+        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k);
         match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
             Err(CtrError::BadRequest(s)) => assert_eq!(s, "claimer is not the transaction signer"),
+
             Err(error) => panic!("expected BadRequest, got: {:?}", error),
             Ok(_) => panic!("expected BadRequest, got: Ok"),
         }
