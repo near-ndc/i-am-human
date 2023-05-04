@@ -243,7 +243,7 @@ mod tests {
     }
 
     fn acc_claimer() -> AccountId {
-        "claimer.test.near".parse().unwrap()
+        "user1.near".parse().unwrap()
     }
 
     fn acc_u1() -> AccountId {
@@ -276,10 +276,6 @@ mod tests {
 
         let mut csprng = OsRng {};
         let keypair: Keypair = Keypair::generate(&mut csprng);
-        print!(
-            "authority pub key: {}",
-            b64_encode(keypair.public.to_bytes().to_vec())
-        );
         let ctr = Contract::new(
             b64_encode(keypair.public.to_bytes().to_vec()),
             ContractMetadata {
