@@ -11,11 +11,14 @@ pub const SPEC_VERSION: &str = "1.0.0";
 /// This is the name of the SBT standard we're using
 pub const STANDARD_NAME: &str = "nep393";
 
-/// Balance of one mili NEAR, which is 10^23 Yocto NEAR.
+/// 1s in nano seconds.
+pub const SECOND: u64 = 1_000_000_000;
 pub const MILI_NEAR: Balance = 1_000_000_000_000_000_000_000;
 
+pub const MINT_COST: Balance = 7 * MILI_NEAR; // 0.007 NEAR
+pub const MINT_GAS: Gas = Gas(7 * Gas::ONE_TERA.0);
 pub const BAN_COST: Balance = 5 * MILI_NEAR;
-pub const GAS_FOR_BLACKLIST: Gas = Gas(6 * Gas::ONE_TERA.0);
+pub const BLACKLIST_GAS: Gas = Gas(6 * Gas::ONE_TERA.0);
 
 // u64 capacity is more than 1e19. If we will mint 10'000 SBTs per second, than it will take us
 // 58'494'241 years to get into the capacity.

@@ -35,8 +35,7 @@ pub enum Nep393Event<'a> {
     Revoke(SbtTokensEvent),
     Burn(SbtTokensEvent),
     SoulTransfer(SoulTransfer<'a>),
-    // only AccountBan doesn't compose a vector
-    Ban(Vec<AccountBan<'a>>),
+    Ban(Vec<&'a AccountId>), // data is a simple list of accounts to ban
 }
 
 impl Nep393Event<'_> {
@@ -125,17 +124,6 @@ impl SbtTokensEvent {
     pub fn emit_burn(self) {
         Nep393Event::Burn(self).emit();
     }
-}
-
-/// An event emitted when the `account` is banned within the emitting registry.
-/// Registry must add the `account` to a list of accounts that are not allowed to get any SBT
-/// in the future.
-/// Must be emitted by an SBT registry.
-#[derive(Serialize)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
-#[serde(crate = "near_sdk::serde")]
-pub struct AccountBan<'a> {
-    pub account: &'a AccountId,
 }
 
 /// An event emitted when soul transfer is happening: all SBTs owned by `from` are transferred
@@ -371,11 +359,8 @@ mod tests {
     fn log_format_ban() {
         let alice = alice();
         let bob = bob();
-        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"ban","data":[{"account":"alice.near"},{"account":"bob.near"}]}"#;
-        let event = Nep393Event::Ban(vec![
-            AccountBan { account: &alice },
-            AccountBan { account: &bob },
-        ]);
+        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"ban","data":["alice.near","bob.near"]}"#;
+        let event = Nep393Event::Ban(vec![&alice, &bob]);
         assert_eq!(expected, event.clone().to_json_event_string());
         event.emit();
         assert_eq!(expected, test_utils::get_logs()[0]);
