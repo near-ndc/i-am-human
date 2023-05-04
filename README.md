@@ -29,6 +29,7 @@ work in progress:
 - **Demo SBT Issuer**: `sbt1.i-am-human.testnet` (the `demo_issuer` contract)
 - **GoodDollar-SBT**: `gooddollar-v1.i-am-human.testnet` (the `oracle` contract)
   verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
+- **Community-SBT**: `community-sbt-2.i-am-human.testnet`
 
 Deprecated:
 
