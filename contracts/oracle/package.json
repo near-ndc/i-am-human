@@ -1,0 +1,27 @@
+{
+    "name": "y",
+    "version": "y",
+    "description": "y",
+    "main": "y",
+    "type": "module",
+    "scripts": {
+        "build": "cargo build --all --target wasm32-unknown-unknown --release --target-dir build",
+        "rebuild": "rm -rf node_modules && rm -rf build && npm i && npm run build",
+        "test": "ava --verbose --timeout=10m"
+    },
+    "author": "y",
+    "license": "y",
+    "dependencies": {
+        "js-base64": "^3.7.5",
+        "lodash-es": "^4.17.21",
+        "near-sdk-js": "0.6.0"
+    },
+    "devDependencies": {
+        "ava": "^4.3.1",
+        "near-workspaces": "^3.1.0",
+        "ts-morph": "^16.0.0",
+        "typescript": "^4.8.4"
+    },
+    "repository": "y",
+    "private": null
+}

@@ -242,7 +242,7 @@ mod tests {
     }
 
     fn acc_claimer() -> AccountId {
-        "user1.near".parse().unwrap()
+        "claimer.test.near".parse().unwrap()
     }
 
     fn acc_u1() -> AccountId {
@@ -275,6 +275,10 @@ mod tests {
 
         let mut csprng = OsRng {};
         let keypair: Keypair = Keypair::generate(&mut csprng);
+        print!(
+            "authority pub key: {}",
+            b64_encode(keypair.public.to_bytes().to_vec())
+        );
         let ctr = Contract::new(
             b64_encode(keypair.public.to_bytes().to_vec()),
             ContractMetadata {
@@ -323,9 +327,9 @@ mod tests {
         let signer = acc_claimer();
         let predecessor = acc_u1();
         let (mut ctx, mut ctr, k) = setup(&signer, &predecessor);
-
         // fail: tx signer is not claimer
         let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k);
+        print!("c_str: {}, sig: {}.", c_str, sig);
         ctx.signer_account_id = acc_u1();
         testing_env!(ctx.clone());
         match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
