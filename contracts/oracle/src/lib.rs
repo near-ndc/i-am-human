@@ -162,7 +162,7 @@ impl Contract {
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(Gas::ONE_TERA * 3)
-                    .sbt_mint_callback(),
+                    .sbt_mint_callback(external_id),
             );
 
         Ok(result)
@@ -171,11 +171,15 @@ impl Contract {
     #[private]
     pub fn sbt_mint_callback(
         &mut self,
+        external_id: Vec<u8>,
         #[callback_result] last_result: Result<TokenId, PromiseError>,
     ) -> Option<TokenId> {
         if last_result.is_ok() {
             return last_result.ok();
         }
+
+        // registry mint failed, need to rollback
+        self.used_identities.remove(&external_id);
         None
     }
 
