@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "sbt",
+    "cost",
     "community-sbt",
     "oracle",
     "registry",

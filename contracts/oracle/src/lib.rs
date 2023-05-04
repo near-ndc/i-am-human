@@ -5,6 +5,7 @@ use near_sdk::{
     env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
 };
 
+use cost::*;
 use sbt::*;
 
 // TODO
