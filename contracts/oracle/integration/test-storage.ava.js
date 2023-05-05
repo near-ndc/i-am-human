@@ -52,7 +52,7 @@ test("Should fail, oracle is not an issuer", async (t) => {
     { gas: 200000000000000 }).catch((error) => { console.log('Transaction error:', error);});
   t.is(sbt_id, null);
 });
-
+s
 test("Should pass, oracle is an issuer", async (t) => {
   const { registry_contract, oracle_contract, admin, claim_b64, sig_b64, claimer } = t.context.accounts;
   const result1 = await admin.call(registry_contract, "admin_add_sbt_issuer", {'issuer': oracle_contract.accountId});
