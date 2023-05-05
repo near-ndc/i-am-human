@@ -1,23 +1,23 @@
 use ed25519_dalek::{PublicKey, Signature, Verifier, PUBLIC_KEY_LENGTH};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, UnorderedSet};
+use near_sdk::serde::Serialize;
 use near_sdk::{
     env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
 };
 
 use cost::*;
 use sbt::*;
+use uint::hex;
 
 // TODO
 // use near_sdk::bs58 -- use public key in the base58 format
 
 pub use crate::errors::*;
-pub use crate::interfaces::*;
 pub use crate::storage::*;
 pub use crate::util::*;
 
 mod errors;
-mod interfaces;
 mod storage;
 mod util;
 
@@ -162,30 +162,69 @@ impl Contract {
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(Gas::ONE_TERA * 3)
-                    .sbt_mint_callback(external_id),
+                    .sbt_mint_callback(hex::encode(external_id)),
             );
 
         Ok(result)
     }
 
+    // We use our own result type, because NEAR stopped to support standard `Result` return
+    // type without `handle_result`. With `handle_result` we would need to make an ugly wrap
+    // to always return Ok at the outer layer:
+    //     Result<Result<TokenId, &str>, near_sdk::Abort>
+    // The problem is that NEAR explorer considers transaction successfull if the last receipt
+    // didn't panic. However, if we do so, then we can't panic in this function in order to
+    // preserve the state change (rollback for `used_identities`).
+    // Other solution (probably the right one) is to schedule another callback to "self" which
+    // will panic.
+    // Ideally, though, NEAR will start considering Result types again.
     #[private]
     pub fn sbt_mint_callback(
         &mut self,
-        external_id: Vec<u8>,
-        #[callback_result] last_result: Result<TokenId, PromiseError>,
-    ) -> Option<TokenId> {
-        if last_result.is_ok() {
-            return last_result.ok();
+        external_id: String,
+        #[callback_result] last_result: Result<Vec<TokenId>, PromiseError>,
+    ) -> CallbackResult<TokenId, &str> {
+        match last_result {
+            Ok(v) => CallbackResult::Ok(v[0]),
+            Err(_) => {
+                // registry mint failed, need to rollback. We can't panic here in order to
+                // preserve state change.
+                // We are safe to remove the external identity, because we only call registry
+                // if the external_id was not used before.
+                self.used_identities
+                    .remove(&hex::decode(external_id).unwrap());
+                CallbackResult::Err("registry.sbt_mint failed")
+            }
         }
-
-        // registry mint failed, need to rollback
-        self.used_identities.remove(&external_id);
-        None
     }
 
     /**********
      * ADMIN
      **********/
+
+    /* for testing the callback
+        #[payable]
+        pub fn admin_mint(&mut self, receipient: AccountId, external_id: String) -> Promise {
+            let external_id = normalize_external_id(external_id).ok().unwrap();
+            let now = env::block_timestamp_ms();
+            let metadata = TokenMetadata {
+                class: 2,
+                issued_at: Some(now),
+                expires_at: Some(now + self.sbt_ttl_ms),
+                reference: None,
+                reference_hash: None,
+            };
+            ext_registry::ext(self.registry.clone())
+                .with_attached_deposit(MINT_COST)
+                .with_static_gas(MINT_GAS)
+                .sbt_mint(vec![(receipient, vec![metadata])])
+                .then(
+                    Self::ext(env::current_account_id())
+                        .with_static_gas(Gas::ONE_TERA * 3)
+                        .sbt_mint_callback(hex::encode(external_id)),
+                )
+        }
+    */
 
     /// @authority: pubkey used to verify claim signature
     pub fn admin_change_authority(&mut self, authority: String) {
@@ -229,6 +268,13 @@ impl SBTContract for Contract {
     fn sbt_metadata(&self) -> ContractMetadata {
         self.metadata.get().unwrap()
     }
+}
+
+#[derive(Serialize)]
+#[serde(crate = "near_sdk::serde")]
+pub enum CallbackResult<T, E> {
+    Ok(T),
+    Err(E),
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
