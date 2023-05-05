@@ -172,7 +172,7 @@ impl Contract {
     // type without `handle_result`. With `handle_result` we would need to make an ugly wrap
     // to always return Ok at the outer layer:
     //     Result<Result<TokenId, &str>, near_sdk::Abort>
-    // The problem is that NEAR explorer considers transaction successfull iff the last receipt
+    // The problem is that NEAR explorer considers transaction successfull if the last receipt
     // didn't panic. However, if we do so, then we can't panic in this function in order to
     // preserve the state change (rollback for `used_identities`).
     // Other solution (probably the right one) is to schedule another callback to "self" which
