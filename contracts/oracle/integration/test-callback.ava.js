@@ -1,5 +1,4 @@
 import { Worker, NEAR } from "near-workspaces";
-import { Base64 } from 'js-base64';
 import test from "ava";
 
 test.beforeEach(async (t) => {
@@ -12,19 +11,15 @@ test.beforeEach(async (t) => {
   const oracle_contract = await root.createSubAccount('oracle');
   const admin = await root.createSubAccount('admin');
   const claimer = await root.createSubAccount('claimer');
-  const keypair = await admin.getKey();
   const claim_b64 = "EQAAAGNsYWltZXIudGVzdC5uZWFyBAAAADB4MWELAAAAAAAAAA==";
-  const claim = Base64.decode(claim_b64);
-  const sig = Base64.encode(keypair.sign(Uint8Array.from(claim)).signature);
   const sig_b64 = "c1z1yG+nnatk47PcN4IN5mqM90YkVb6S/dzVE0IzWPRHMeBmEZAz39pZL5T5YLvLI9kTj4f/HymfLA/3F9GsCQ==";
   // Deploy and initialize registry
-  await registry_contract.deploy("/Users/stanislawczembor/i-am-human/contracts/oracle/build/wasm32-unknown-unknown/release/i_am_human_registry.wasm");
+  await registry_contract.deploy("build/wasm32-unknown-unknown/release/i_am_human_registry.wasm");
   await registry_contract.call(registry_contract, "new", {'authority': admin.accountId });
 
   // Deploy and initialize oracle
-  await oracle_contract.deploy("/Users/stanislawczembor/i-am-human/contracts/oracle/build/wasm32-unknown-unknown/release/oracle_sbt.wasm");
+  await oracle_contract.deploy("build/wasm32-unknown-unknown/release/oracle_sbt.wasm");
   const metadata = {spec: "test", name: "test", symbol: "TEST"};
-  const authority_base64 = Base64.encode(keypair.getPublicKey().data);
   await oracle_contract.call(oracle_contract, "new", 
    {'authority': "+9Yuc5NCUOhxLeW+HoXIhn7r5Qvo66+uTshO0losqVw",
     'metadata': metadata,
@@ -45,22 +40,22 @@ test.afterEach(async (t) => {
 
 test("Should fail, oracle is not an issuer", async (t) => {
   const {oracle_contract, claim_b64, sig_b64, claimer } = t.context.accounts;
-  const sbt_id = await claimer.call(oracle_contract, "sbt_mint",
+  const mint_result = await claimer.call(oracle_contract, "sbt_mint",
     { 'claim_b64': claim_b64,
       'claim_sig' : sig_b64 },
     { attachedDeposit: NEAR.parse("0.008 N").toString() },
     { gas: 200000000000000 }).catch((error) => { console.log('Transaction error:', error);});
-  t.is(sbt_id, null);
+  t.deepEqual(mint_result, {Err: 'registry.sbt_mint failed'});
 });
-s
+
 test("Should pass, oracle is an issuer", async (t) => {
   const { registry_contract, oracle_contract, admin, claim_b64, sig_b64, claimer } = t.context.accounts;
-  const result1 = await admin.call(registry_contract, "admin_add_sbt_issuer", {'issuer': oracle_contract.accountId});
-  t.is(result1, true);
-  const sbt_id =  await claimer.call(oracle_contract, "sbt_mint",
+  const add_issuer_result = await admin.call(registry_contract, "admin_add_sbt_issuer", {'issuer': oracle_contract.accountId});
+  t.is(add_issuer_result, true);
+  const mint_result =  await claimer.call(oracle_contract, "sbt_mint",
     { 'claim_b64': claim_b64,
       'claim_sig' : sig_b64 },
     { attachedDeposit: NEAR.parse("0.008 N").toString() },
     { gas: 200000000000000 }).catch((error) => { console.log('Transaction error:', error);});
-  t.not(sbt_id, undefined);
+  t.not(mint_result, undefined);
 });
