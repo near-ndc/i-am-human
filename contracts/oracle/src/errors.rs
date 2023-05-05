@@ -13,6 +13,7 @@ pub enum CtrError {
     BadRequest(String),
     DuplicatedID(String),
     Signature(String),
+    Registry,
 }
 
 impl FunctionError for CtrError {
@@ -30,6 +31,7 @@ impl FunctionError for CtrError {
             CtrError::BadRequest(s) => panic_str(s.as_ref()),
             CtrError::DuplicatedID(s) => panic_str(&format!("duplicated id: {}", s)),
             CtrError::Signature(s) => panic_str(&format!("signature error: {}", s)),
+            CtrError::Registry => panic_str("registry operation failed"),
         }
     }
 }

@@ -1,5 +1,5 @@
 [package]
-name = "i-am-human-registry"
+name = "registry"
 version = "1.0.0"
 authors = ["Robert Zaremba 'https://zaremba.ch/'"]
 edition = "2021"
@@ -13,7 +13,7 @@ near-sdk.workspace = true
 serde_json.workspace = true
 
 sbt = { path = "../sbt" }
-
+cost = { path = "../cost" }
 
 [dev-dependencies]
 pretty_assertions = "^1.3"

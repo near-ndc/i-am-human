@@ -5,7 +5,5 @@ use near_sdk::BorshStorageKey;
 #[derive(BorshSerialize, BorshStorageKey)]
 pub enum StorageKey {
     Admins,
-    Balances,
-    TokenData,
     ContractMetadata,
 }

@@ -12,4 +12,6 @@ crate-type = ["cdylib"]
 uint.workspace = true
 near-sdk.workspace = true
 serde_json.workspace = true
+
 sbt = { path = "../sbt" }
+# registry = { path = "../registry" }

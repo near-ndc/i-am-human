@@ -1,7 +1,7 @@
 mod events;
 mod metadata;
 
-use near_sdk::{ext_contract, AccountId, Balance, Gas};
+use near_sdk::{ext_contract, AccountId};
 
 pub use crate::events::*;
 pub use crate::metadata::*;
@@ -13,12 +13,6 @@ pub const STANDARD_NAME: &str = "nep393";
 
 /// 1s in nano seconds.
 pub const SECOND: u64 = 1_000_000_000;
-pub const MILI_NEAR: Balance = 1_000_000_000_000_000_000_000;
-
-pub const MINT_COST: Balance = 7 * MILI_NEAR; // 0.007 NEAR
-pub const MINT_GAS: Gas = Gas(7 * Gas::ONE_TERA.0);
-pub const BAN_COST: Balance = 5 * MILI_NEAR;
-pub const BLACKLIST_GAS: Gas = Gas(6 * Gas::ONE_TERA.0);
 
 // u64 capacity is more than 1e19. If we will mint 10'000 SBTs per second, than it will take us
 // 58'494'241 years to get into the capacity.
@@ -140,4 +134,5 @@ pub trait SBTRegistry {
 #[ext_contract(ext_registry)]
 trait ExtRegistry {
     fn sbt_mint(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>;
+    fn sbt_renew(&mut self, tokens: Vec<TokenId>, expires_at: u64);
 }

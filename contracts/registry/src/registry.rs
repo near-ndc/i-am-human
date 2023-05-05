@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use near_sdk::{near_bindgen, AccountId};
 
 use crate::*;
+use cost::*;
 use sbt::*;
 
 const MAX_LIMIT: u32 = 1000;
@@ -316,6 +317,8 @@ impl SBTRegistry for Contract {
     /// `expires_at` is a unix timestamp (in seconds).
     /// Must be called by an SBT contract.
     /// Must emit `Renew` event.
+    /// Use `cost::renew_gas` to calculate expected amount of gas that should be assigned for this
+    /// function
     fn sbt_renew(&mut self, tokens: Vec<TokenId>, expires_at: u64) {
         let issuer = env::predecessor_account_id();
         let issuer_id = self.assert_issuer(&issuer);
