@@ -1,8 +1,6 @@
 {
     "name": "oracle-integration-tests",
     "version": "1.0.0",
-    "description": "y",
-    "main": "y",
     "type": "module",
     "scripts": {
         "build": "make build-all",
