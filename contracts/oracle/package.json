@@ -5,7 +5,7 @@
     "main": "y",
     "type": "module",
     "scripts": {
-        "build": "cargo build --all --target wasm32-unknown-unknown --release --target-dir build",
+        "build": "make build-all",
         "rebuild": "rm -rf node_modules && rm -rf build && npm i && npm run build",
         "test": "ava --verbose --timeout=10m"
     },
