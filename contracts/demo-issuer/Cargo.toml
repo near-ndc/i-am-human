@@ -13,4 +13,5 @@ uint.workspace = true
 near-sdk.workspace = true
 serde_json.workspace = true
 
+cost = { path = "../cost" }
 sbt = { path = "../sbt" }

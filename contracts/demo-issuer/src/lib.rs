@@ -2,6 +2,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, UnorderedSet};
 use near_sdk::{env, near_bindgen, require, AccountId, Gas, PanicOnDefault, Promise};
 
+use cost::{MINT_COST, MINT_GAS};
 use sbt::*;
 
 #[near_bindgen]
