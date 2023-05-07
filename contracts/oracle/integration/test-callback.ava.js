@@ -19,7 +19,7 @@ test.beforeEach(async (t) => {
 
   // Deploy and initialize oracle
   await oracle_contract.deploy("build/wasm32-unknown-unknown/release/oracle_sbt.wasm");
-  const metadata = {spec: "test", name: "test", symbol: "TEST"};
+  const sbtMetadata = {spec: "v1.0.0", name: "test-sbt", symbol: "SBT"};
   await oracle_contract.call(oracle_contract, "new", 
    {'authority': "+9Yuc5NCUOhxLeW+HoXIhn7r5Qvo66+uTshO0losqVw",
     'metadata': metadata,
