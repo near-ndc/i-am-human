@@ -20,6 +20,5 @@
         "ts-morph": "^16.0.0",
         "typescript": "^4.8.4"
     },
-    "repository": "y",
     "private": true
 }
