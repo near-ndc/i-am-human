@@ -1,6 +1,9 @@
 import { Worker, NEAR } from "near-workspaces";
 import test from "ava";
 
+const claim_b64 = "EQAAAGNsYWltZXIudGVzdC5uZWFyBAAAADB4MWELAAAAAAAAAA==";
+const sig_b64 = "c1z1yG+nnatk47PcN4IN5mqM90YkVb6S/dzVE0IzWPRHMeBmEZAz39pZL5T5YLvLI9kTj4f/HymfLA/3F9GsCQ==";
+
 test.beforeEach(async (t) => {
   // Init the worker and start a Sandbox server
   const worker = await Worker.init();
@@ -11,8 +14,6 @@ test.beforeEach(async (t) => {
   const oracle_contract = await root.createSubAccount('oracle');
   const admin = await root.createSubAccount('admin');
   const claimer = await root.createSubAccount('claimer');
-  const claim_b64 = "EQAAAGNsYWltZXIudGVzdC5uZWFyBAAAADB4MWELAAAAAAAAAA==";
-  const sig_b64 = "c1z1yG+nnatk47PcN4IN5mqM90YkVb6S/dzVE0IzWPRHMeBmEZAz39pZL5T5YLvLI9kTj4f/HymfLA/3F9GsCQ==";
   // Deploy and initialize registry
   await registry_contract.deploy("build/wasm32-unknown-unknown/release/i_am_human_registry.wasm");
   await registry_contract.call(registry_contract, "new", {'authority': admin.accountId });
@@ -29,7 +30,7 @@ test.beforeEach(async (t) => {
 
   // Save state for test runs, it is unique for each test
   t.context.worker = worker;
-  t.context.accounts = { registry_contract, oracle_contract, admin, claim_b64, sig_b64, claimer };
+  t.context.accounts = { registry_contract, oracle_contract, admin, claimer };
 });
 
 test.afterEach(async (t) => {
@@ -39,7 +40,7 @@ test.afterEach(async (t) => {
 });
 
 test("Should fail, oracle is not an issuer", async (t) => {
-  const {oracle_contract, claim_b64, sig_b64, claimer } = t.context.accounts;
+  const {oracle_contract, claimer } = t.context.accounts;
   const mint_result = await claimer.call(oracle_contract, "sbt_mint",
     { 'claim_b64': claim_b64,
       'claim_sig' : sig_b64 },
@@ -49,7 +50,7 @@ test("Should fail, oracle is not an issuer", async (t) => {
 });
 
 test("Should pass, oracle is an issuer", async (t) => {
-  const { registry_contract, oracle_contract, admin, claim_b64, sig_b64, claimer } = t.context.accounts;
+  const { registry_contract, oracle_contract, admin, claimer } = t.context.accounts;
   const add_issuer_result = await admin.call(registry_contract, "admin_add_sbt_issuer", {'issuer': oracle_contract.accountId});
   t.is(add_issuer_result, true);
   const mint_result =  await claimer.call(oracle_contract, "sbt_mint",
