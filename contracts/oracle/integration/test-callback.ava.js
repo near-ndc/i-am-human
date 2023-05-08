@@ -1,4 +1,4 @@
-import { Worker, NEAR } from "near-workspaces";
+import { Worker, NEAR, Gas } from "near-workspaces";
 import test from "ava";
 
 const claim_b64 = "EQAAAGNsYWltZXIudGVzdC5uZWFyBAAAADB4MWELAAAAAAAAAA=="; //base64 of Claim 
