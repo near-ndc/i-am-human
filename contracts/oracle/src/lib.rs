@@ -247,10 +247,7 @@ impl Contract {
     /// Checks if the given id was already used to mint an sbt
     pub fn is_used_identity(&self, external_id: String) -> bool {
         let normalised_id = normalize_external_id(external_id).expect("failed to normalize id");
-        if self.used_identities.contains(&normalised_id) {
-            return true;
-        }
-        false
+        self.used_identities.contains(&normalised_id)
     }
 
     // TODO:
