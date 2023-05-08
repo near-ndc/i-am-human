@@ -244,6 +244,11 @@ impl Contract {
             "not an admin"
         );
     }
+    /// Checks if the given id was already used to mint an sbt
+    pub fn is_used_identity(&self, external_id: String) -> bool {
+        let normalised_id = normalize_external_id(external_id).expect("failed to normalize id");
+        self.used_identities.contains(&normalised_id)
+    }
 
     // TODO:
     // - fn sbt_renew
@@ -405,7 +410,6 @@ mod tests {
         let signer = acc_claimer();
         let predecessor = acc_u1();
         let (mut ctx, mut ctr, k) = setup(&signer, &predecessor);
-
         // fail: tx signer is not claimer
         ctx.signer_account_id = acc_u1();
         testing_env!(ctx.clone());

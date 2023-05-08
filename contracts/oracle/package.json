@@ -1,0 +1,20 @@
+{
+    "name": "oracle-integration-tests",
+    "version": "1.0.0",
+    "type": "module",
+    "scripts": {
+        "build": "make build-all",
+        "rebuild": "rm -rf node_modules && rm -rf build && yarn install && yarn run build",
+        "test": "ava --verbose --timeout=10m"
+    },
+    "dependencies": {
+        "js-base64": "^3.7.5",
+        "lodash-es": "^4.17.21",
+        "near-sdk-js": "^1.0"
+    },
+    "devDependencies": {
+        "ava": "^5.2.0",
+        "near-workspaces": "^3.3.0"
+    },
+    "private": true
+}
