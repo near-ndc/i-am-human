@@ -4,7 +4,7 @@
     "type": "module",
     "scripts": {
         "build": "make build-all",
-        "rebuild": "rm -rf node_modules && rm -rf build && yarn i && yarn run build",
+        "rebuild": "rm -rf node_modules && rm -rf build && yarn install && yarn run build",
         "test": "ava --verbose --timeout=10m"
     },
     "author": "y",
