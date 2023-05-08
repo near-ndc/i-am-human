@@ -304,9 +304,40 @@ impl SBTRegistry for Contract {
     #[payable]
     fn sbt_recover(&mut self, from: AccountId, to: AccountId) {
         let issuer = env::predecessor_account_id();
-        self.assert_issuer(&issuer);
+        let issuer_id = self.assert_issuer(&issuer);
         self.assert_not_banned(&from);
         self.assert_not_banned(&to);
+
+        //todo: check if enough near was provided to cover the storage
+        let storage_deposit = env::attached_deposit();
+        require!(
+            storage_deposit >= 6 * MILI_NEAR,
+            "min required storage deposit: 0.006 NEAR"
+        );
+
+        //todo: get all tokens issued by the caller, where the owner == from
+        let tokens: Vec<OwnedToken> = self.sbt_tokens_by_owner(from, Some(issuer), None, None)[0].1;
+
+        //todo: reassign all tokens issued by the caller, from the old owner to a new owner.
+        for token in &tokens {
+            let token = token.clone().token;
+            let mut t = self.get_token(issuer_id, token);
+            self.assert_not_banned(&t.owner);
+            t.owner = to;
+            self.issuer_tokens
+                .insert(&IssuerTokenId { issuer_id, token }, &t);
+        }
+
+        //todo: add old_owner to a bannded list
+        self.banlist.insert(&from);
+
+        //todo: emit Recover event
+        SbtRecover {
+            issuer: &issuer,
+            old_owner: &from,
+            new_owner: &to,
+        };
+
         // no need to check ongoing_soult_tx, because it will automatically ban the source account
 
         env::panic_str("not implemented");
