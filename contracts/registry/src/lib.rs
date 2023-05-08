@@ -398,7 +398,7 @@ mod tests {
     }
 
     const START: u64 = 10;
-    const MINT_DEPOSIT: Balance = 6 * MILI_NEAR;
+    const MINT_DEPOSIT: Balance = 6 * 1_000_000_000_000_000_000_000;
 
     fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
@@ -768,5 +768,129 @@ mod tests {
         assert_eq!(bs[0].1, 102, "alice must be first in the iterator");
         assert_eq!(bs[1].0.owner, bob(), "bob must be second in the iterator");
         assert_eq!(bs[1].1, 103, "alice must be first in the iterator");
+    }
+
+    #[test]
+    fn registry_renew_one_issuer() {
+        let (_, mut ctr) = setup(&issuer1(), 3 * MINT_DEPOSIT);
+
+        // mint two tokens
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        let m2_1 = mk_metadata(2, Some(START + 10));
+        let tokens = ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m2_1.clone()])]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 2);
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None),
+            vec![(
+                issuer1(),
+                vec![
+                    mk_owned_token(1, m1_1.clone()),
+                    mk_owned_token(2, m2_1.clone())
+                ]
+            ),]
+        );
+
+        // renvew the two tokens
+        ctr.sbt_renew(tokens, START + 100);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 2);
+        let m1_1_renewed = mk_metadata(1, Some(START + 100));
+        let m2_1_renewed = mk_metadata(2, Some(START + 100));
+
+        // assert the two tokens have been renewed (new expire_at)
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None),
+            vec![(
+                issuer1(),
+                vec![
+                    mk_owned_token(1, m1_1_renewed.clone()),
+                    mk_owned_token(2, m2_1_renewed.clone())
+                ]
+            ),]
+        );
+    }
+
+    #[test]
+    fn registry_renew_multiple_issuers() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 3 * MINT_DEPOSIT);
+
+        // mint two tokens by issuer1
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        let m2_1 = mk_metadata(2, Some(START + 10));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m2_1.clone()])]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 2);
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None),
+            vec![(
+                issuer1(),
+                vec![
+                    mk_owned_token(1, m1_1.clone()),
+                    mk_owned_token(2, m2_1.clone())
+                ]
+            ),]
+        );
+
+        // mint two tokens by issuer2
+        let m1_2 = mk_metadata(1, Some(START + 10));
+        let m2_2: TokenMetadata = mk_metadata(2, Some(START + 10));
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        let tokens_issuer2 = ctr.sbt_mint(vec![(alice(), vec![m1_2.clone(), m2_2.clone()])]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 2);
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None),
+            vec![(
+                issuer2(),
+                vec![
+                    mk_owned_token(1, m1_2.clone()),
+                    mk_owned_token(2, m2_2.clone())
+                ]
+            ),]
+        );
+
+        // renvew the two tokens
+        ctr.sbt_renew(tokens_issuer2, START + 100);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 2);
+        let m1_2_renewed = mk_metadata(1, Some(START + 100));
+        let m2_2_renewed = mk_metadata(2, Some(START + 100));
+
+        // assert tokens issued by issuer2 has been renewed (new expire_at)
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None),
+            vec![(
+                issuer2(),
+                vec![
+                    mk_owned_token(1, m1_2_renewed.clone()),
+                    mk_owned_token(2, m2_2_renewed.clone())
+                ]
+            ),]
+        );
+
+        // assert tokens issued by issuer1 has not been renewed (new expire_at)
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None),
+            vec![(
+                issuer1(),
+                vec![
+                    mk_owned_token(1, m1_1.clone()),
+                    mk_owned_token(2, m2_1.clone())
+                ]
+            ),]
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn registry_renew_basics() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 3 * MINT_DEPOSIT);
+
+        // mint two tokens
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        let tokens = ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 1);
+
+        // check if only the issuer can renew the tokens (should panic)
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_renew(tokens, START + 100);
     }
 }
