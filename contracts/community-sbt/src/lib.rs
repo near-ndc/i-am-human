@@ -2,10 +2,10 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, UnorderedSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
 
+use cost::{MINT_COST, MINT_GAS};
 use sbt::*;
 
 pub use crate::storage::*;
-
 mod storage;
 
 /// 1s in nano seconds.
