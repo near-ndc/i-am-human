@@ -10,7 +10,7 @@
     "dependencies": {
         "js-base64": "^3.7.5",
         "lodash-es": "^4.17.21",
-        "near-sdk-js": "0.6.0"
+        "near-sdk-js": "^1.0"
     },
     "devDependencies": {
         "ava": "^5.2.0",
