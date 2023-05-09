@@ -398,7 +398,7 @@ mod tests {
     }
 
     const START: u64 = 10;
-    const MINT_DEPOSIT: Balance = 6 * MILI_NEAR;
+    const MINT_DEPOSIT: Balance = 6 * 1_000_000_000_000_000_000_000;
 
     fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
@@ -892,5 +892,27 @@ mod tests {
         ctx.predecessor_account_id = issuer2();
         testing_env!(ctx.clone());
         ctr.sbt_renew(tokens, START + 100);
+    }
+    #[test]
+    fn registry_renew_event() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 3 * MINT_DEPOSIT);
+
+        // mint two tokens
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        let tokens = ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        ctr.sbt_renew(tokens.clone(), START + 100);
+        let log_mint = mk_log_str(
+            "mint",
+            &format!(
+                r#"{{"issuer":"{}","tokens":[["{}",[1]]]}}"#,
+                issuer1(),
+                alice()
+            ),
+        );
+        let log_renew = mk_log_str(
+            "renew",
+            &format!(r#"{{"issuer":"{}","tokens":[{}]}}"#, issuer1(), tokens[0]),
+        );
+        assert_eq!(test_utils::get_logs(), vec![log_mint, log_renew].concat());
     }
 }
