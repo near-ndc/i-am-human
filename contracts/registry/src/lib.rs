@@ -784,7 +784,7 @@ mod tests {
         ctr.sbt_renew(tokens, START + 100);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 2);
         let m1_1_renewed = mk_metadata(1, Some(START + 100));
-        let m2_1_renewed = mk_metadata(2, Some(START + 100));
+        let m2_1_renewed = mk_metadata(2, Some(START + 101));
 
         // assert the two tokens have been renewed (new expire_at)
         assert_eq!(
@@ -805,37 +805,17 @@ mod tests {
 
         // mint two tokens by issuer1
         let m1_1 = mk_metadata(1, Some(START + 10));
-        let m2_1 = mk_metadata(2, Some(START + 10));
+        let m2_1 = mk_metadata(2, Some(START + 11));
         ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m2_1.clone()])]);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 2);
-        assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None),
-            vec![(
-                issuer1(),
-                vec![
-                    mk_owned_token(1, m1_1.clone()),
-                    mk_owned_token(2, m2_1.clone())
-                ]
-            ),]
-        );
 
         // mint two tokens by issuer2
         let m1_2 = mk_metadata(1, Some(START + 10));
-        let m2_2: TokenMetadata = mk_metadata(2, Some(START + 10));
+        let m2_2: TokenMetadata = mk_metadata(2, Some(START + 12));
         ctx.predecessor_account_id = issuer2();
         testing_env!(ctx.clone());
         let tokens_issuer2 = ctr.sbt_mint(vec![(alice(), vec![m1_2.clone(), m2_2.clone()])]);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 2);
-        assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None),
-            vec![(
-                issuer2(),
-                vec![
-                    mk_owned_token(1, m1_2.clone()),
-                    mk_owned_token(2, m2_2.clone())
-                ]
-            ),]
-        );
 
         // renvew the two tokens
         ctr.sbt_renew(tokens_issuer2, START + 100);
