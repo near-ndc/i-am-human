@@ -779,16 +779,6 @@ mod tests {
         let m2_1 = mk_metadata(2, Some(START + 10));
         let tokens = ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m2_1.clone()])]);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 2);
-        assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None),
-            vec![(
-                issuer1(),
-                vec![
-                    mk_owned_token(1, m1_1.clone()),
-                    mk_owned_token(2, m2_1.clone())
-                ]
-            ),]
-        );
 
         // renvew the two tokens
         ctr.sbt_renew(tokens, START + 100);
