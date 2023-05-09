@@ -776,7 +776,7 @@ mod tests {
 
         // mint two tokens
         let m1_1 = mk_metadata(1, Some(START + 10));
-        let m2_1 = mk_metadata(2, Some(START + 10));
+        let m2_1 = mk_metadata(2, Some(START + 11));
         let tokens = ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m2_1.clone()])]);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 2);
 
