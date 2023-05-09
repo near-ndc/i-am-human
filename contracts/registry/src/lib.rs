@@ -398,7 +398,7 @@ mod tests {
     }
 
     const START: u64 = 10;
-    const MINT_DEPOSIT: Balance = 6 * MILI_NEAR;
+    const MINT_DEPOSIT: Balance = 6 * 1_000_000_000_000_000_000_000;
 
     fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
@@ -768,5 +768,49 @@ mod tests {
         assert_eq!(bs[0].1, 102, "alice must be first in the iterator");
         assert_eq!(bs[1].0.owner, bob(), "bob must be second in the iterator");
         assert_eq!(bs[1].1, 103, "alice must be first in the iterator");
+    }
+
+    #[test]
+    fn sbt_recover_basics() {
+        let (_, mut ctr) = setup(&issuer1(), 3 * MINT_DEPOSIT);
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        let m2_1 = mk_metadata(2, Some(START + 10));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m2_1.clone()])]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 2);
+
+        ctr.sbt_recover(alice(), bob());
+
+        let mint_log = mk_log_str(
+            "mint",
+            &format!(
+                r#"{{"issuer":"{}","tokens":[["{}",[1,2]]]}}"#,
+                issuer1(),
+                alice()
+            ),
+        );
+        let recover_log = mk_log_str(
+            "recover",
+            &format!(
+                r#"{{"issuer":"{}","old_owner":"{}","new_owner":"{}"}}"#,
+                issuer1(),
+                alice(),
+                bob()
+            ),
+        );
+        assert_eq!(test_utils::get_logs(), vec![mint_log, recover_log].concat());
+        assert_eq!(ctr.is_banned(alice()), true);
+        assert_eq!(ctr.is_banned(bob()), false);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
+        assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer1(), None), 2);
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(bob(), Some(issuer1()), None, None),
+            vec![(
+                issuer1(),
+                vec![
+                    mk_owned_token(1, m1_1.clone()),
+                    mk_owned_token(2, m2_1.clone())
+                ]
+            ),]
+        );
     }
 }
