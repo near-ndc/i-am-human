@@ -398,7 +398,7 @@ mod tests {
     }
 
     const START: u64 = 10;
-    const MINT_DEPOSIT: Balance = 6 * 1_000_000_000_000_000_000_000;
+    const MINT_DEPOSIT: Balance = 6 * MILI_NEAR,
 
     fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()

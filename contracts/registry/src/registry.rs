@@ -205,7 +205,7 @@ impl SBTRegistry for Contract {
         let storage_start = env::storage_usage();
         let storage_deposit = env::attached_deposit();
         require!(
-            storage_deposit >= 6 * 1_000_000_000_000_000_000_000,
+            storage_deposit >= 6 * MILI_NEAR,
             "min required storage deposit: 0.006 NEAR"
         );
 
