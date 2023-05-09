@@ -1,6 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, UnorderedSet};
-use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
+use near_sdk::{env, near_bindgen, require, AccountId, Gas, PanicOnDefault, Promise};
 
 use cost::{MINT_COST, MINT_GAS};
 use sbt::*;
@@ -75,7 +75,7 @@ impl Contract {
         receiver: AccountId,
         #[allow(unused_mut)] mut metadata: TokenMetadata,
         memo: Option<String>,
-    ) {
+    ) -> Promise {
         require!(
             env::attached_deposit() == MINT_COST,
             "Requires attached deposit of exactly 0.007 NEAR"
@@ -109,7 +109,23 @@ impl Contract {
         ext_registry::ext(self.registry.clone())
             .with_attached_deposit(MINT_COST) // no extra cost needed
             .with_static_gas(MINT_GAS)
-            .sbt_mint(vec![(receiver, vec![metadata])]);
+            .sbt_mint(vec![(receiver, vec![metadata])])
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(Gas::ONE_TERA * 3)
+                    .sbt_mint_callback(),
+            )
+    }
+
+    #[private]
+    pub fn sbt_mint_callback(
+        &mut self,
+        #[callback_result] last_result: Result<Vec<TokenId>, near_sdk::PromiseError>,
+    ) {
+        match last_result {
+            Ok(v) => (),
+            Err(_) => panic!("registry mint failed"),
+        }
     }
 
     /// sbt_renew will update the expire time of provided tokens.
