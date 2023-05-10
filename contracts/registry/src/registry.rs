@@ -397,11 +397,11 @@ impl SBTRegistry for Contract {
         SbtTokensEvent { issuer, tokens }.emit_renew();
     }
 
-    /// Revokes SBT by burning it.
+    /// Revokes SBT.
     /// Must be called by an SBT contract.
-    /// Must emit one of `Revoke` or `Burn` event.
-    /// Returns true if a token is a valid, active SBT. Otherwise returns false.
-    fn sbt_revoke(&mut self, token: Vec<TokenId>) -> bool {
+    /// Must emit `Revoke` event.
+    /// Must also emit `Burn` event if the SBT tokens are burned (removed).
+    fn sbt_revoke(&mut self, token: Vec<TokenId>, burn: bool) {
         let issuer = env::predecessor_account_id();
         self.assert_issuer(&issuer);
         env::panic_str("not implemented");
