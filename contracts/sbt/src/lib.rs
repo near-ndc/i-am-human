@@ -108,7 +108,6 @@ pub trait SBTRegistry {
 
     /// sbt_recover reassigns all tokens issued by the caller, from the old owner to a new owner.
     /// Adds `old_owner` to a banned accounts list.
-    /// Caller must be a valid issuer.
     /// Must be called by a valid SBT issuer.
     /// Must emit `Recover` event.
     /// Must be called by an operator.
