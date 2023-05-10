@@ -308,11 +308,12 @@ impl SBTRegistry for Contract {
         self.assert_not_banned(&to);
 
         // get all tokens issued by the caller, where the owner == from
-        let tokens: &Vec<OwnedToken> =
-            &self.sbt_tokens_by_owner(from.clone(), Some(issuer.clone()), None, None)[0].1;
+        let tokens = &self.sbt_tokens_by_owner(from.clone(), Some(issuer.clone()), None, None);
+        assert!(tokens.len() == 1);
+        let tokens = tokens[0].clone();
         //reassign all tokens issued by the caller, from the old owner to a new owner.
         let mut tokens_revoked = 0;
-        for token in tokens {
+        for token in tokens.1 {
             let token_id = token.clone().token;
             let mut t = self.get_token(issuer_id, token_id);
             self.assert_not_banned(&t.owner);
@@ -351,8 +352,6 @@ impl SBTRegistry for Contract {
 
         //add old_owner to a bannded list
         self.banlist.insert(&from);
-
-        for token in tokens {}
 
         //emit Recover event
         SbtRecover {

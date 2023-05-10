@@ -867,7 +867,7 @@ mod tests {
 
     #[test]
     fn registry_renew_event() {
-        let (mut ctx, mut ctr) = setup(&issuer1(), 3 * MINT_DEPOSIT);
+        let (_, mut ctr) = setup(&issuer1(), 3 * MINT_DEPOSIT);
 
         // mint two tokens
         let m1_1 = mk_metadata(1, Some(START + 10));
@@ -929,10 +929,35 @@ mod tests {
                 ]
             ),]
         );
+        assert_eq!(ctr.sbt_supply(issuer1()), 2);
+        assert_eq!(ctr.sbt_supply(issuer2()), 1);
+        assert_eq!(ctr.sbt_supply_by_class(issuer2(), 1), 1);
+        assert_eq!(ctr.sbt_supply_by_class(issuer1(), 1), 1);
+        assert_eq!(ctr.sbt_supply_by_class(issuer1(), 2), 1);
+
+        assert_eq!(
+            ctr.sbt_tokens(issuer1(), None, None),
+            vec![
+                mk_token(1, bob(), m1_1.clone()),
+                mk_token(2, bob(), m2_1.clone())
+            ]
+        );
+        assert_eq!(
+            ctr.sbt(issuer1(), 1).unwrap(),
+            mk_token(1, bob(), m1_1.clone())
+        );
+        assert_eq!(
+            ctr.sbt(issuer1(), 2).unwrap(),
+            mk_token(2, bob(), m2_1.clone())
+        );
+        assert_eq!(
+            ctr.sbt(issuer2(), 1).unwrap(),
+            mk_token(1, alice(), m1_1.clone())
+        );
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "not enough NEAR storage depost")]
     fn sbt_recover_growing_storage_desposit_fail() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
         let m1_1 = mk_metadata(1, Some(START + 10));
