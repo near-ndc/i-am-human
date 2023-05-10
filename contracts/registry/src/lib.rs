@@ -903,8 +903,8 @@ mod tests {
         );
         assert_eq!(test_utils::get_logs().len(), 2);
         assert_eq!(test_utils::get_logs()[1], recover_log);
-        assert_eq!(ctr.is_banned(alice()), true);
-        assert_eq!(ctr.is_banned(bob()), false);
+        assert!(ctr.is_banned(alice()));
+        assert!(!ctr.is_banned(bob()));
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
         assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer1(), None), 2);
         assert_eq!(
