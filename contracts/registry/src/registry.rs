@@ -312,7 +312,7 @@ impl SBTRegistry for Contract {
         assert!(tokens.len() == 1);
         let tokens = tokens[0].clone();
         //reassign all tokens issued by the caller, from the old owner to a new owner.
-        let mut tokens_revoked = 0;
+        let mut tokens_recovered = 0;
         for token in tokens.1 {
             let token_id = token.clone().token;
             let mut t = self.get_token(issuer_id, token_id);
@@ -331,7 +331,7 @@ impl SBTRegistry for Contract {
             let key_value = self.balances.remove(&old_balance_key).unwrap();
             //add new entry to balances
             self.balances.insert(&new_balance_key, &key_value);
-            tokens_revoked += 1;
+            tokens_recovered += 1;
         }
         // update supply_by_owner map
         let old_supply_from = self
@@ -340,7 +340,7 @@ impl SBTRegistry for Contract {
             .unwrap_or(0);
         self.supply_by_owner.insert(
             &(from.clone(), issuer_id),
-            &(old_supply_from - tokens_revoked),
+            &(old_supply_from - tokens_recovered),
         );
 
         let old_supply_to = self
@@ -348,7 +348,7 @@ impl SBTRegistry for Contract {
             .remove(&(to.clone(), issuer_id))
             .unwrap_or(0);
         self.supply_by_owner
-            .insert(&(to.clone(), issuer_id), &(old_supply_to + tokens_revoked));
+            .insert(&(to.clone(), issuer_id), &(old_supply_to + tokens_recovered));
 
         //add old_owner to a bannded list
         self.banlist.insert(&from);
