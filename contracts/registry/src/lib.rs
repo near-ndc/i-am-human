@@ -327,6 +327,7 @@ impl Contract {
 
 #[cfg(test)]
 mod tests {
+    use cost::MILI_NEAR;
     use near_sdk::test_utils::{self, VMContextBuilder};
     use near_sdk::{testing_env, Balance, VMContext};
     use sbt::*;
@@ -769,6 +770,7 @@ mod tests {
         assert_eq!(bs[1].0.owner, bob(), "bob must be second in the iterator");
         assert_eq!(bs[1].1, 103, "alice must be first in the iterator");
     }
+
     #[test]
     fn registry_renew_one_issuer() {
         let (_, mut ctr) = setup(&issuer1(), 3 * MINT_DEPOSIT);
@@ -797,6 +799,7 @@ mod tests {
             ),]
         );
     }
+
     #[test]
     fn registry_renew_multiple_issuers() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 3 * MINT_DEPOSIT);
@@ -845,6 +848,7 @@ mod tests {
             ),]
         );
     }
+
     #[test]
     #[should_panic]
     fn registry_renew_basics() {
@@ -860,6 +864,7 @@ mod tests {
         testing_env!(ctx.clone());
         ctr.sbt_renew(tokens, START + 100);
     }
+
     #[test]
     fn registry_renew_event() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 3 * MINT_DEPOSIT);
@@ -882,16 +887,22 @@ mod tests {
         );
         assert_eq!(test_utils::get_logs(), vec![log_mint, log_renew].concat());
     }
+
     #[test]
     fn sbt_recover_basics() {
-        let (_, mut ctr) = setup(&issuer1(), 3 * MINT_DEPOSIT);
+        let (mut ctx, mut ctr) = setup(&issuer2(), 3 * MINT_DEPOSIT);
         let m1_1 = mk_metadata(1, Some(START + 10));
         let m2_1 = mk_metadata(2, Some(START + 10));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 1);
+
+        //issue tokens by a different issuer
+        ctx.predecessor_account_id = issuer1();
+        testing_env!(ctx.clone());
         ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m2_1.clone()])]);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 2);
 
         ctr.sbt_recover(alice(), bob());
-
         let recover_log = mk_log_str(
             "recover",
             &format!(
@@ -902,11 +913,12 @@ mod tests {
             ),
         );
         assert_eq!(test_utils::get_logs().len(), 2);
-        assert_eq!(test_utils::get_logs()[1], recover_log);
+        assert_eq!(test_utils::get_logs()[1], recover_log[0]);
         assert!(ctr.is_banned(alice()));
         assert!(!ctr.is_banned(bob()));
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
         assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer1(), None), 2);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 1); //check if alice still holds the tokens issued by a different issuer
         assert_eq!(
             ctr.sbt_tokens_by_owner(bob(), Some(issuer1()), None, None),
             vec![(
@@ -917,5 +929,43 @@ mod tests {
                 ]
             ),]
         );
+    }
+
+    #[test]
+    #[should_panic]
+    fn sbt_recover_growing_storage_desposit_fail() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 1);
+
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 1);
+
+        //set attached deposit to zero, should fails since the storage grows and we do not cover it
+        ctx.attached_deposit = 0;
+        testing_env!(ctx.clone());
+        ctr.sbt_recover(alice(), bob());
+    }
+
+    #[test]
+    fn sbt_recover_growing_storage_desposit_pass() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 1);
+
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 1);
+
+        //set attached deposit to zero, should fails since the storage grows and we do not cover it
+        ctx.attached_deposit = MINT_DEPOSIT;
+        testing_env!(ctx.clone());
+        ctr.sbt_recover(alice(), bob());
+        assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer2(), None), 1);
     }
 }

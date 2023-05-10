@@ -298,8 +298,10 @@ impl SBTRegistry for Contract {
     /// Must be called by a valid SBT issuer.
     /// Must emit `Recover` event.
     /// Must be called by an operator.
+    /// Requires attaching enough tokens to cover the storage growth.
     #[payable]
     fn sbt_recover(&mut self, from: AccountId, to: AccountId) {
+        let storage_start = env::storage_usage();
         let issuer = env::predecessor_account_id();
         let issuer_id = self.assert_issuer(&issuer);
         self.assert_not_banned(&from);
@@ -359,6 +361,17 @@ impl SBTRegistry for Contract {
             new_owner: &to,
         }
         .emit();
+
+        //storage check
+        let required_deposit =
+            (env::storage_usage() - storage_start) as u128 * env::storage_byte_cost();
+        require!(
+            env::attached_deposit() >= required_deposit,
+            format!(
+                "not enough NEAR storage depost, required: {}",
+                required_deposit
+            )
+        );
         // no need to check ongoing_soult_tx, because it will automatically ban the source account
     }
 
