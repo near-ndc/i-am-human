@@ -347,8 +347,10 @@ impl SBTRegistry for Contract {
             .supply_by_owner
             .remove(&(to.clone(), issuer_id))
             .unwrap_or(0);
-        self.supply_by_owner
-            .insert(&(to.clone(), issuer_id), &(old_supply_to + tokens_recovered));
+        self.supply_by_owner.insert(
+            &(to.clone(), issuer_id),
+            &(old_supply_to + tokens_recovered),
+        );
 
         //add old_owner to a bannded list
         self.banlist.insert(&from);
@@ -403,24 +405,62 @@ impl SBTRegistry for Contract {
     fn sbt_revoke(&mut self, tokens: Vec<TokenId>, burn: bool) {
         let issuer = env::predecessor_account_id();
         let issuer_id = self.assert_issuer(&issuer);
+        let mut tokens_burned = 0;
         if burn == true {
-            for token in tokens {
+            for token in &tokens {
+                let token = token.clone();
+
+                // update balances
+                let token_object = self.get_token(issuer_id, token);
+                let owner = token_object.owner;
+                let class_id = token_object.metadata.v1().class;
+                let balance_key = &BalanceKey {
+                    issuer_id,
+                    owner: owner.clone(),
+                    class_id,
+                };
+                self.balances.remove(balance_key);
+
+                // update supply by owner
+                let supply_by_owner = self
+                    .supply_by_owner
+                    .remove(&(owner.clone(), issuer_id))
+                    .unwrap_or(0);
+                self.supply_by_owner.insert(
+                    &(owner.clone(), issuer_id),
+                    &(supply_by_owner.checked_sub(1)).unwrap_or(0),
+                );
+
+                // update supply by class
+                let supply_by_class = self
+                    .supply_by_class
+                    .remove(&(issuer_id, class_id))
+                    .unwrap_or(0);
+                self.supply_by_class.insert(
+                    &(issuer_id, class_id),
+                    &(&supply_by_class.checked_sub(1).unwrap_or(0)),
+                );
+
+                // remove from issuer_tokens
                 self.issuer_tokens
                     .remove(&IssuerTokenId { issuer_id, token });
-                
-                // todo: update balances 
-                let balance_key = 
-                self.balances.remove(key)
+
+                tokens_burned += 1;
             }
 
-            //todo: update supply by owner
+            // update supply by issuer
+            let supply_by_issuer = self.supply_by_issuer.remove(&(issuer_id)).unwrap_or(0);
+            self.supply_by_issuer.insert(
+                &(issuer_id),
+                &(&supply_by_issuer.checked_sub(tokens_burned).unwrap_or(0)),
+            );
 
-            //todo: update supply by class
-
-            //todo update supply by issuer 
+            // emit event
+            SbtTokensEvent { issuer, tokens }.emit_burn();
         } else {
             // revoke
             for token in &tokens {
+                // update expire date for all tokens to 0
                 let token = token.clone();
                 let mut t = self.get_token(issuer_id, token);
                 let mut m = t.metadata.v1();
