@@ -962,7 +962,7 @@ mod tests {
         ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 1);
 
-        //set attached deposit to zero, should fails since the storage grows and we do not cover it
+        // storage will grow so need to attach deposit.
         ctx.attached_deposit = MINT_DEPOSIT;
         testing_env!(ctx.clone());
         ctr.sbt_recover(alice(), bob());
