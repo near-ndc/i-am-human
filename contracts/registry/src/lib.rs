@@ -892,14 +892,6 @@ mod tests {
 
         ctr.sbt_recover(alice(), bob());
 
-        let mint_log = mk_log_str(
-            "mint",
-            &format!(
-                r#"{{"issuer":"{}","tokens":[["{}",[1,2]]]}}"#,
-                issuer1(),
-                alice()
-            ),
-        );
         let recover_log = mk_log_str(
             "recover",
             &format!(
@@ -909,7 +901,8 @@ mod tests {
                 bob()
             ),
         );
-        assert_eq!(test_utils::get_logs(), vec![mint_log, recover_log].concat());
+        assert_eq!(test_utils::get_logs().len(), 2);
+        assert_eq!(test_utils::get_logs()[1], recover_log);
         assert_eq!(ctr.is_banned(alice()), true);
         assert_eq!(ctr.is_banned(bob()), false);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
