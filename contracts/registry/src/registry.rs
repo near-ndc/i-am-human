@@ -339,10 +339,36 @@ impl SBTRegistry for Contract {
     /// Must be called by an SBT contract.
     /// Must emit `Revoke` event.
     /// Must also emit `Burn` event if the SBT tokens are burned (removed).
-    fn sbt_revoke(&mut self, token: Vec<TokenId>, burn: bool) {
+    fn sbt_revoke(&mut self, tokens: Vec<TokenId>, burn: bool) {
         let issuer = env::predecessor_account_id();
-        self.assert_issuer(&issuer);
-        env::panic_str("not implemented");
-        // add events
+        let issuer_id = self.assert_issuer(&issuer);
+        if burn == true {
+            for token in tokens {
+                self.issuer_tokens
+                    .remove(&IssuerTokenId { issuer_id, token });
+                
+                // todo: update balances 
+                let balance_key = 
+                self.balances.remove(key)
+            }
+
+            //todo: update supply by owner
+
+            //todo: update supply by class
+
+            //todo update supply by issuer 
+        } else {
+            // revoke
+            for token in &tokens {
+                let token = token.clone();
+                let mut t = self.get_token(issuer_id, token);
+                let mut m = t.metadata.v1();
+                m.expires_at = Some(0);
+                t.metadata = m.into();
+                self.issuer_tokens
+                    .insert(&IssuerTokenId { issuer_id, token }, &t);
+            }
+            SbtTokensEvent { issuer, tokens }.emit_revoke();
+        }
     }
 }
