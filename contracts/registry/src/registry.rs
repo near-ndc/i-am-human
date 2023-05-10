@@ -295,22 +295,83 @@ impl SBTRegistry for Contract {
 
     /// sbt_recover reassigns all tokens issued by the caller, from the old owner to a new owner.
     /// Adds `old_owner` to a banned accounts list.
-    /// Caller must be a valid issuer.
     /// Must be called by a valid SBT issuer.
     /// Must emit `Recover` event.
     /// Must be called by an operator.
-    /// Must provide enough NEAR to cover registry storage cost.
     /// Requires attaching enough tokens to cover the storage growth.
     #[payable]
     fn sbt_recover(&mut self, from: AccountId, to: AccountId) {
+        let storage_start = env::storage_usage();
         let issuer = env::predecessor_account_id();
-        self.assert_issuer(&issuer);
+        let issuer_id = self.assert_issuer(&issuer);
         self.assert_not_banned(&from);
         self.assert_not_banned(&to);
-        // no need to check ongoing_soult_tx, because it will automatically ban the source account
 
-        env::panic_str("not implemented");
-        // add events
+        // get all tokens issued by the caller, where the owner == from
+        let tokens = &self.sbt_tokens_by_owner(from.clone(), Some(issuer.clone()), None, None);
+        assert!(tokens.len() == 1);
+        let tokens = tokens[0].clone();
+        //reassign all tokens issued by the caller, from the old owner to a new owner.
+        let mut tokens_recovered = 0;
+        for token in tokens.1 {
+            let token_id = token.clone().token;
+            let mut t = self.get_token(issuer_id, token_id);
+            self.assert_not_banned(&t.owner);
+            t.owner = to.clone();
+            self.issuer_tokens.insert(
+                &IssuerTokenId {
+                    issuer_id: issuer_id,
+                    token: token_id,
+                },
+                &t,
+            );
+            let old_balance_key = balance_key(from.clone(), issuer_id, token.metadata.class);
+            let new_balance_key = balance_key(to.clone(), issuer_id, token.metadata.class);
+            //remove old entry from balances
+            let key_value = self.balances.remove(&old_balance_key).unwrap();
+            //add new entry to balances
+            self.balances.insert(&new_balance_key, &key_value);
+            tokens_recovered += 1;
+        }
+        // update supply_by_owner map
+        let old_supply_from = self
+            .supply_by_owner
+            .remove(&(from.clone(), issuer_id))
+            .unwrap_or(0);
+        self.supply_by_owner.insert(
+            &(from.clone(), issuer_id),
+            &(old_supply_from - tokens_recovered),
+        );
+
+        let old_supply_to = self
+            .supply_by_owner
+            .remove(&(to.clone(), issuer_id))
+            .unwrap_or(0);
+        self.supply_by_owner
+            .insert(&(to.clone(), issuer_id), &(old_supply_to + tokens_recovered));
+
+        //add old_owner to a bannded list
+        self.banlist.insert(&from);
+
+        //emit Recover event
+        SbtRecover {
+            issuer: &issuer,
+            old_owner: &from,
+            new_owner: &to,
+        }
+        .emit();
+
+        //storage check
+        let required_deposit =
+            (env::storage_usage() - storage_start) as u128 * env::storage_byte_cost();
+        require!(
+            env::attached_deposit() >= required_deposit,
+            format!(
+                "not enough NEAR storage depost, required: {}",
+                required_deposit
+            )
+        );
+        // no need to check ongoing_soult_tx, because it will automatically ban the source account
     }
 
     /// sbt_renew will update the expire time of provided tokens.
