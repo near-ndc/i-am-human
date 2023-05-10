@@ -112,7 +112,6 @@ pub trait SBTRegistry {
     /// Must be called by a valid SBT issuer.
     /// Must emit `Recover` event.
     /// Must be called by an operator.
-    /// Must provide enough NEAR to cover registry storage cost.
     /// Requires attaching enough tokens to cover the storage growth.
     // #[payable]
     fn sbt_recover(&mut self, from: AccountId, to: AccountId);
