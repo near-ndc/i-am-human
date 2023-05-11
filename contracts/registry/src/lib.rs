@@ -78,14 +78,15 @@ impl Contract {
     //
 
     /// Transfers atomically all SBT tokens from one account to another account.
-    /// The caller must be an SBT holder and the `to` must not be a banned account.
-    /// Returns the amount of tokens transferred and a boolean: `true` if the whole
-    /// process has finished, `false` when the process has not
-    /// finished and should be continued by a subsequent call.
-    /// User must keeps calling `sbt_soul_transfer` until `true` is returned.
-    /// Emits `SoulTransfer` event only if the caller was in possession of at least one SBT
-    /// (if caller doesn't have any tokens, the function won't transfer anything, ban the
-    /// recipient, emit Ban, and NOT emit SoulTransfer).
+    /// + The caller must be an SBT holder and the `to` must not be a banned account.
+    /// + Returns the amount of tokens transferred and a boolean: `true` if the whole
+    ///   process has finished, `false` when the process has not finished and should be
+    ///   continued by a subsequent call.
+    /// + User must keep calling the `sbt_soul_transfer` until `true` is returned.
+    /// + Emits `SoulTransfer` event only once all the tokens that user was in possesion
+    ///   of were transfered and at least one token was trasnfered (caller had at least 1 sbt)
+    /// + If caller does not have any tokens, nothing will be transfered, the caller
+    ///    will be banned and Ban even will be emitted
     #[payable]
     pub fn sbt_soul_transfer(
         &mut self,
@@ -96,7 +97,7 @@ impl Contract {
         self._sbt_soul_transfer(recipient, 200)
     }
 
-    // execution of the sbt_soult_transfer in this function to parametrize `max_updates` in
+    // execution of the sbt_soul_transfer in this function to parametrize `max_updates` in
     // order to facilitate tests.
     pub(crate) fn _sbt_soul_transfer(&mut self, recipient: AccountId, limit: usize) -> (u32, bool) {
         let owner = env::predecessor_account_id();
@@ -170,12 +171,12 @@ impl Contract {
                 emit_soul_transfer(&owner, &recipient);
             }
         } else {
-            let last = &batch[token_counter];
+            let last = &batch[token_counter - 1];
             self.ongoing_soul_tx.insert(
                 &owner,
                 &IssuerTokenId {
                     issuer_id: last.0.issuer_id,
-                    token: last.1,
+                    token: last.0.class_id,
                 },
             );
         }
@@ -327,9 +328,11 @@ impl Contract {
 
 #[cfg(test)]
 mod tests {
+    use std::ops::Mul;
+
     use cost::MILI_NEAR;
     use near_sdk::test_utils::{self, VMContextBuilder};
-    use near_sdk::{testing_env, Balance, VMContext};
+    use near_sdk::{testing_env, Balance, Gas, VMContext};
     use sbt::*;
 
     use pretty_assertions::assert_eq;
@@ -346,6 +349,14 @@ mod tests {
 
     fn bob() -> AccountId {
         AccountId::new_unchecked("bob.near".to_string())
+    }
+
+    fn carol() -> AccountId {
+        AccountId::new_unchecked("carol.near".to_string())
+    }
+
+    fn dan() -> AccountId {
+        AccountId::new_unchecked("dan.near".to_string())
     }
 
     fn issuer1() -> AccountId {
@@ -396,6 +407,14 @@ mod tests {
             issuer_id,
             class_id,
         }
+    }
+
+    fn mk_batch_metadata(n: u64) -> Vec<TokenMetadata> {
+        let mut batch_metadata: Vec<TokenMetadata> = Vec::new();
+        for i in 0..n {
+            batch_metadata.push(mk_metadata(i, Some(START + i)))
+        }
+        batch_metadata
     }
 
     const START: u64 = 10;
@@ -723,12 +742,175 @@ mod tests {
                 (issuer2(), vec![mk_owned_token(1, m1_1.clone())]),
             ]
         );
+    }
 
-        // tests:
-        // + test soult transfer with "continuation" - use the internal _sbt_soul_transfer to control limit
-        // + edge case: caller doesn't have any token
-        // + edge case: soul_transfer resumed but there is no more tokens (must emit event in the last resumed call)
-        // + find all edge cases
+    #[test]
+    fn soul_transfer_with_continuation() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+        // test1: simple case: alice has one token and she owns alice2 account as well. She
+        // will do transfer from alice -> alice2
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        let m2_1 = mk_metadata(2, Some(START + 11));
+        let m3_1 = mk_metadata(3, Some(START + 12));
+        let m4_1 = mk_metadata(4, Some(START + 13));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m2_1.clone()])]);
+
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), vec![m3_1.clone(), m4_1.clone()])]);
+
+        // make soul transfer
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        let mut result = ctr._sbt_soul_transfer(alice2(), 3);
+        assert_eq!((3, false), result);
+        assert!(test_utils::get_logs().len() == 1);
+        result = ctr._sbt_soul_transfer(alice2(), 3);
+        assert_eq!((1, true), result);
+        assert!(test_utils::get_logs().len() == 2);
+
+        let log_soul_transfer = mk_log_str(
+            "soul_transfer",
+            &format!(r#"{{"from":"{}","to":"{}"}}"#, alice(), alice2()),
+        );
+        assert_eq!(test_utils::get_logs()[1], log_soul_transfer[0]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 0);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 2);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer2(), None), 2);
+        assert!(ctr.is_banned(alice()));
+        assert!(!ctr.is_banned(alice2()));
+    }
+
+    #[test]
+    fn soul_transfer_no_tokens_from_caller() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 1 * MINT_DEPOSIT);
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        assert!(!ctr.is_banned(alice()));
+        assert!(!ctr.is_banned(alice2()));
+        ctr.sbt_soul_transfer(alice2(), None);
+        assert!(ctr.is_banned(alice()));
+        assert!(!ctr.is_banned(alice2()));
+        // assert ban even is being emited after the caller with zero tokens has invoked the soul_transfer
+        let log_ban = mk_log_str("ban", &format!("[\"{}\"]", alice()));
+        assert_eq!(test_utils::get_logs(), log_ban);
+    }
+
+    #[test]
+    fn soul_transfer_limit() {
+        let max_gas: Gas = Gas::ONE_TERA.mul(300);
+        let (mut ctx, mut ctr) = setup(&issuer1(), 150 * MINT_DEPOSIT);
+        let batch_metadata = mk_batch_metadata(100);
+        assert!(batch_metadata.len() == 100);
+
+        // issuer_1
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..50].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 50);
+
+        // issuer_2
+        ctx.predecessor_account_id = issuer2();
+        ctx.prepaid_gas = max_gas;
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[50..].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 50);
+
+        // add more tokens to issuer_1
+        ctx.predecessor_account_id = issuer1();
+        ctx.prepaid_gas = max_gas;
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(bob(), batch_metadata[..20].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer1(), None), 20);
+
+        ctx.prepaid_gas = max_gas;
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice2(), batch_metadata[..20].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 20);
+
+        ctx.prepaid_gas = max_gas;
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(carol(), batch_metadata[..20].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(carol(), issuer1(), None), 20);
+
+        ctx.prepaid_gas = max_gas;
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(dan(), batch_metadata[..10].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(dan(), issuer1(), None), 10);
+
+        // soul transfer alice->alice2
+        ctx.predecessor_account_id = alice();
+
+        let limit: u32 = 25; //anything above this limit will fail due to exceeding maximum gas usage per call
+        loop {
+            ctx.prepaid_gas = max_gas;
+            testing_env!(ctx.clone());
+            let result = ctr._sbt_soul_transfer(alice2(), limit as usize);
+            if result.1 == true {
+                break;
+            }
+        }
+
+        // check all the balances afterwards
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 0);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 70);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer2(), None), 50);
+        assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer1(), None), 20);
+        assert_eq!(ctr.sbt_supply_by_owner(carol(), issuer1(), None), 20);
+        assert_eq!(ctr.sbt_supply_by_owner(dan(), issuer1(), None), 10);
+    }
+
+    #[test]
+    fn soul_transfer_limit_basics() {
+        let max_gas: Gas = Gas::ONE_TERA.mul(300);
+        let (mut ctx, mut ctr) = setup(&issuer1(), 60 * MINT_DEPOSIT);
+        let batch_metadata = mk_batch_metadata(40);
+        assert!(batch_metadata.len() == 40);
+
+        // issuer_1
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..20].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 20);
+
+        // issuer_2
+        ctx.predecessor_account_id = issuer2();
+        ctx.prepaid_gas = max_gas;
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[20..].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 20);
+
+        ctx.predecessor_account_id = alice();
+        ctx.prepaid_gas = max_gas;
+        testing_env!(ctx.clone());
+
+        let limit: u32 = 10;
+        let mut result = ctr._sbt_soul_transfer(alice2(), limit as usize);
+        assert_eq!((limit, false), result);
+
+        ctx.prepaid_gas = max_gas;
+        testing_env!(ctx.clone());
+        result = ctr._sbt_soul_transfer(alice2(), limit as usize);
+        assert_eq!((limit, false), result);
+
+        ctx.prepaid_gas = max_gas;
+        testing_env!(ctx.clone());
+        result = ctr._sbt_soul_transfer(alice2(), limit as usize);
+        assert_eq!((limit, false), result);
+
+        ctx.prepaid_gas = max_gas;
+        testing_env!(ctx.clone());
+        result = ctr._sbt_soul_transfer(alice2(), limit as usize);
+        assert_eq!((limit, false), result);
+
+        // resumed transfer but no more tokens to transfer
+        ctx.prepaid_gas = max_gas;
+        testing_env!(ctx.clone());
+        result = ctr._sbt_soul_transfer(alice2(), limit as usize);
+        assert_eq!((0, true), result);
+
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 0);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 20);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer2(), None), 20);
     }
 
     #[test]
