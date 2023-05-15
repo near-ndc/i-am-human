@@ -329,7 +329,6 @@ impl SBTRegistry for Contract {
             self.issuer_tokens
                 .insert(&IssuerTokenId { issuer_id, token }, &t);
         }
-      
         // update user balances
         let mut old_balance_key = balance_key(from.clone(), issuer_id, 0);
         let mut new_balance_key = balance_key(to.clone(), issuer_id, 0);
