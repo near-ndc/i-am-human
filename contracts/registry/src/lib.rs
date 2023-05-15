@@ -1020,10 +1020,11 @@ mod tests {
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 2);
 
         // renvew the two tokens
-        ctr.sbt_renew(tokens, START + 100);
+        let new_expire = START + 100;
+        ctr.sbt_renew(tokens, new_expire);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 2);
-        let m1_1_renewed = mk_metadata(1, Some(START + 100));
-        let m2_1_renewed = mk_metadata(2, Some(START + 101));
+        let m1_1_renewed = mk_metadata(1, Some(new_expire));
+        let m2_1_renewed = mk_metadata(2, Some(new_expire));
 
         // assert the two tokens have been renewed (new expire_at)
         assert_eq!(
