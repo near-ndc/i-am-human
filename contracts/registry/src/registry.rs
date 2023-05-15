@@ -427,7 +427,7 @@ impl SBTRegistry for Contract {
                     .remove(&(owner.clone(), issuer_id))
                     .unwrap_or(0);
                 self.supply_by_owner.insert(
-                    &(owner.clone(), issuer_id),
+                    &(owner, issuer_id),
                     &(supply_by_owner.checked_sub(1)).unwrap_or(0),
                 );
 
