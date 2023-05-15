@@ -200,8 +200,8 @@ impl SBTRegistry for Contract {
     /// Must be called by an SBT contract.
     /// Must emit `Mint` event.
     /// Must provide enough NEAR to cover registry storage cost.
-    /// Panics with "out of gas" iv token_spec vector is too long and not enough gas was
-    /// provided
+    /// Panics with "out of gas" if token_spec vector is too long and not enough gas was
+    /// provided.
     #[payable]
     fn sbt_mint(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId> {
         let storage_start = env::storage_usage();
