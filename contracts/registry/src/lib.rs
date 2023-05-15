@@ -176,7 +176,7 @@ impl Contract {
                 &owner,
                 &IssuerTokenId {
                     issuer_id: last.0.issuer_id,
-                    token: last.0.class_id,  // we reise IssuerTokenId type here (to not generate new code), but we store class_id instead of token here.
+                    token: last.0.class_id, // we reuse IssuerTokenId type here (to not generate new code), but we store class_id instead of token here.
                 },
             );
         }
@@ -415,6 +415,10 @@ mod tests {
             batch_metadata.push(mk_metadata(i, Some(START + i)))
         }
         batch_metadata
+    }
+
+    fn max_gas() -> Gas {
+        return Gas::ONE_TERA.mul(300);
     }
 
     const START: u64 = 10;
@@ -799,7 +803,6 @@ mod tests {
 
     #[test]
     fn soul_transfer_limit() {
-        let max_gas: Gas = Gas::ONE_TERA.mul(300);
         let (mut ctx, mut ctr) = setup(&issuer1(), 150 * MINT_DEPOSIT);
         let batch_metadata = mk_batch_metadata(100);
         assert!(batch_metadata.len() == 100);
@@ -810,41 +813,44 @@ mod tests {
 
         // issuer_2
         ctx.predecessor_account_id = issuer2();
-        ctx.prepaid_gas = max_gas;
+        ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
         ctr.sbt_mint(vec![(alice(), batch_metadata[50..].to_vec())]);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 50);
 
         // add more tokens to issuer_1
         ctx.predecessor_account_id = issuer1();
-        ctx.prepaid_gas = max_gas;
+        ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
         ctr.sbt_mint(vec![(bob(), batch_metadata[..20].to_vec())]);
         assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer1(), None), 20);
 
-        ctx.prepaid_gas = max_gas;
+        ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
         ctr.sbt_mint(vec![(alice2(), batch_metadata[..20].to_vec())]);
         assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 20);
 
-        ctx.prepaid_gas = max_gas;
+        ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
         ctr.sbt_mint(vec![(carol(), batch_metadata[..20].to_vec())]);
         assert_eq!(ctr.sbt_supply_by_owner(carol(), issuer1(), None), 20);
 
-        ctx.prepaid_gas = max_gas;
+        ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
         ctr.sbt_mint(vec![(dan(), batch_metadata[..10].to_vec())]);
         assert_eq!(ctr.sbt_supply_by_owner(dan(), issuer1(), None), 10);
 
         // soul transfer alice->alice2
         ctx.predecessor_account_id = alice();
-
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
         let limit: u32 = 25; //anything above this limit will fail due to exceeding maximum gas usage per call
-        while result.1 {
-            ctx.prepaid_gas = max_gas;
+
+        let mut result = ctr._sbt_soul_transfer(alice2(), limit as usize);
+        while !result.1 {
+            ctx.prepaid_gas = max_gas();
             testing_env!(ctx.clone());
-            let result = ctr._sbt_soul_transfer(alice2(), limit as usize);
+            result = ctr._sbt_soul_transfer(alice2(), limit as usize);
         }
 
         // check all the balances afterwards
@@ -858,8 +864,61 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "HostError(GasLimitExceeded)")]
+    fn soul_transfer_exceeded_limit() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 150 * MINT_DEPOSIT);
+        let batch_metadata = mk_batch_metadata(100);
+        assert!(batch_metadata.len() == 100);
+
+        // issuer_1
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..50].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 50);
+
+        // issuer_2
+        ctx.predecessor_account_id = issuer2();
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[50..].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 50);
+
+        // add more tokens to issuer_1
+        ctx.predecessor_account_id = issuer1();
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(bob(), batch_metadata[..20].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer1(), None), 20);
+
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice2(), batch_metadata[..20].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 20);
+
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(carol(), batch_metadata[..20].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(carol(), issuer1(), None), 20);
+
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(dan(), batch_metadata[..10].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(dan(), issuer1(), None), 10);
+
+        // soul transfer alice->alice2
+        ctx.predecessor_account_id = alice();
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        let limit: u32 = 30; //anything above this limit will fail due to exceeding maximum gas usage per call
+
+        let mut result = ctr._sbt_soul_transfer(alice2(), limit as usize);
+        while !result.1 {
+            ctx.prepaid_gas = max_gas();
+            testing_env!(ctx.clone());
+            result = ctr._sbt_soul_transfer(alice2(), limit as usize);
+        }
+    }
+
+    #[test]
     fn soul_transfer_limit_basics() {
-        let max_gas: Gas = Gas::ONE_TERA.mul(300);
         let (mut ctx, mut ctr) = setup(&issuer1(), 60 * MINT_DEPOSIT);
         let batch_metadata = mk_batch_metadata(40);
         assert!(batch_metadata.len() == 40);
@@ -870,36 +929,36 @@ mod tests {
 
         // issuer_2
         ctx.predecessor_account_id = issuer2();
-        ctx.prepaid_gas = max_gas;
+        ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
         ctr.sbt_mint(vec![(alice(), batch_metadata[20..].to_vec())]);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 20);
 
         ctx.predecessor_account_id = alice();
-        ctx.prepaid_gas = max_gas;
+        ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
 
         let limit: u32 = 10;
         let mut result = ctr._sbt_soul_transfer(alice2(), limit as usize);
         assert_eq!((limit, false), result);
 
-        ctx.prepaid_gas = max_gas;
+        ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
         result = ctr._sbt_soul_transfer(alice2(), limit as usize);
         assert_eq!((limit, false), result);
 
-        ctx.prepaid_gas = max_gas;
+        ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
         result = ctr._sbt_soul_transfer(alice2(), limit as usize);
         assert_eq!((limit, false), result);
 
-        ctx.prepaid_gas = max_gas;
+        ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
         result = ctr._sbt_soul_transfer(alice2(), limit as usize);
         assert_eq!((limit, false), result);
 
         // resumed transfer but no more tokens to transfer
-        ctx.prepaid_gas = max_gas;
+        ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
         result = ctr._sbt_soul_transfer(alice2(), limit as usize);
         assert_eq!((0, true), result);
