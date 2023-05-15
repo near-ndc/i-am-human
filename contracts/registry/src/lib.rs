@@ -841,13 +841,10 @@ mod tests {
         ctx.predecessor_account_id = alice();
 
         let limit: u32 = 25; //anything above this limit will fail due to exceeding maximum gas usage per call
-        loop {
+        while result.1 {
             ctx.prepaid_gas = max_gas;
             testing_env!(ctx.clone());
             let result = ctr._sbt_soul_transfer(alice2(), limit as usize);
-            if result.1 == true {
-                break;
-            }
         }
 
         // check all the balances afterwards
