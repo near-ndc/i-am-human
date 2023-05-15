@@ -435,7 +435,7 @@ impl SBTRegistry for Contract {
                 let supply_by_class = self
                     .supply_by_class
                     .remove(&(issuer_id, class_id))
-                    .unwrap_or(0);
+                    .unwrap();
                 self.supply_by_class.insert(
                     &(issuer_id, class_id),
                     &(&supply_by_class.checked_sub(1).unwrap_or(0)),
