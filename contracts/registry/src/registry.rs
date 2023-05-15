@@ -428,7 +428,7 @@ impl SBTRegistry for Contract {
                     .unwrap_or(0);
                 self.supply_by_owner.insert(
                     &(owner, issuer_id),
-                    &(supply_by_owner.checked_sub(1)).unwrap_or(0),
+                    &(supply_by_owner - 1),
                 );
 
                 // update supply by class
