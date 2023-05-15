@@ -1,7 +1,7 @@
 // TODO: remove allow unused_variables
 #![allow(unused_variables)]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 
 use near_sdk::{near_bindgen, AccountId};
 
@@ -405,13 +405,13 @@ impl SBTRegistry for Contract {
     fn sbt_revoke(&mut self, tokens: Vec<TokenId>, burn: bool) {
         let issuer = env::predecessor_account_id();
         let issuer_id = self.assert_issuer(&issuer);
-        let mut tokens_burned = 0;
         if burn == true {
+            let mut revoked_per_class: HashMap<u64, u64> = HashMap::new();
+            let mut revoked_per_owner: HashMap<AccountId, u64> = HashMap::new();
+            let mut tokens_burned = 0;
             for token in &tokens {
-                let token = token.clone();
-
                 // update balances
-                let token_object = self.get_token(issuer_id, token);
+                let token_object = self.get_token(issuer_id, *token);
                 let owner = token_object.owner;
                 let class_id = token_object.metadata.v1().class;
                 let balance_key = &BalanceKey {
@@ -421,35 +421,49 @@ impl SBTRegistry for Contract {
                 };
                 self.balances.remove(balance_key);
 
-                // update supply by owner
-                let supply_by_owner = self
-                    .supply_by_owner
-                    .get(&(owner.clone(), issuer_id))
-                    .unwrap();
-                self.supply_by_owner.insert(
-                    &(owner, issuer_id),
-                    &(supply_by_owner - 1),
-                );
-
-                // update supply by class
-                let supply_by_class = self
-                    .supply_by_class
-                    .remove(&(issuer_id, class_id))
-                    .unwrap();
-                self.supply_by_class.insert(
-                    &(issuer_id, class_id),
-                    &(&supply_by_class.checked_sub(1).unwrap_or(0)),
-                );
+                // collect the info about the tokens revoked per owner and per class
+                // to update the balances accordingly
+                revoked_per_class
+                    .entry(class_id.clone())
+                    .and_modify(|key_value| *key_value += 1)
+                    .or_insert(1);
+                revoked_per_owner
+                    .entry(owner.clone())
+                    .and_modify(|key_value| *key_value += 1)
+                    .or_insert(1);
 
                 // remove from issuer_tokens
-                self.issuer_tokens
-                    .remove(&IssuerTokenId { issuer_id, token });
+                self.issuer_tokens.remove(&IssuerTokenId {
+                    issuer_id,
+                    token: *token,
+                });
 
                 tokens_burned += 1;
             }
 
+            // update supply by owner
+            for (owner_id, tokens_revoked) in revoked_per_owner {
+                let old_supply_by_owner = self
+                    .supply_by_owner
+                    .get(&(owner_id.clone(), issuer_id))
+                    .unwrap();
+                self.supply_by_owner.insert(
+                    &(owner_id, issuer_id),
+                    &(old_supply_by_owner - &tokens_revoked),
+                );
+            }
+
+            // update supply by class
+            for (class_id, tokens_revoked) in revoked_per_class {
+                let old_supply_by_class = self.supply_by_class.get(&(issuer_id, class_id)).unwrap();
+                self.supply_by_class.insert(
+                    &(issuer_id, class_id),
+                    &(&old_supply_by_class - &tokens_revoked),
+                );
+            }
+
             // update supply by issuer
-            let supply_by_issuer = self.supply_by_issuer.remove(&(issuer_id)).unwrap_or(0);
+            let supply_by_issuer = self.supply_by_issuer.get(&(issuer_id)).unwrap_or(0);
             self.supply_by_issuer.insert(
                 &(issuer_id),
                 &(&supply_by_issuer.checked_sub(tokens_burned).unwrap_or(0)),
@@ -458,16 +472,21 @@ impl SBTRegistry for Contract {
             // emit event
             SbtTokensEvent { issuer, tokens }.emit_burn();
         } else {
+            let current_timestamp = env::block_timestamp();
             // revoke
             for token in &tokens {
                 // update expire date for all tokens to 0
-                let token = token.clone();
-                let mut t = self.get_token(issuer_id, token);
+                let mut t = self.get_token(issuer_id, *token);
                 let mut m = t.metadata.v1();
-                m.expires_at = Some(0);
+                m.expires_at = Some(current_timestamp);
                 t.metadata = m.into();
-                self.issuer_tokens
-                    .insert(&IssuerTokenId { issuer_id, token }, &t);
+                self.issuer_tokens.insert(
+                    &IssuerTokenId {
+                        issuer_id,
+                        token: *token,
+                    },
+                    &t,
+                );
             }
             SbtTokensEvent { issuer, tokens }.emit_revoke();
         }

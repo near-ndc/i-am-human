@@ -1240,9 +1240,11 @@ mod tests {
         let m2_1 = mk_metadata(2, Some(START + 11));
         let m3_1 = mk_metadata(3, Some(START + 21));
 
-        let m1_1_revoked = mk_metadata(1, Some(0));
-        let m2_1_revoked = mk_metadata(2, Some(0));
-        let m3_1_revoked = mk_metadata(3, Some(0));
+        let current_timestamp = ctx.block_timestamp;
+
+        let m1_1_revoked = mk_metadata(1, Some(current_timestamp));
+        let m2_1_revoked = mk_metadata(2, Some(current_timestamp));
+        let m3_1_revoked = mk_metadata(3, Some(current_timestamp));
 
         let tokens_issuer_1 = ctr.sbt_mint(vec![(
             alice(),
