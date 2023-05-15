@@ -425,7 +425,7 @@ impl SBTRegistry for Contract {
                 let supply_by_owner = self
                     .supply_by_owner
                     .get(&(owner.clone(), issuer_id))
-                    .unwrap_or(0);
+                    .unwrap();
                 self.supply_by_owner.insert(
                     &(owner, issuer_id),
                     &(supply_by_owner - 1),
