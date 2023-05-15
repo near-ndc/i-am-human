@@ -176,7 +176,7 @@ impl Contract {
                 &owner,
                 &IssuerTokenId {
                     issuer_id: last.0.issuer_id,
-                    token: last.0.class_id,
+                    token: last.0.class_id,  // we reise IssuerTokenId type here (to not generate new code), but we store class_id instead of token here.
                 },
             );
         }
