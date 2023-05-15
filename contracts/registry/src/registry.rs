@@ -112,7 +112,7 @@ impl SBTRegistry for Contract {
     /// If `from_class` is not specified, then `from_class` should be assumed to be the first
     /// valid class id.
     /// If limit is not specified, default is used: 100.
-    /// Returns list of pairs: `(Contract address, list of token IDs)`.
+    /// Returns list of pairs: `(Issuer address, list of token IDs)`.
     fn sbt_tokens_by_owner(
         &self,
         account: AccountId,
@@ -200,6 +200,8 @@ impl SBTRegistry for Contract {
     /// Must be called by an SBT contract.
     /// Must emit `Mint` event.
     /// Must provide enough NEAR to cover registry storage cost.
+    /// Panics with "out of gas" if token_spec vector is too long and not enough gas was
+    /// provided.
     #[payable]
     fn sbt_mint(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId> {
         let storage_start = env::storage_usage();
@@ -297,7 +299,6 @@ impl SBTRegistry for Contract {
     /// Adds `old_owner` to a banned accounts list.
     /// Must be called by a valid SBT issuer.
     /// Must emit `Recover` event.
-    /// Must be called by an operator.
     /// Requires attaching enough tokens to cover the storage growth.
     #[payable]
     fn sbt_recover(&mut self, from: AccountId, to: AccountId) {
@@ -306,56 +307,60 @@ impl SBTRegistry for Contract {
         let issuer_id = self.assert_issuer(&issuer);
         self.assert_not_banned(&from);
         self.assert_not_banned(&to);
+        // no need to check ongoing_soult_tx, because it will automatically ban the source account
 
-        // get all tokens issued by the caller, where the owner == from
-        let tokens = &self.sbt_tokens_by_owner(from.clone(), Some(issuer.clone()), None, None);
-        assert!(tokens.len() == 1);
-        let tokens = tokens[0].clone();
-        //reassign all tokens issued by the caller, from the old owner to a new owner.
         let mut tokens_recovered = 0;
-        for token in tokens.1 {
-            let token_id = token.clone().token;
-            let mut t = self.get_token(issuer_id, token_id);
-            self.assert_not_banned(&t.owner);
-            t.owner = to.clone();
-            self.issuer_tokens.insert(
-                &IssuerTokenId {
-                    issuer_id: issuer_id,
-                    token: token_id,
-                },
-                &t,
-            );
-            let old_balance_key = balance_key(from.clone(), issuer_id, token.metadata.class);
-            let new_balance_key = balance_key(to.clone(), issuer_id, token.metadata.class);
-            //remove old entry from balances
-            let key_value = self.balances.remove(&old_balance_key).unwrap();
-            //add new entry to balances
-            self.balances.insert(&new_balance_key, &key_value);
+        let mut class_ids = Vec::new();
+
+        for (key, token) in self
+            .balances
+            .iter_from(balance_key(from.clone(), issuer_id, 0))
+            .take(MAX_LIMIT as usize)
+        {
+            if key.owner != from || key.issuer_id != issuer_id {
+                break;
+            }
             tokens_recovered += 1;
+            let mut t = self.get_token(key.issuer_id, token);
+
+            class_ids.push(t.metadata.class_id());
+
+            t.owner = to.clone();
+            self.issuer_tokens
+                .insert(&IssuerTokenId { issuer_id, token }, &t);
         }
-        // update supply_by_owner map
-        let old_supply_from = self
-            .supply_by_owner
-            .remove(&(from.clone(), issuer_id))
-            .unwrap_or(0);
-        self.supply_by_owner.insert(
-            &(from.clone(), issuer_id),
-            &(old_supply_from - tokens_recovered),
-        );
+      
+        // update user balances
+        let mut old_balance_key = balance_key(from.clone(), issuer_id, 0);
+        let mut new_balance_key = balance_key(to.clone(), issuer_id, 0);
+        for class_id in class_ids {
+            old_balance_key.class_id = class_id;
+            let token_id = self.balances.remove(&old_balance_key).unwrap();
+            new_balance_key.class_id = class_id;
+            self.balances.insert(&new_balance_key, &token_id);
+        }
 
-        let old_supply_to = self
-            .supply_by_owner
-            .remove(&(to.clone(), issuer_id))
-            .unwrap_or(0);
-        self.supply_by_owner.insert(
-            &(to.clone(), issuer_id),
-            &(old_supply_to + tokens_recovered),
-        );
+        // ---
+        // update supply_by_owner map. We can't do it in the loop above becuse we can't modify
+        // self.balances while iterating over it
+        let supply_key = &(from.clone(), issuer_id);
+        let old_supply_from = self.supply_by_owner.remove(supply_key).unwrap_or(0);
+        if old_supply_from != tokens_recovered {
+            self.supply_by_owner.insert(
+                &(from.clone(), issuer_id),
+                &(old_supply_from - tokens_recovered),
+            );
+        }
+        let supply_key = &(to.clone(), issuer_id);
+        let old_supply_to = self.supply_by_owner.get(supply_key).unwrap_or(0);
+        self.supply_by_owner
+            .insert(supply_key, &(old_supply_to + tokens_recovered));
 
-        //add old_owner to a bannded list
+        // ---
+        // add old_owner to a bannded list
         self.banlist.insert(&from);
 
-        //emit Recover event
+        // emit Recover event
         SbtRecover {
             issuer: &issuer,
             old_owner: &from,
@@ -363,7 +368,7 @@ impl SBTRegistry for Contract {
         }
         .emit();
 
-        //storage check
+        // storage check
         let required_deposit =
             (env::storage_usage() - storage_start) as u128 * env::storage_byte_cost();
         require!(
@@ -373,7 +378,6 @@ impl SBTRegistry for Contract {
                 required_deposit
             )
         );
-        // no need to check ongoing_soult_tx, because it will automatically ban the source account
     }
 
     /// sbt_renew will update the expire time of provided tokens.
