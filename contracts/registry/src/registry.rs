@@ -307,6 +307,7 @@ impl SBTRegistry for Contract {
         let issuer_id = self.assert_issuer(&issuer);
         self.assert_not_banned(&from);
         self.assert_not_banned(&to);
+        // no need to check ongoing_soult_tx, because it will automatically ban the source account
 
         let mut tokens_recovered = 0;
         let mut class_ids = Vec::new();
@@ -339,7 +340,9 @@ impl SBTRegistry for Contract {
             self.balances.insert(&new_balance_key, &token_id);
         }
 
-        // update supply_by_owner map
+        // ---
+        // update supply_by_owner map. We can't do it in the loop above becuse we can't modify
+        // self.balances while iterating over it
         let supply_key = &(from.clone(), issuer_id);
         let old_supply_from = self.supply_by_owner.remove(supply_key).unwrap_or(0);
         if old_supply_from != tokens_recovered {
@@ -348,16 +351,16 @@ impl SBTRegistry for Contract {
                 &(old_supply_from - tokens_recovered),
             );
         }
-
         let supply_key = &(to.clone(), issuer_id);
         let old_supply_to = self.supply_by_owner.get(supply_key).unwrap_or(0);
         self.supply_by_owner
             .insert(supply_key, &(old_supply_to + tokens_recovered));
 
+        // ---
         // add old_owner to a bannded list
         self.banlist.insert(&from);
 
-        //emit Recover event
+        // emit Recover event
         SbtRecover {
             issuer: &issuer,
             old_owner: &from,
@@ -375,7 +378,6 @@ impl SBTRegistry for Contract {
                 required_deposit
             )
         );
-        // no need to check ongoing_soult_tx, because it will automatically ban the source account
     }
 
     /// sbt_renew will update the expire time of provided tokens.
