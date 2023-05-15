@@ -44,6 +44,12 @@ impl VerTokenMetadata {
             VerTokenMetadata::V1(x) => x,
         }
     }
+
+    pub fn class_id(&self) -> ClassId {
+        match self {
+            VerTokenMetadata::V1(x) => x.class,
+        }
+    }
 }
 
 impl From<TokenMetadata> for VerTokenMetadata {

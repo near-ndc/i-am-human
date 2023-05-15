@@ -31,6 +31,7 @@ pub struct Contract {
     pub(crate) supply_by_class: LookupMap<(IssuerId, ClassId), u64>,
     pub(crate) supply_by_issuer: LookupMap<IssuerId, u64>,
 
+    /// maps user balance key to tokenID
     pub(crate) balances: TreeMap<BalanceKey, TokenId>,
     pub(crate) issuer_tokens: LookupMap<IssuerTokenId, TokenData>,
 
