@@ -113,7 +113,8 @@ pub trait SBTRegistry {
     /// Must be called by an operator.
     /// Requires attaching enough tokens to cover the storage growth.
     // #[payable]
-    fn sbt_recover(&mut self, from: AccountId, to: AccountId);
+    fn sbt_recover(&mut self, from: AccountId, to: AccountId) -> (u32, bool);
+    fn _sbt_recover(&mut self, from: AccountId, to: AccountId, limit: usize) -> (u32, bool);
 
     /// sbt_renew will update the expire time of provided tokens.
     /// `expires_at` is a unix timestamp (in miliseconds).

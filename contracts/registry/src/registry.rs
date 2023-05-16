@@ -295,19 +295,31 @@ impl SBTRegistry for Contract {
         ret_token_ids
     }
 
+    #[payable]
+    fn sbt_recover(&mut self, from: AccountId, to: AccountId) -> (u32, bool) {
+        self._sbt_recover(from, to, 50)
+    }
+
     /// sbt_recover reassigns all tokens issued by the caller, from the old owner to a new owner.
     /// Adds `old_owner` to a banned accounts list.
     /// Must be called by a valid SBT issuer.
     /// Must emit `Recover` event.
     /// Requires attaching enough tokens to cover the storage growth.
     #[payable]
-    fn sbt_recover(&mut self, from: AccountId, to: AccountId) {
+    fn _sbt_recover(&mut self, from: AccountId, to: AccountId, limit: usize) -> (u32, bool) {
         let storage_start = env::storage_usage();
         let issuer = env::predecessor_account_id();
         let issuer_id = self.assert_issuer(&issuer);
         self.assert_not_banned(&from);
         self.assert_not_banned(&to);
         // no need to check ongoing_soult_tx, because it will automatically ban the source account
+
+        let (resumed, start) = match self.ongoing_soul_tx.get(&from) {
+            // starting the process
+            None => (false, self.start_soul_transfer(&from, &to)),
+            // resuming Soul Transfer process
+            Some(s) => (true, s),
+        };
 
         let mut tokens_recovered = 0;
         let mut class_ids = Vec::new();
