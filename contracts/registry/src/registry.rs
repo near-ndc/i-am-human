@@ -479,7 +479,7 @@ impl SBTRegistry for Contract {
             // revoke
             for token in tokens {
                 // update expire date for all tokens to 0
-                let mut t = self.get_token(issuer_id, *token);
+                let mut t = self.get_token(issuer_id, token);
                 let mut m = t.metadata.v1();
                 m.expires_at = Some(current_timestamp);
                 t.metadata = m.into();
