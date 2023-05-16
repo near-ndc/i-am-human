@@ -295,17 +295,22 @@ impl SBTRegistry for Contract {
         ret_token_ids
     }
 
+    /// sbt_recover reassigns all tokens issued by the caller, from the old owner to a new owner.
+    /// + Adds `old_owner` to a banned accounts list.
+    /// + Must be called by a valid SBT issuer.
+    /// + Must emit `Recover` event once all the tokens have been recovered.
+    /// + Requires attaching enough tokens to cover the storage growth.
+    /// + Returns the amount of tokens recovered and a boolean: `true` if the whole
+    ///   process has finished, `false` when the process has not finished and should be
+    ///   continued by a subsequent call.
+    /// + User must keep calling the `sbt_recover` until `true` is returned.
     #[payable]
     fn sbt_recover(&mut self, from: AccountId, to: AccountId) -> (u32, bool) {
         self._sbt_recover(from, to, 50)
     }
 
-    /// sbt_recover reassigns all tokens issued by the caller, from the old owner to a new owner.
-    /// Adds `old_owner` to a banned accounts list.
-    /// Must be called by a valid SBT issuer.
-    /// Must emit `Recover` event.
-    /// Requires attaching enough tokens to cover the storage growth.
-    #[payable]
+    // execution of the sbt_recover in this function to parametrize `limit` in
+    // order to facilitate tests.
     fn _sbt_recover(&mut self, from: AccountId, to: AccountId, limit: usize) -> (u32, bool) {
         let storage_start = env::storage_usage();
         let issuer = env::predecessor_account_id();
@@ -316,18 +321,30 @@ impl SBTRegistry for Contract {
 
         let (resumed, start) = match self.ongoing_soul_tx.get(&from) {
             // starting the process
-            None => (false, self.start_soul_transfer(&from, &to)),
-            // resuming Soul Transfer process
+            None => (
+                false,
+                IssuerTokenId {
+                    issuer_id: 0,
+                    token: 0, // NOTE: this is class ID
+                },
+            ),
+            // resuming sbt_recover process
             Some(s) => (true, s),
         };
 
         let mut tokens_recovered = 0;
         let mut class_ids = Vec::new();
 
+        let mut last_token_transfered = BalanceKey {
+            owner: from.clone(),
+            issuer_id,
+            class_id: 0,
+        };
+
         for (key, token) in self
             .balances
-            .iter_from(balance_key(from.clone(), issuer_id, 0))
-            .take(MAX_LIMIT as usize)
+            .iter_from(balance_key(from.clone(), start.issuer_id, start.token))
+            .take(limit)
         {
             if key.owner != from || key.issuer_id != issuer_id {
                 break;
@@ -340,6 +357,7 @@ impl SBTRegistry for Contract {
             t.owner = to.clone();
             self.issuer_tokens
                 .insert(&IssuerTokenId { issuer_id, token }, &t);
+            last_token_transfered = key;
         }
 
         // update user balances
@@ -352,7 +370,6 @@ impl SBTRegistry for Contract {
             self.balances.insert(&new_balance_key, &token_id);
         }
 
-        // ---
         // update supply_by_owner map. We can't do it in the loop above becuse we can't modify
         // self.balances while iterating over it
         let supply_key = &(from.clone(), issuer_id);
@@ -368,21 +385,40 @@ impl SBTRegistry for Contract {
         self.supply_by_owner
             .insert(supply_key, &(old_supply_to + tokens_recovered));
 
-        // ---
-        // add old_owner to a bannded list
-        self.banlist.insert(&from);
+        let completed = tokens_recovered != limit as u64;
+        if completed {
+            if resumed {
+                // insert is happening when we need to continue, so don't need to remove if
+                // the process finishes in the same transaction.
+                self.ongoing_soul_tx.remove(&from);
+            }
+            // we emit the event only once the operation is completed and only if some tokens were
+            // transferred
+            if resumed || tokens_recovered > 0 {
+                // add old_owner to a bannded list
+                self.banlist.insert(&from);
 
-        // emit Recover event
-        SbtRecover {
-            issuer: &issuer,
-            old_owner: &from,
-            new_owner: &to,
+                // emit Recover event
+                SbtRecover {
+                    issuer: &issuer,
+                    old_owner: &from,
+                    new_owner: &to,
+                }
+                .emit();
+            }
+        } else {
+            self.ongoing_soul_tx.insert(
+                &from,
+                &IssuerTokenId {
+                    issuer_id: last_token_transfered.issuer_id,
+                    token: last_token_transfered.class_id, // we reuse IssuerTokenId type here (to not generate new code), but we store class_id instead of token here.
+                },
+            );
         }
-        .emit();
-
         // storage check
-        let required_deposit =
-            (env::storage_usage() - storage_start) as u128 * env::storage_byte_cost();
+        let required_deposit = (env::storage_usage().checked_sub(storage_start).unwrap_or(0))
+            as u128
+            * env::storage_byte_cost();
         require!(
             env::attached_deposit() >= required_deposit,
             format!(
@@ -390,6 +426,7 @@ impl SBTRegistry for Contract {
                 required_deposit
             )
         );
+        return (tokens_recovered as u32, completed);
     }
 
     /// sbt_renew will update the expire time of provided tokens.

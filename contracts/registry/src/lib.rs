@@ -1233,4 +1233,144 @@ mod tests {
         ctr.sbt_recover(alice(), bob());
         assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer2(), None), 1);
     }
+
+    #[test]
+    fn sbt_recover_with_continuation_basics() {
+        let (_, mut ctr) = setup(&issuer1(), 5 * MINT_DEPOSIT);
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        let m2_1 = mk_metadata(2, Some(START + 11));
+        let m3_1 = mk_metadata(3, Some(START + 12));
+        let m4_1 = mk_metadata(4, Some(START + 13));
+        ctr.sbt_mint(vec![(
+            alice(),
+            vec![m1_1.clone(), m2_1.clone(), m3_1.clone(), m4_1.clone()],
+        )]);
+
+        // sbt_recover
+        let mut result = ctr._sbt_recover(alice(), alice2(), 3);
+        assert_eq!((3, false), result);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 3);
+        assert!(test_utils::get_logs().len() == 1);
+        result = ctr._sbt_recover(alice(), alice2(), 3);
+        assert_eq!((1, true), result);
+        assert!(test_utils::get_logs().len() == 2);
+
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 4);
+        assert!(ctr.is_banned(alice()));
+        assert!(!ctr.is_banned(alice2()));
+    }
+
+    #[test]
+    fn sbt_recover_limit() {
+        let (mut ctx, mut ctr) = setup(&issuer2(), 150 * MINT_DEPOSIT);
+        let batch_metadata = mk_batch_metadata(100);
+        assert!(batch_metadata.len() == 100);
+
+        // issuer_2
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..50].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 50);
+
+        // // add more tokens to issuer_2
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[50..].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 100);
+
+        // add more tokens to issuer_1
+        ctx.predecessor_account_id = issuer1();
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(bob(), batch_metadata[..20].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer1(), None), 20);
+
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice2(), batch_metadata[..20].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 20);
+
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(carol(), batch_metadata[..20].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(carol(), issuer1(), None), 20);
+
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(dan(), batch_metadata[..10].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(dan(), issuer1(), None), 10);
+
+        // sbt_recover alice->alice2
+        ctx.predecessor_account_id = issuer2();
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        let limit: u32 = 20; //anything above this limit will fail due to exceeding maximum gas usage per call
+
+        let mut result = ctr._sbt_recover(alice(), alice2(), limit as usize);
+        while !result.1 {
+            ctx.prepaid_gas = max_gas();
+            testing_env!(ctx.clone());
+            result = ctr._sbt_recover(alice(), alice2(), limit as usize);
+        }
+
+        // check all the balances afterwards
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 0);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer2(), None), 100);
+    }
+
+    #[test]
+    #[should_panic(expected = "HostError(GasLimitExceeded)")]
+    fn sbt_recover_limit_exceeded() {
+        let (mut ctx, mut ctr) = setup(&issuer2(), 150 * MINT_DEPOSIT);
+        let batch_metadata = mk_batch_metadata(100);
+        assert!(batch_metadata.len() == 100);
+
+        // issuer_2
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..50].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 50);
+
+        // // add more tokens to issuer_2
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[50..].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 100);
+
+        // add more tokens to issuer_1
+        ctx.predecessor_account_id = issuer1();
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(bob(), batch_metadata[..20].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer1(), None), 20);
+
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice2(), batch_metadata[..20].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 20);
+
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(carol(), batch_metadata[..20].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(carol(), issuer1(), None), 20);
+
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(dan(), batch_metadata[..10].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(dan(), issuer1(), None), 10);
+
+        // sbt_recover alice->alice2
+        ctx.predecessor_account_id = issuer2();
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        let limit: u32 = 25; // this value exceedes the gas limit allowed per call and should fail
+
+        let mut result = ctr._sbt_recover(alice(), alice2(), limit as usize);
+        while !result.1 {
+            ctx.prepaid_gas = max_gas();
+            testing_env!(ctx.clone());
+            result = ctr._sbt_recover(alice(), alice2(), limit as usize);
+        }
+
+        // check all the balances afterwards
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 0);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer2(), None), 100);
+    }
 }
