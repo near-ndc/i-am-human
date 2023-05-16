@@ -416,7 +416,7 @@ impl SBTRegistry for Contract {
                 // update balances
                 let token_object = self.get_token(issuer_id, *token);
                 let owner = token_object.owner;
-                let class_id = token_object.metadata.v1().class;
+                let class_id = token_object.metadata.class_id();
                 let balance_key = &BalanceKey {
                     issuer_id,
                     owner: owner.clone(),
