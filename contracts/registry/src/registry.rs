@@ -427,7 +427,7 @@ impl SBTRegistry for Contract {
                 // collect the info about the tokens revoked per owner and per class
                 // to update the balances accordingly
                 revoked_per_class
-                    .entry(class_id.clone())
+                    .entry(class_id)
                     .and_modify(|key_value| *key_value += 1)
                     .or_insert(1);
                 revoked_per_owner
