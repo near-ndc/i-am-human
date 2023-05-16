@@ -477,7 +477,7 @@ impl SBTRegistry for Contract {
         } else {
             let current_timestamp = env::block_timestamp();
             // revoke
-            for token in &tokens {
+            for token in tokens {
                 // update expire date for all tokens to 0
                 let mut t = self.get_token(issuer_id, *token);
                 let mut m = t.metadata.v1();
