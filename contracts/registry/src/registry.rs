@@ -469,7 +469,7 @@ impl SBTRegistry for Contract {
             let supply_by_issuer = self.supply_by_issuer.get(&(issuer_id)).unwrap_or(0);
             self.supply_by_issuer.insert(
                 &(issuer_id),
-                &(&supply_by_issuer.checked_sub(tokens_burned).unwrap_or(0)),
+                &(supply_by_issuer - tokens_burned),
             );
 
             // emit event
