@@ -431,7 +431,7 @@ impl SBTRegistry for Contract {
                     .and_modify(|key_value| *key_value += 1)
                     .or_insert(1);
                 revoked_per_owner
-                    .entry(owner.clone())
+                    .entry(owner)
                     .and_modify(|key_value| *key_value += 1)
                     .or_insert(1);
 
