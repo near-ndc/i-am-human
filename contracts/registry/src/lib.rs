@@ -1288,6 +1288,22 @@ mod tests {
                 ]
             ),]
         );
+        assert_eq!(
+            ctr.sbt_tokens(issuer1(), None, None),
+            vec![
+                mk_token(1, alice(), m1_1_revoked.clone()),
+                mk_token(2, alice(), m2_1_revoked.clone()),
+                mk_token(3, alice(), m3_1_revoked.clone())
+            ]
+        );
+        assert_eq!(
+            ctr.sbt_tokens(issuer2(), None, None),
+            vec![
+                mk_token(1, bob(), m1_1.clone()),
+                mk_token(2, bob(), m2_1.clone()),
+                mk_token(3, alice(), m3_1.clone())
+            ]
+        )
     }
 
     #[test]
@@ -1333,5 +1349,18 @@ mod tests {
         assert_eq!(ctr.sbt_supply_by_class(issuer2(), 1), 1);
         assert_eq!(ctr.sbt_supply_by_class(issuer2(), 2), 1);
         assert_eq!(ctr.sbt_supply_by_class(issuer2(), 3), 1);
+
+        assert_eq!(
+            ctr.sbt_tokens(issuer1(), None, None),
+            vec![mk_token(3, alice(), m3_1.clone())],
+        );
+        assert_eq!(
+            ctr.sbt_tokens(issuer2(), None, None),
+            vec![
+                mk_token(1, bob(), m1_1.clone()),
+                mk_token(2, bob(), m2_1.clone()),
+                mk_token(3, alice(), m3_1.clone())
+            ]
+        )
     }
 }
