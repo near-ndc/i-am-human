@@ -1234,8 +1234,7 @@ mod tests {
         assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer2(), None), 1);
     }
 
-    // checks for ban
-
+    // sbt_ban
     #[test]
     fn sbt_soul_transfer_ban() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
