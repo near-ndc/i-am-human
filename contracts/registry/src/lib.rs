@@ -1233,4 +1233,48 @@ mod tests {
         ctr.sbt_recover(alice(), bob());
         assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer2(), None), 1);
     }
+
+    // checks for ban
+
+    #[test]
+    fn sbt_soul_transfer_ban() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        assert!(!ctr.is_banned(alice()));
+
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        ctr.sbt_soul_transfer(alice2(), None);
+        assert!(ctr.is_banned(alice()));
+        assert!(!ctr.is_banned(alice2()));
+    }
+
+    #[test]
+    fn sbt_recover_ban() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        assert!(!ctr.is_banned(alice()));
+
+        ctx.predecessor_account_id = issuer1();
+        testing_env!(ctx.clone());
+        ctr.sbt_recover(alice(), alice2());
+        assert!(ctr.is_banned(alice()));
+        assert!(!ctr.is_banned(alice2()));
+    }
+
+    #[test]
+    #[should_panic(expected = "account alice.near is banned")]
+    fn sbt_mint_to_banned_account() {
+        let (_, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+        let m1_1 = mk_metadata(1, Some(START + 10));
+
+        //ban alice account
+        ctr.banlist.insert(&alice());
+        assert!(ctr.is_banned(alice()));
+
+        //try to mint to a banned account
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+    }
 }
