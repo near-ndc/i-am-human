@@ -283,6 +283,9 @@ pub enum CallbackResult<T, E> {
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
+mod checks;
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     extern crate ed25519_dalek;
     extern crate rand;
@@ -493,8 +496,7 @@ mod tests {
         let c = mk_claim(1677621259142, "some_111#$!");
         let claim_bz = c.try_to_vec().unwrap();
         let claim_str = b64_encode(claim_bz);
-        let claim2_bz = b64_decode("claim", claim_str).unwrap();
-        let claim2 = Claim::try_from_slice(&claim2_bz).unwrap();
+        let claim2 = checks::tests::deserialize_claim(&claim_str);
         assert_eq!(c, claim2, "serialization should work");
     }
 
@@ -506,18 +508,5 @@ mod tests {
         let sig_bz = b64_decode("sig", sig_b64.to_string()).unwrap();
         println!("sig len: {}", sig_bz.len());
         Signature::from_bytes(&sig_bz).unwrap();
-    }
-
-    #[allow(dead_code)]
-    #[test]
-    fn claim_deserialization_check() {
-        let c = "EQAAAGhhcnJ5ZGhpbGxvbi5uZWFyKgAAADB4YjRiZjBmMjNjNzAyZWZiOGE5ZGE4N2E5NDA5NWUyOGRlM2QyMWNjMyDzAGQAAAAA";
-        let c_bz = b64_decode("claim", c.to_string()).unwrap();
-        let c = Claim::try_from_slice(&c_bz).unwrap();
-        println!("claim: {:?}", c);
-        assert_eq!(
-            c.external_id, "0xb4bf0f23c702efb8a9da87a94095e28de3d21cc3",
-            "deserialization check"
-        );
     }
 }
