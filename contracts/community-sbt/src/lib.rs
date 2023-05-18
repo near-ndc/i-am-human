@@ -229,7 +229,6 @@ mod tests {
     fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
-            // .attached_deposit(deposit_dec.into())
             .block_timestamp(START)
             .is_view(false)
             .build();
