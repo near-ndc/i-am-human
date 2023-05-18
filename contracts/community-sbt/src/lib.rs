@@ -186,3 +186,129 @@ impl SBTContract for Contract {
         self.metadata.get().unwrap()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use cost::MILI_NEAR;
+    use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId, Balance, VMContext};
+    use sbt::ContractMetadata;
+
+    use crate::Contract;
+
+    const START: u64 = 10;
+    const MINT_DEPOSIT: Balance = 6 * MILI_NEAR;
+
+    fn alice() -> AccountId {
+        AccountId::new_unchecked("alice.near".to_string())
+    }
+
+    fn bob() -> AccountId {
+        AccountId::new_unchecked("bob.near".to_string())
+    }
+
+    fn admin() -> AccountId {
+        AccountId::new_unchecked("sbt.near".to_string())
+    }
+
+    fn registry() -> AccountId {
+        AccountId::new_unchecked("registry.near".to_string())
+    }
+
+    fn contract_metadata() -> ContractMetadata {
+        return ContractMetadata {
+            spec: "community-sbt-0.0.1".to_string(),
+            name: "community-sbt".to_string(),
+            symbol: "COMMUNITY_SBT".to_string(),
+            icon: None,
+            base_uri: None,
+            reference: None,
+            reference_hash: None,
+        };
+    }
+
+    fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
+        let mut ctx = VMContextBuilder::new()
+            .predecessor_account_id(admin())
+            // .attached_deposit(deposit_dec.into())
+            .block_timestamp(START)
+            .is_view(false)
+            .build();
+        if deposit > 0 {
+            ctx.attached_deposit = deposit
+        }
+        testing_env!(ctx.clone());
+        let ctr = Contract::new(registry(), vec![admin()], contract_metadata(), START);
+        ctx.predecessor_account_id = predecessor.clone();
+        testing_env!(ctx.clone());
+        return (ctx, ctr);
+    }
+
+    #[test]
+    fn is_admin() {
+        let (_, ctr) = setup(&alice(), MINT_DEPOSIT);
+        assert!(ctr.is_admin(admin()));
+        assert!(!ctr.is_admin(alice()));
+    }
+
+    #[test]
+    fn add_admins() {
+        let (_, mut ctr) = setup(&admin(), MINT_DEPOSIT);
+        assert!(ctr.is_admin(admin()));
+        assert!(!ctr.is_admin(alice()));
+        assert!(!ctr.is_admin(bob()));
+        // add two new admins
+        ctr.add_admins(vec![alice(), bob()]);
+        assert!(ctr.is_admin(admin()));
+        assert!(ctr.is_admin(alice()));
+        assert!(ctr.is_admin(bob()));
+    }
+
+    #[test]
+    #[should_panic(expected = "must be issuer")]
+    fn add_admins_non_issuer() {
+        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+        assert!(ctr.is_admin(admin()));
+        assert!(!ctr.is_admin(alice()));
+        // non issuer tries to add a new admin
+        ctr.add_admins(vec![bob()]);
+    }
+
+    #[test]
+    fn remove_admins() {
+        let (_, mut ctr) = setup(&admin(), MINT_DEPOSIT);
+        // add two new admins
+        ctr.add_admins(vec![alice(), bob()]);
+        assert!(ctr.is_admin(admin()));
+        assert!(ctr.is_admin(alice()));
+        assert!(ctr.is_admin(bob()));
+        // remove to admins
+        ctr.remove_admins(vec![admin(), alice()]);
+        assert!(!ctr.is_admin(admin()));
+        assert!(!ctr.is_admin(alice()));
+        assert!(ctr.is_admin(bob()));
+    }
+
+    #[test]
+    #[should_panic(expected = "must be issuer")]
+    fn remove_admins_non_issuer() {
+        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+        assert!(ctr.is_admin(admin()));
+        // non issuer tries to add a new admin
+        ctr.remove_admins(vec![admin()]);
+    }
+
+    #[test]
+    fn change_ttl() {
+        let (_, mut ctr) = setup(&admin(), MINT_DEPOSIT);
+        assert!(ctr.ttl == START);
+        ctr.admin_change_ttl(START + 1);
+        assert!(ctr.ttl == START + 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "must be issuer")]
+    fn change_ttl_non_issuer() {
+        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+        ctr.admin_change_ttl(START + 1);
+    }
+}
