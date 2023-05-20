@@ -19,14 +19,14 @@ pub struct Claim {
 
 pub(crate) fn normalize_external_id(id: String) -> Result<Vec<u8>, CtrError> {
     let id = id.strip_prefix("0x").unwrap_or(&id).to_lowercase();
-    hex::decode(&id).map_err(|s| CtrError::BadRequest(format!("claim.external_id: {}", s)))
+    hex::decode(id).map_err(|s| CtrError::BadRequest(format!("claim.external_id: {}", s)))
 }
 
 pub fn b64_decode(arg: &str, data: String) -> CtrResult<Vec<u8>> {
-    return base64::decode(data).map_err(|e| CtrError::B64Err {
+    base64::decode(data).map_err(|e| CtrError::B64Err {
         arg: arg.to_string(),
         err: e,
-    });
+    })
 }
 
 pub fn pubkey_from_b64(pubkey: String) -> [u8; PUBLIC_KEY_LENGTH] {
