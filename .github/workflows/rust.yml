@@ -27,10 +27,13 @@ jobs:
             contracts/Cargo.lock
       - name: Build
         if: env.GIT_DIFF
+        working-directory: ./contracts
         run: cargo build --verbose
       - name: Clippy
         if: env.GIT_DIFF
+        working-directory: ./contracts
         run: cargo clippy
       - name: Run tests
         if: env.GIT_DIFF
+        working-directory: ./contracts
         run: cargo test --verbose

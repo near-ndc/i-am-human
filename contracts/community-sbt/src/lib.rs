@@ -59,7 +59,7 @@ impl Contract {
     /// returns true if given address, or caller (if account is None)
     /// is an admin.
     pub fn is_admin(&self, addr: AccountId) -> bool {
-        return self.admins.contains(&addr);
+        self.admins.contains(&addr)
     }
 
     /**********
@@ -132,7 +132,7 @@ impl Contract {
 
     /// admin: remove SBT from the given accounts.
     /// Panics if `accounts` is an empty list.
-    pub fn revoke_for(&mut self, accounts: Vec<AccountId>, memo: Option<String>) {
+    pub fn revoke_for(&mut self, accounts: Vec<AccountId>, _memo: Option<String>) {
         self.assert_issuer();
         require!(!accounts.is_empty(), "accounts must be a non empty list");
         panic!("not implemented");

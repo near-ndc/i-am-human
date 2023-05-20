@@ -50,7 +50,7 @@ impl Contract {
                 return num.0 >= self.min_amount as u128;
             }
         }
-        return false;
+        false
     }
 }
 
