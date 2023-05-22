@@ -100,7 +100,7 @@ impl ContractMetadata {
     pub fn assert_valid(&self) {
         require!(self.spec == crate::SPEC_VERSION, "Spec is not NFT metadata");
         require!(
-            self.name.len() >= 1 && self.symbol.len() >= 1,
+            !self.name.is_empty() && !self.symbol.is_empty(),
             "name and spec must be a non empty string"
         );
         require!(

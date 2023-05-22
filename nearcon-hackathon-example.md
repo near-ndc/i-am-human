@@ -21,7 +21,7 @@ near deploy $C target/wasm32-unknown-unknown/release/soulbound_class.wasm "new" 
 
 Now, we will use 2 test accounts: `alice_star.testnet` and `bob_star.testnet`. We will issue 2 tokens to Alice and one to Bob.
 
-```
+```bash
 > near call $S sbt_mint '{"metadata": {"name":"fist band with Robert"}, "receiver": "alice_star.testnet"}' --account_id robertz.testnet --depositYocto 1
 https://explorer.testnet.near.org/transactions/4PczF4tPHhsFT5V8zoyGH3PuYV2V4zqD2kDFLsZga9e8
 
@@ -34,7 +34,7 @@ https://explorer.testnet.near.org/transactions/GtbjrBTb6iei9FeXyC9W3bQcXXZrn5R93
 
 Now we can verify that Alice is qualified in class1 and Bob is not:
 
-```
+```bash
 > near call $C is_qualified '{"account": "alice_star.testnet"}' --account_id robertz.testnet
 true
 https://explorer.testnet.near.org/transactions/8JK7iSrf4BxUcBSBhZVkNqmpc1Ss2FLyQzsMBqnfZsfz
@@ -60,7 +60,7 @@ The UBI smart contract implemented for this demo is a naive implementation:
 - we will set 0.02 NEAR emission / day / user
 - enough NEAR must be provided to the contract to cover storage and UBI emissions.
 
-```
+```bash
 UBI=ubi.i-am-human.testnet
 > near deploy $UBI target/wasm32-unknown-unknown/release/ubi.wasm "new" '{"human_class": "'$C'", "emission": "20000000000000000000000"}'
 https://explorer.testnet.near.org/transactions/5AQM5iAQRsCvX2nSd7wLguuRM9zMfQbuoiLXmgc8KQ9t
@@ -86,7 +86,7 @@ https://explorer.testnet.near.org/transactions/5niaa1JaZHNruUMFSDzCJS1jrqf8vDEoD
 
 Registering Bob fails because he is not qualified in `class1`:
 
-```
+```bash
 > near call $UBI register '{}' --account_id bob_star.testnet --gas=100000000000000
 false
 https://explorer.testnet.near.org/transactions/CGENd24zkKM9DkbVXhDLUm6H6L3Y8hH5iynTQ28HzhFK
