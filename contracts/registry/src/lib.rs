@@ -103,17 +103,8 @@ impl Contract {
     // order to facilitate tests.
     pub(crate) fn _sbt_soul_transfer(&mut self, recipient: AccountId, limit: usize) -> (u32, bool) {
         let owner = env::predecessor_account_id();
-        let (resumed, start) = self.get_transfer_with_continuation_info(&owner, &recipient);
 
-        match self.ongoing_soul_tx.get(&owner) {
-            // starting the process
-            None => (
-                false,
-                self.start_transfer_with_continuation(&owner, &recipient),
-            ),
-            // resuming Soul Transfer process
-            Some(s) => (true, s),
-        };
+        let (resumed, start) = self.get_transfer_with_continuation_info(&owner, &recipient);
 
         let batch: Vec<(BalanceKey, TokenId)> = self
             .balances
