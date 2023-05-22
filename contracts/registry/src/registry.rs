@@ -412,7 +412,7 @@ impl SBTRegistry for Contract {
             let mut revoked_per_class: HashMap<u64, u64> = HashMap::new();
             let mut revoked_per_owner: HashMap<AccountId, u64> = HashMap::new();
             let mut tokens_burned = 0;
-            for token in tokens.clone() {
+            for token in tokens {
                 // update balances
                 let token_object = self.get_token(issuer_id, token);
                 let owner = token_object.owner;
