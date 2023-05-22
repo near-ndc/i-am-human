@@ -69,7 +69,7 @@ impl SBTRegistry for Contract {
             };
         }
 
-        return self.supply_by_owner.get(&(account, issuer_id)).unwrap_or(0);
+        self.supply_by_owner.get(&(account, issuer_id)).unwrap_or(0)
     }
 
     /// Query sbt tokens issued by a given contract.
@@ -105,7 +105,7 @@ impl SBTRegistry for Contract {
                 resp.push(t.to_token(token))
             }
         }
-        return resp;
+        resp
     }
 
     /// Query SBT tokens by owner
@@ -138,9 +138,7 @@ impl SBTRegistry for Contract {
         };
         let mut from_class = from_class.unwrap_or(0);
         // iter_from starts from exclusive "left end"
-        if from_class != 0 {
-            from_class -= 1;
-        }
+        from_class = from_class.saturating_sub(1);
         let mut limit = limit.unwrap_or(MAX_LIMIT);
         require!(limit > 0, "limit must be bigger than 0");
 
@@ -161,7 +159,7 @@ impl SBTRegistry for Contract {
                 if issuer_id != 0 {
                     break;
                 }
-                if tokens.len() > 0 {
+                if !tokens.is_empty() {
                     let issuer = self.issuer_by_id(prev_issuer);
                     resp.push((issuer, tokens));
                     tokens = Vec::new();
@@ -173,16 +171,16 @@ impl SBTRegistry for Contract {
                 token: token_id,
                 metadata: t.metadata.v1(),
             });
-            limit = limit - 1;
+            limit -= 1;
             if limit == 0 {
                 break;
             }
         }
-        if prev_issuer != 0 && tokens.len() > 0 {
+        if prev_issuer != 0 && !tokens.is_empty() {
             let issuer = self.issuer_by_id(prev_issuer);
             resp.push((issuer, tokens));
         }
-        return resp;
+        resp
     }
 
     /// checks if an `account` was banned by the registry.
@@ -244,7 +242,7 @@ impl SBTRegistry for Contract {
                     None => {
                         supply_by_class.insert(metadata.class, 1);
                     }
-                    Some(s) => *s = *s + 1,
+                    Some(s) => *s += 1,
                 };
 
                 self.issuer_tokens.insert(
@@ -277,7 +275,7 @@ impl SBTRegistry for Contract {
         let mut minted: Vec<(&AccountId, &Vec<TokenId>)> = per_recipient.iter().collect();
         minted.sort_by(|a, b| a.0.cmp(b.0));
         SbtMint {
-            issuer: &issuer,
+            issuer,
             tokens: minted,
         }
         .emit();
@@ -439,7 +437,7 @@ impl SBTRegistry for Contract {
         let issuer = env::predecessor_account_id();
         let issuer_id = self.assert_issuer(&issuer);
         for token in &tokens {
-            let token = token.clone();
+            let token = *token;
             let mut t = self.get_token(issuer_id, token);
             self.assert_not_banned(&t.owner);
             let mut m = t.metadata.v1();

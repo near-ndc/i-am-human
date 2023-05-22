@@ -148,7 +148,7 @@ impl Contract {
             // TODO: decide if we should overwrite or panic if receipient already had a token.
             // now we overwrite.
             self.balances.insert(&key_new, token_id);
-            self.balances.remove(&key);
+            self.balances.remove(key);
 
             let i_key = IssuerTokenId {
                 issuer_id: key.issuer_id,
@@ -182,7 +182,7 @@ impl Contract {
             );
         }
 
-        return (token_counter as u32, completed);
+        (token_counter as u32, completed)
     }
 
     pub(crate) fn start_soul_transfer(
@@ -190,13 +190,13 @@ impl Contract {
         owner: &AccountId,
         recipient: &AccountId,
     ) -> IssuerTokenId {
-        require!(!self._is_banned(&recipient), "`to` is banned");
+        require!(!self._is_banned(recipient), "`to` is banned");
         // insert into banlist and assure the owner is not already banned.
         require!(
-            self.banlist.insert(&owner),
+            self.banlist.insert(owner),
             "caller banned: can't make soul transfer"
         );
-        Nep393Event::Ban(vec![&owner]).emit();
+        Nep393Event::Ban(vec![owner]).emit();
 
         IssuerTokenId {
             issuer_id: 0,
@@ -233,7 +233,7 @@ impl Contract {
             let t = self
                 .issuer_tokens
                 .get(ct_key)
-                .expect(&format!("tokenID={} not found", tid));
+                .unwrap_or_else(|| panic!("tokenID={} not found", tid));
             require!(
                 t.owner == owner,
                 &format!("not an owner of tokenID={}", tid)
@@ -286,7 +286,7 @@ impl Contract {
     pub(crate) fn get_token(&self, issuer_id: IssuerId, token: TokenId) -> TokenData {
         self.issuer_tokens
             .get(&IssuerTokenId { issuer_id, token })
-            .expect(&format!("token {} not found", token))
+            .unwrap_or_else(|| panic!("token {} not found", token))
     }
 
     /// updates the internal token counter based on how many tokens we want to mint (num), and

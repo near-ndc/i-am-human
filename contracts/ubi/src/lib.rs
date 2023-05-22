@@ -91,7 +91,7 @@ impl Contract {
                 return true;
             }
         }
-        return false;
+        false
     }
 }
 
