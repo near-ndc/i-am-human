@@ -1314,13 +1314,15 @@ mod tests {
         let m2_1 = mk_metadata(2, Some(START + 11));
         let m3_1 = mk_metadata(3, Some(START + 21));
 
-        let tokens_to_burn = ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m2_1.clone()]),
-          (bob(), vec![m1_1.clone()])
+        let tokens_to_burn = ctr.sbt_mint(vec![
+            (alice(), vec![m1_1.clone(), m2_1.clone()]),
+            (bob(), vec![m1_1.clone()]),
         ]);
 
         ctr.sbt_mint(vec![(alice(), vec![m3_1.clone()])]);
 
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 3);
+        assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer1(), None), 1);
 
         //issue tokens by a different issuer
         ctx.predecessor_account_id = issuer2();
@@ -1336,7 +1338,7 @@ mod tests {
 
         let log_burn = mk_log_str(
             "burn",
-            &format!(r#"{{"issuer":"{}","tokens":[1,2]}}"#, issuer1()),
+            &format!(r#"{{"issuer":"{}","tokens":[1,2,3]}}"#, issuer1()),
         );
         assert_eq!(test_utils::get_logs().len(), 1);
         assert_eq!(test_utils::get_logs()[0], log_burn[0]);
@@ -1354,7 +1356,7 @@ mod tests {
 
         assert_eq!(
             ctr.sbt_tokens(issuer1(), None, None),
-            vec![mk_token(3, alice(), m3_1.clone())],
+            vec![mk_token(4, alice(), m3_1.clone())],
         );
         assert_eq!(
             ctr.sbt_tokens(issuer2(), None, None),

@@ -409,8 +409,8 @@ impl SBTRegistry for Contract {
         if burn == true {
             let mut revoked_per_class: HashMap<u64, u64> = HashMap::new();
             let mut revoked_per_owner: HashMap<AccountId, u64> = HashMap::new();
-            let mut tokens_burned = 0;
-            for token in tokens {
+            let tokens_burned: u64 = tokens.len().try_into().unwrap();
+            for token in tokens.clone() {
                 // update balances
                 let token_object = self.get_token(issuer_id, token);
                 let owner = token_object.owner;
@@ -436,8 +436,6 @@ impl SBTRegistry for Contract {
                 // remove from issuer_tokens
                 self.issuer_tokens
                     .remove(&IssuerTokenId { issuer_id, token });
-
-                tokens_burned += 1;
             }
 
             // update supply by owner
