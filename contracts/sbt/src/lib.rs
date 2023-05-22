@@ -114,9 +114,6 @@ pub trait SBTRegistry {
     /// Requires attaching enough tokens to cover the storage growth.
     // #[payable]
     fn sbt_recover(&mut self, from: AccountId, to: AccountId) -> (u32, bool);
-    // parametrize the limit to faciliate the test
-    // TODO: I think this should be moved to lib.rs
-    fn _sbt_recover(&mut self, from: AccountId, to: AccountId, limit: usize) -> (u32, bool);
 
     /// sbt_renew will update the expire time of provided tokens.
     /// `expires_at` is a unix timestamp (in miliseconds).
