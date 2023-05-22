@@ -1314,7 +1314,9 @@ mod tests {
         let m2_1 = mk_metadata(2, Some(START + 11));
         let m3_1 = mk_metadata(3, Some(START + 21));
 
-        let tokens_to_burn = ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m2_1.clone()])]);
+        let tokens_to_burn = ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m2_1.clone()]),
+          (bob(), vec![m1_1.clone()])
+        ]);
 
         ctr.sbt_mint(vec![(alice(), vec![m3_1.clone()])]);
 
