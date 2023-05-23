@@ -309,6 +309,7 @@ impl Contract {
             );
         }
         // storage check
+        // we are using checked_sub, since the storage can decrease and we are running of risk of underflow
         let required_deposit = (env::storage_usage().checked_sub(storage_start).unwrap_or(0))
             as u128
             * env::storage_byte_cost();
