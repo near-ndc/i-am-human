@@ -289,7 +289,7 @@ impl Contract {
                 self.ongoing_soul_tx.remove(&from);
             }
             // we emit the event only once the operation is completed and only if some tokens were
-            // transferred
+            // recovered
             if resumed || tokens_recovered > 0 {
                 // emit Recover event
                 SbtRecover {
