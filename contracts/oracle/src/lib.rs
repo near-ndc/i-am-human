@@ -211,7 +211,7 @@ impl Contract {
      * ADMIN
      **********/
 
-    /* for testing the callbackc
+    /* for testing the callback
         #[payable]
         pub fn admin_mint(&mut self, receipient: AccountId, external_id: String) -> Promise {
             let external_id = normalize_external_id(external_id).ok().unwrap();
