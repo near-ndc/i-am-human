@@ -1,6 +1,8 @@
 # SBT opt-in
 
-Every SBT smart contract that wants to relay the state changes on the registry must opt-in into the registry. Different registries may implement different mechanisms for opt-in. In the current implementation the only way to opt-in as an issuer is by calling `admin_add_sbt_issuer`. The transaction must be signed by the admin.
+Every SBT smart contract must opt-in to a registry, or implement registry functionality by it's own. Different registries may implement different mechanisms for opt-in. 
+
+This implementation requires an admin address (could be a DAO) to add an issuer to the registry, and as a consequence allow the issuer to use SBT registry methods.
 
 # SBT mint
 
