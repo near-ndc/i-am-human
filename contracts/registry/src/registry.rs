@@ -294,87 +294,17 @@ impl SBTRegistry for Contract {
     }
 
     /// sbt_recover reassigns all tokens issued by the caller, from the old owner to a new owner.
-    /// Adds `old_owner` to a banned accounts list.
-    /// Must be called by a valid SBT issuer.
-    /// Must emit `Recover` event.
-    /// Requires attaching enough tokens to cover the storage growth.
+    /// + Adds `old_owner` to a banned accounts list.
+    /// + Must be called by a valid SBT issuer.
+    /// + Must emit `Recover` event once all the tokens have been recovered.
+    /// + Requires attaching enough tokens to cover the storage growth.
+    /// + Returns the amount of tokens recovered and a boolean: `true` if the whole
+    ///   process has finished, `false` when the process has not finished and should be
+    ///   continued by a subsequent call.
+    /// + User must keep calling the `sbt_recover` until `true` is returned.
     #[payable]
-    fn sbt_recover(&mut self, from: AccountId, to: AccountId) {
-        let storage_start = env::storage_usage();
-        let issuer = env::predecessor_account_id();
-        let issuer_id = self.assert_issuer(&issuer);
-        self.assert_not_banned(&from);
-        self.assert_not_banned(&to);
-        // no need to check ongoing_soult_tx, because it will automatically ban the source account
-
-        let mut tokens_recovered = 0;
-        let mut class_ids = Vec::new();
-
-        for (key, token) in self
-            .balances
-            .iter_from(balance_key(from.clone(), issuer_id, 0))
-            .take(MAX_LIMIT as usize)
-        {
-            if key.owner != from || key.issuer_id != issuer_id {
-                break;
-            }
-            tokens_recovered += 1;
-            let mut t = self.get_token(key.issuer_id, token);
-
-            class_ids.push(t.metadata.class_id());
-
-            t.owner = to.clone();
-            self.issuer_tokens
-                .insert(&IssuerTokenId { issuer_id, token }, &t);
-        }
-        // update user balances
-        let mut old_balance_key = balance_key(from.clone(), issuer_id, 0);
-        let mut new_balance_key = balance_key(to.clone(), issuer_id, 0);
-        for class_id in class_ids {
-            old_balance_key.class_id = class_id;
-            let token_id = self.balances.remove(&old_balance_key).unwrap();
-            new_balance_key.class_id = class_id;
-            self.balances.insert(&new_balance_key, &token_id);
-        }
-
-        // ---
-        // update supply_by_owner map. We can't do it in the loop above becuse we can't modify
-        // self.balances while iterating over it
-        let supply_key = &(from.clone(), issuer_id);
-        let old_supply_from = self.supply_by_owner.remove(supply_key).unwrap_or(0);
-        if old_supply_from != tokens_recovered {
-            self.supply_by_owner.insert(
-                &(from.clone(), issuer_id),
-                &(old_supply_from - tokens_recovered),
-            );
-        }
-        let supply_key = &(to.clone(), issuer_id);
-        let old_supply_to = self.supply_by_owner.get(supply_key).unwrap_or(0);
-        self.supply_by_owner
-            .insert(supply_key, &(old_supply_to + tokens_recovered));
-
-        // ---
-        // add old_owner to a bannded list
-        self.banlist.insert(&from);
-
-        // emit Recover event
-        SbtRecover {
-            issuer: &issuer,
-            old_owner: &from,
-            new_owner: &to,
-        }
-        .emit();
-
-        // storage check
-        let required_deposit =
-            (env::storage_usage() - storage_start) as u128 * env::storage_byte_cost();
-        require!(
-            env::attached_deposit() >= required_deposit,
-            format!(
-                "not enough NEAR storage depost, required: {}",
-                required_deposit
-            )
-        );
+    fn sbt_recover(&mut self, from: AccountId, to: AccountId) -> (u32, bool) {
+        self._sbt_recover(from, to, 20)
     }
 
     /// sbt_renew will update the expire time of provided tokens.

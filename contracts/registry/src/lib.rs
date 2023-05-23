@@ -5,7 +5,8 @@ use near_sdk::collections::{LookupMap, TreeMap, UnorderedMap, UnorderedSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
 
 use sbt::{
-    emit_soul_transfer, ClassId, Nep393Event, SBTRegistry, SbtTokensEvent, TokenData, TokenId,
+    emit_soul_transfer, ClassId, Nep393Event, SBTRegistry, SbtRecover, SbtTokensEvent, TokenData,
+    TokenId,
 };
 
 use crate::storage::*;
@@ -102,12 +103,8 @@ impl Contract {
     // order to facilitate tests.
     pub(crate) fn _sbt_soul_transfer(&mut self, recipient: AccountId, limit: usize) -> (u32, bool) {
         let owner = env::predecessor_account_id();
-        let (resumed, start) = match self.ongoing_soul_tx.get(&owner) {
-            // starting the process
-            None => (false, self.start_soul_transfer(&owner, &recipient)),
-            // resuming Soul Transfer process
-            Some(s) => (true, s),
-        };
+
+        let (resumed, start) = self.get_transfer_continuation(&owner, &recipient);
 
         let batch: Vec<(BalanceKey, TokenId)> = self
             .balances
@@ -185,16 +182,19 @@ impl Contract {
         (token_counter as u32, completed)
     }
 
-    pub(crate) fn start_soul_transfer(
+    pub(crate) fn start_transfer_with_continuation(
         &mut self,
         owner: &AccountId,
         recipient: &AccountId,
     ) -> IssuerTokenId {
-        require!(!self._is_banned(recipient), "`to` is banned");
+        require!(
+            !self._is_banned(recipient),
+            "receiver account is banned. Cannot start the transfer"
+        );
         // insert into banlist and assure the owner is not already banned.
         require!(
             self.banlist.insert(owner),
-            "caller banned: can't make soul transfer"
+            "from account is banned. Cannot start the transfer"
         );
         Nep393Event::Ban(vec![owner]).emit();
 
@@ -202,6 +202,127 @@ impl Contract {
             issuer_id: 0,
             token: 0, // NOTE: this is class ID
         }
+    }
+
+    // If it is the first iteration of the transfer, bans the source account, otherwise returns the last transfered token
+    fn get_transfer_continuation(
+        &mut self,
+        from: &AccountId,
+        to: &AccountId,
+    ) -> (bool, IssuerTokenId) {
+        match self.ongoing_soul_tx.get(from) {
+            // starting the process
+            None => (false, self.start_transfer_with_continuation(from, to)),
+            // resuming sbt_recover process
+            Some(s) => (true, s),
+        }
+    }
+
+    // sbt_recover execution with `limit` parameter in
+    // order to facilitate tests.
+    fn _sbt_recover(&mut self, from: AccountId, to: AccountId, limit: usize) -> (u32, bool) {
+        let storage_start = env::storage_usage();
+        let issuer = env::predecessor_account_id();
+        let issuer_id = self.assert_issuer(&issuer);
+        self.assert_not_banned(&to);
+        // if first execution ban the source account, othwerwise get the last transfered token
+        let (resumed, start) = self.get_transfer_continuation(&from, &to);
+
+        let mut tokens_recovered = 0;
+        let mut class_ids = Vec::new();
+
+        let mut last_token_transfered = BalanceKey {
+            owner: from.clone(),
+            issuer_id,
+            class_id: 0,
+        };
+
+        for (key, token) in self
+            .balances
+            .iter_from(balance_key(from.clone(), start.issuer_id, start.token))
+            .take(limit)
+        {
+            if key.owner != from || key.issuer_id != issuer_id {
+                continue;
+            }
+            tokens_recovered += 1;
+            let mut t = self.get_token(key.issuer_id, token);
+
+            class_ids.push(t.metadata.class_id());
+
+            t.owner = to.clone();
+            self.issuer_tokens
+                .insert(&IssuerTokenId { issuer_id, token }, &t);
+            last_token_transfered = key;
+        }
+
+        // update user balances
+        let mut old_balance_key = balance_key(from.clone(), issuer_id, 0);
+        let mut new_balance_key = balance_key(to.clone(), issuer_id, 0);
+        for class_id in class_ids {
+            old_balance_key.class_id = class_id;
+            let token_id = self.balances.remove(&old_balance_key).unwrap();
+            new_balance_key.class_id = class_id;
+            self.balances.insert(&new_balance_key, &token_id);
+        }
+
+        // update supply_by_owner map. We can't do it in the loop above becuse we can't modify
+        // self.balances while iterating over it
+        let supply_key = &(from.clone(), issuer_id);
+        let old_supply_from = self.supply_by_owner.remove(supply_key).unwrap_or(0);
+        if old_supply_from != tokens_recovered {
+            self.supply_by_owner.insert(
+                &(from.clone(), issuer_id),
+                &(old_supply_from - tokens_recovered),
+            );
+        }
+        let supply_key = &(to.clone(), issuer_id);
+        let old_supply_to = self.supply_by_owner.get(supply_key).unwrap_or(0);
+        self.supply_by_owner
+            .insert(supply_key, &(old_supply_to + tokens_recovered));
+
+        let completed = tokens_recovered != limit as u64;
+        if completed {
+            if resumed {
+                // insert is happening when we need to continue, so don't need to remove if
+                // the process finishes in the same transaction.
+                self.ongoing_soul_tx.remove(&from);
+            }
+            // we emit the event only once the operation is completed and only if some tokens were
+            // recovered
+            if resumed || tokens_recovered > 0 {
+                // emit Recover event
+                SbtRecover {
+                    issuer: &issuer,
+                    old_owner: &from,
+                    new_owner: &to,
+                }
+                .emit();
+            }
+        } else {
+            self.ongoing_soul_tx.insert(
+                &from,
+                &IssuerTokenId {
+                    issuer_id: last_token_transfered.issuer_id,
+                    token: last_token_transfered.class_id, // we reuse IssuerTokenId type here (to not generate new code), but we store class_id instead of token here.
+                },
+            );
+        }
+        // storage check
+        // we are using checked_sub, since the storage can decrease and we are running of risk of underflow
+        let storage_usage = env::storage_usage();
+        if storage_usage > storage_start {
+            let required_deposit =
+                (storage_usage - storage_start) as u128 * env::storage_byte_cost();
+            require!(
+                env::attached_deposit() >= required_deposit,
+                format!(
+                    "not enough NEAR storage depost, required: {}",
+                    required_deposit
+                )
+            );
+        }
+        return (tokens_recovered as u32, completed);
     }
 
     pub fn sbt_burn(
@@ -1152,8 +1273,8 @@ mod tests {
                 bob()
             ),
         );
-        assert_eq!(test_utils::get_logs().len(), 2);
-        assert_eq!(test_utils::get_logs()[1], recover_log[0]);
+        assert_eq!(test_utils::get_logs().len(), 3);
+        assert_eq!(test_utils::get_logs()[2], recover_log[0]);
         assert!(ctr.is_banned(alice()));
         assert!(!ctr.is_banned(bob()));
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
@@ -1230,11 +1351,35 @@ mod tests {
         // storage will grow so need to attach deposit.
         ctx.attached_deposit = MINT_DEPOSIT;
         testing_env!(ctx.clone());
-        ctr.sbt_recover(alice(), bob());
+        let result = ctr.sbt_recover(alice(), bob());
         assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer2(), None), 1);
     }
 
     #[test]
+    fn sbt_recover_with_continuation_basics() {
+        let (_, mut ctr) = setup(&issuer1(), 5 * MINT_DEPOSIT);
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        let m2_1 = mk_metadata(2, Some(START + 11));
+        let m3_1 = mk_metadata(3, Some(START + 12));
+        let m4_1 = mk_metadata(4, Some(START + 13));
+        ctr.sbt_mint(vec![(
+            alice(),
+            vec![m1_1.clone(), m2_1.clone(), m3_1.clone(), m4_1.clone()],
+        )]);
+
+        // sbt_recover
+        let mut result = ctr._sbt_recover(alice(), alice2(), 3);
+        assert_eq!((3, false), result);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 3);
+        assert!(test_utils::get_logs().len() == 2);
+        result = ctr._sbt_recover(alice(), alice2(), 3);
+        assert_eq!((1, true), result);
+        assert!(test_utils::get_logs().len() == 3);
+
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 4);
+    }
+
     fn sbt_revoke() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
 
@@ -1379,12 +1524,126 @@ mod tests {
         ctx.predecessor_account_id = alice();
         testing_env!(ctx.clone());
         ctr.sbt_soul_transfer(alice2(), None);
+
         assert!(ctr.is_banned(alice()));
         assert!(!ctr.is_banned(alice2()));
     }
 
     #[test]
-    #[should_panic(expected = "caller banned: can't make soul transfer")]
+    fn sbt_recover_limit() {
+        let (mut ctx, mut ctr) = setup(&issuer2(), 150 * MINT_DEPOSIT);
+        let batch_metadata = mk_batch_metadata(100);
+        assert!(batch_metadata.len() == 100);
+
+        // issuer_2
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..50].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 50);
+
+        // // add more tokens to issuer_2
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[50..].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 100);
+
+        // add more tokens to issuer_1
+        ctx.predecessor_account_id = issuer1();
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(bob(), batch_metadata[..20].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer1(), None), 20);
+
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice2(), batch_metadata[..20].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 20);
+
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(carol(), batch_metadata[..20].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(carol(), issuer1(), None), 20);
+
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(dan(), batch_metadata[..10].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(dan(), issuer1(), None), 10);
+
+        // sbt_recover alice->alice2
+        ctx.predecessor_account_id = issuer2();
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        let limit: u32 = 20; //anything above this limit will fail due to exceeding maximum gas usage per call
+
+        let mut result = ctr._sbt_recover(alice(), alice2(), limit as usize);
+        while !result.1 {
+            ctx.prepaid_gas = max_gas();
+            testing_env!(ctx.clone());
+            result = ctr._sbt_recover(alice(), alice2(), limit as usize);
+        }
+
+        // check all the balances afterwards
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 0);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer2(), None), 100);
+    }
+
+    #[test]
+    #[should_panic(expected = "HostError(GasLimitExceeded)")]
+    fn sbt_recover_limit_exceeded() {
+        let (mut ctx, mut ctr) = setup(&issuer2(), 150 * MINT_DEPOSIT);
+        let batch_metadata = mk_batch_metadata(100);
+        assert!(batch_metadata.len() == 100);
+
+        // issuer_2
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..50].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 50);
+
+        // // add more tokens to issuer_2
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[50..].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 100);
+
+        // add more tokens to issuer_1
+        ctx.predecessor_account_id = issuer1();
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(bob(), batch_metadata[..20].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer1(), None), 20);
+
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice2(), batch_metadata[..20].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 20);
+
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(carol(), batch_metadata[..20].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(carol(), issuer1(), None), 20);
+
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(dan(), batch_metadata[..10].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(dan(), issuer1(), None), 10);
+
+        // sbt_recover alice->alice2
+        ctx.predecessor_account_id = issuer2();
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        let limit: u32 = 25; // this value exceedes the gas limit allowed per call and should fail
+
+        let mut result = ctr._sbt_recover(alice(), alice2(), limit as usize);
+        while !result.1 {
+            ctx.prepaid_gas = max_gas();
+            testing_env!(ctx.clone());
+            result = ctr._sbt_recover(alice(), alice2(), limit as usize);
+        }
+
+        // check all the balances afterwards
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 0);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer2(), None), 100);
+    }
+
+    #[test]
+    #[should_panic(expected = "from account is banned. Cannot start the transfer")]
     fn sbt_soul_transfer_from_banned_account() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 1 * MINT_DEPOSIT);
         let m1_1 = mk_metadata(1, Some(START + 10));
@@ -1401,7 +1660,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "`to` is banned")]
+    #[should_panic(expected = "receiver account is banned. Cannot start the transfer")]
     fn sbt_soul_transfer_to_banned_account() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 1 * MINT_DEPOSIT);
         let m1_1 = mk_metadata(1, Some(START + 10));
