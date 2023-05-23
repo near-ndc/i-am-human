@@ -1,4 +1,5 @@
 # SBT Registry
+
 The Registry smart contract is a balance book for all associated SBT tokens. The registry enables atomic `soul_transfers` and provides an efficient way to ban a smart contract (issuer). For more details check the [nep-393](https://github.com/near/NEPs/pull/393).
 
 ## SBT opt-in
