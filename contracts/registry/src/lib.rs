@@ -310,9 +310,9 @@ impl Contract {
         }
         // storage check
         // we are using checked_sub, since the storage can decrease and we are running of risk of underflow
-        let required_deposit = (env::storage_usage().checked_sub(storage_start).unwrap_or(0))
-            as u128
-            * env::storage_byte_cost();
+        let storage_usage = env::storage_usage()
+        if storage_usage > storage_start {
+           let required_deposit = (storage_usage - storage_start) as u128 * env::storage_byte_cost();
         require!(
             env::attached_deposit() >= required_deposit,
             format!(
@@ -320,6 +320,7 @@ impl Contract {
                 required_deposit
             )
         );
+        }
         return (tokens_recovered as u32, completed);
     }
 
