@@ -218,7 +218,7 @@ impl Contract {
         }
     }
 
-    // execution of the sbt_recover in this function to parametrize `limit` in
+    // sbt_recover execution with `limit` parameter in
     // order to facilitate tests.
     fn _sbt_recover(&mut self, from: AccountId, to: AccountId, limit: usize) -> (u32, bool) {
         let storage_start = env::storage_usage();
