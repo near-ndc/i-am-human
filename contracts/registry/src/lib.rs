@@ -104,7 +104,7 @@ impl Contract {
     pub(crate) fn _sbt_soul_transfer(&mut self, recipient: AccountId, limit: usize) -> (u32, bool) {
         let owner = env::predecessor_account_id();
 
-        let (resumed, start) = self.get_transfer_with_continuation_info(&owner, &recipient);
+        let (resumed, start) = self.get_transfer_continuation(&owner, &recipient);
 
         let batch: Vec<(BalanceKey, TokenId)> = self
             .balances
@@ -226,7 +226,7 @@ impl Contract {
         let issuer_id = self.assert_issuer(&issuer);
         self.assert_not_banned(&to);
         // if first execution ban the source account, othwerwise get the last transfered token
-        let (resumed, start) = self.get_transfer_with_continuation_info(&from, &to);
+        let (resumed, start) = self.get_transfer_continuation(&from, &to);
 
         let mut tokens_recovered = 0;
         let mut class_ids = Vec::new();
@@ -310,16 +310,17 @@ impl Contract {
         }
         // storage check
         // we are using checked_sub, since the storage can decrease and we are running of risk of underflow
-        let storage_usage = env::storage_usage()
+        let storage_usage = env::storage_usage();
         if storage_usage > storage_start {
-           let required_deposit = (storage_usage - storage_start) as u128 * env::storage_byte_cost();
-        require!(
-            env::attached_deposit() >= required_deposit,
-            format!(
-                "not enough NEAR storage depost, required: {}",
-                required_deposit
-            )
-        );
+            let required_deposit =
+                (storage_usage - storage_start) as u128 * env::storage_byte_cost();
+            require!(
+                env::attached_deposit() >= required_deposit,
+                format!(
+                    "not enough NEAR storage depost, required: {}",
+                    required_deposit
+                )
+            );
         }
         return (tokens_recovered as u32, completed);
     }
@@ -1377,8 +1378,8 @@ mod tests {
 
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
         assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 4);
-    }  
-      
+    }
+
     fn sbt_revoke() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
 
@@ -1640,7 +1641,7 @@ mod tests {
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 0);
         assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer2(), None), 100);
     }
-      
+
     #[test]
     #[should_panic(expected = "caller banned: can't make soul transfer")]
     fn sbt_soul_transfer_from_banned_account() {
