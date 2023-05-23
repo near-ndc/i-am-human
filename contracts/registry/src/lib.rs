@@ -1234,6 +1234,140 @@ mod tests {
         assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer2(), None), 1);
     }
 
+    #[test]
+    fn sbt_revoke() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        let m2_1 = mk_metadata(2, Some(START + 11));
+        let m3_1 = mk_metadata(3, Some(START + 21));
+
+        let current_timestamp = ctx.block_timestamp;
+
+        let m1_1_revoked = mk_metadata(1, Some(current_timestamp));
+        let m2_1_revoked = mk_metadata(2, Some(current_timestamp));
+        let m3_1_revoked = mk_metadata(3, Some(current_timestamp));
+
+        let tokens_issuer_1 = ctr.sbt_mint(vec![(
+            alice(),
+            vec![m1_1.clone(), m2_1.clone(), m3_1.clone()],
+        )]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 3);
+
+        //issue tokens by a different issuer
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(bob(), vec![m1_1.clone(), m2_1.clone()])]);
+        ctr.sbt_mint(vec![(alice(), vec![m3_1.clone()])]);
+        assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer2(), None), 2);
+
+        //revoke tokens issued by issuer1
+        ctx.predecessor_account_id = issuer1();
+        testing_env!(ctx.clone());
+        ctr.sbt_revoke(tokens_issuer_1, false);
+
+        let log_revoke = mk_log_str(
+            "revoke",
+            &format!(r#"{{"issuer":"{}","tokens":[1,2,3]}}"#, issuer1()),
+        );
+        assert_eq!(test_utils::get_logs().len(), 1);
+        assert_eq!(test_utils::get_logs()[0], log_revoke[0]);
+
+        assert_eq!(ctr.sbt_supply(issuer1()), 3);
+        assert_eq!(ctr.sbt_supply(issuer2()), 3);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 3);
+        assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer2(), None), 2);
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None),
+            vec![(
+                issuer1(),
+                vec![
+                    mk_owned_token(1, m1_1_revoked.clone()),
+                    mk_owned_token(2, m2_1_revoked.clone()),
+                    mk_owned_token(3, m3_1_revoked.clone()),
+                ]
+            ),]
+        );
+        assert_eq!(
+            ctr.sbt_tokens(issuer1(), None, None),
+            vec![
+                mk_token(1, alice(), m1_1_revoked.clone()),
+                mk_token(2, alice(), m2_1_revoked.clone()),
+                mk_token(3, alice(), m3_1_revoked.clone())
+            ]
+        );
+        assert_eq!(
+            ctr.sbt_tokens(issuer2(), None, None),
+            vec![
+                mk_token(1, bob(), m1_1.clone()),
+                mk_token(2, bob(), m2_1.clone()),
+                mk_token(3, alice(), m3_1.clone())
+            ]
+        )
+    }
+
+    #[test]
+    fn sbt_revoke_burn() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        let m2_1 = mk_metadata(2, Some(START + 11));
+        let m3_1 = mk_metadata(3, Some(START + 21));
+
+        let tokens_to_burn = ctr.sbt_mint(vec![
+            (alice(), vec![m1_1.clone(), m2_1.clone()]),
+            (bob(), vec![m1_1.clone()]),
+        ]);
+
+        ctr.sbt_mint(vec![(alice(), vec![m3_1.clone()])]);
+
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 3);
+        assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer1(), None), 1);
+
+        //issue tokens by a different issuer
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(bob(), vec![m1_1.clone(), m2_1.clone()])]);
+        ctr.sbt_mint(vec![(alice(), vec![m3_1.clone()])]);
+        assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer2(), None), 2);
+
+        //revoke tokens issued by issuer1
+        ctx.predecessor_account_id = issuer1();
+        testing_env!(ctx.clone());
+        ctr.sbt_revoke(tokens_to_burn, true);
+
+        let log_burn = mk_log_str(
+            "burn",
+            &format!(r#"{{"issuer":"{}","tokens":[1,2,3]}}"#, issuer1()),
+        );
+        assert_eq!(test_utils::get_logs().len(), 1);
+        assert_eq!(test_utils::get_logs()[0], log_burn[0]);
+        assert_eq!(ctr.sbt_supply(issuer1()), 1);
+        assert_eq!(ctr.sbt_supply(issuer2()), 3);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 1);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 1);
+        assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer2(), None), 2);
+        assert_eq!(ctr.sbt_supply_by_class(issuer1(), 1), 0);
+        assert_eq!(ctr.sbt_supply_by_class(issuer1(), 2), 0);
+        assert_eq!(ctr.sbt_supply_by_class(issuer1(), 3), 1);
+        assert_eq!(ctr.sbt_supply_by_class(issuer2(), 1), 1);
+        assert_eq!(ctr.sbt_supply_by_class(issuer2(), 2), 1);
+        assert_eq!(ctr.sbt_supply_by_class(issuer2(), 3), 1);
+
+        assert_eq!(
+            ctr.sbt_tokens(issuer1(), None, None),
+            vec![mk_token(4, alice(), m3_1.clone())],
+        );
+        assert_eq!(
+            ctr.sbt_tokens(issuer2(), None, None),
+            vec![
+                mk_token(1, bob(), m1_1.clone()),
+                mk_token(2, bob(), m2_1.clone()),
+                mk_token(3, alice(), m3_1.clone())
+            ]
+        )
+    }
+
     // sbt_ban
     #[test]
     fn sbt_soul_transfer_ban() {

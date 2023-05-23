@@ -1,7 +1,7 @@
 // TODO: remove allow unused_variables
 #![allow(unused_variables)]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 
 use near_sdk::{near_bindgen, AccountId};
 
@@ -327,7 +327,6 @@ impl SBTRegistry for Contract {
             self.issuer_tokens
                 .insert(&IssuerTokenId { issuer_id, token }, &t);
         }
-
         // update user balances
         let mut old_balance_key = balance_key(from.clone(), issuer_id, 0);
         let mut new_balance_key = balance_key(to.clone(), issuer_id, 0);
@@ -404,10 +403,78 @@ impl SBTRegistry for Contract {
     /// Must be called by an SBT contract.
     /// Must emit `Revoke` event.
     /// Must also emit `Burn` event if the SBT tokens are burned (removed).
-    fn sbt_revoke(&mut self, token: Vec<TokenId>, burn: bool) {
+    fn sbt_revoke(&mut self, tokens: Vec<TokenId>, burn: bool) {
         let issuer = env::predecessor_account_id();
-        self.assert_issuer(&issuer);
-        env::panic_str("not implemented");
-        // add events
+        let issuer_id = self.assert_issuer(&issuer);
+        if burn == true {
+            let mut revoked_per_class: HashMap<u64, u64> = HashMap::new();
+            let mut revoked_per_owner: HashMap<AccountId, u64> = HashMap::new();
+            let tokens_burned: u64 = tokens.len().try_into().unwrap();
+            for token in tokens.clone() {
+                // update balances
+                let token_object = self.get_token(issuer_id, token);
+                let owner = token_object.owner;
+                let class_id = token_object.metadata.class_id();
+                let balance_key = &BalanceKey {
+                    issuer_id,
+                    owner: owner.clone(),
+                    class_id,
+                };
+                self.balances.remove(balance_key);
+
+                // collect the info about the tokens revoked per owner and per class
+                // to update the balances accordingly
+                revoked_per_class
+                    .entry(class_id)
+                    .and_modify(|key_value| *key_value += 1)
+                    .or_insert(1);
+                revoked_per_owner
+                    .entry(owner)
+                    .and_modify(|key_value| *key_value += 1)
+                    .or_insert(1);
+
+                // remove from issuer_tokens
+                self.issuer_tokens
+                    .remove(&IssuerTokenId { issuer_id, token });
+            }
+
+            // update supply by owner
+            for (owner_id, tokens_revoked) in revoked_per_owner {
+                let old_supply = self
+                    .supply_by_owner
+                    .get(&(owner_id.clone(), issuer_id))
+                    .unwrap();
+                self.supply_by_owner
+                    .insert(&(owner_id, issuer_id), &(old_supply - &tokens_revoked));
+            }
+
+            // update supply by class
+            for (class_id, tokens_revoked) in revoked_per_class {
+                let old_supply = self.supply_by_class.get(&(issuer_id, class_id)).unwrap();
+                self.supply_by_class
+                    .insert(&(issuer_id, class_id), &(&old_supply - &tokens_revoked));
+            }
+
+            // update supply by issuer
+            let supply_by_issuer = self.supply_by_issuer.get(&(issuer_id)).unwrap_or(0);
+            self.supply_by_issuer
+                .insert(&(issuer_id), &(supply_by_issuer - tokens_burned));
+
+            // emit event
+            SbtTokensEvent { issuer, tokens }.emit_burn();
+        } else {
+            let current_timestamp = env::block_timestamp();
+            // revoke
+            for token in tokens.clone() {
+                // update expire date for all tokens to current_timestamp
+                let mut t = self.get_token(issuer_id, token);
+                let mut m = t.metadata.v1();
+                m.expires_at = Some(current_timestamp);
+                t.metadata = m.into();
+                self.issuer_tokens
+                    .insert(&IssuerTokenId { issuer_id, token }, &t);
+            }
+            SbtTokensEvent { issuer, tokens }.emit_revoke();
+        }
     }
 }
