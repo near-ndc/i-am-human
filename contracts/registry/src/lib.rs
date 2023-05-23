@@ -189,12 +189,12 @@ impl Contract {
     ) -> IssuerTokenId {
         require!(
             !self._is_banned(recipient),
-            "receiver account is banned. Cannot start the tranfer"
+            "receiver account is banned. Cannot start the transfer"
         );
         // insert into banlist and assure the owner is not already banned.
         require!(
             self.banlist.insert(owner),
-            "from account is banned. Cannot start the tranfer"
+            "from account is banned. Cannot start the transfer"
         );
         Nep393Event::Ban(vec![owner]).emit();
 
@@ -1643,7 +1643,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "caller banned: can't make soul transfer")]
+    #[should_panic(expected = "from account is banned. Cannot start the transfer")]
     fn sbt_soul_transfer_from_banned_account() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 1 * MINT_DEPOSIT);
         let m1_1 = mk_metadata(1, Some(START + 10));
@@ -1660,7 +1660,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "`to` is banned")]
+    #[should_panic(expected = "receiver account is banned. Cannot start the transfer")]
     fn sbt_soul_transfer_to_banned_account() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 1 * MINT_DEPOSIT);
         let m1_1 = mk_metadata(1, Some(START + 10));
