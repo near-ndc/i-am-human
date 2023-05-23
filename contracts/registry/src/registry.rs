@@ -1,7 +1,7 @@
 // TODO: remove allow unused_variables
 #![allow(unused_variables)]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 
 use near_sdk::{near_bindgen, AccountId};
 
@@ -294,88 +294,17 @@ impl SBTRegistry for Contract {
     }
 
     /// sbt_recover reassigns all tokens issued by the caller, from the old owner to a new owner.
-    /// Adds `old_owner` to a banned accounts list.
-    /// Must be called by a valid SBT issuer.
-    /// Must emit `Recover` event.
-    /// Requires attaching enough tokens to cover the storage growth.
+    /// + Adds `old_owner` to a banned accounts list.
+    /// + Must be called by a valid SBT issuer.
+    /// + Must emit `Recover` event once all the tokens have been recovered.
+    /// + Requires attaching enough tokens to cover the storage growth.
+    /// + Returns the amount of tokens recovered and a boolean: `true` if the whole
+    ///   process has finished, `false` when the process has not finished and should be
+    ///   continued by a subsequent call.
+    /// + User must keep calling the `sbt_recover` until `true` is returned.
     #[payable]
-    fn sbt_recover(&mut self, from: AccountId, to: AccountId) {
-        let storage_start = env::storage_usage();
-        let issuer = env::predecessor_account_id();
-        let issuer_id = self.assert_issuer(&issuer);
-        self.assert_not_banned(&from);
-        self.assert_not_banned(&to);
-        // no need to check ongoing_soult_tx, because it will automatically ban the source account
-
-        let mut tokens_recovered = 0;
-        let mut class_ids = Vec::new();
-
-        for (key, token) in self
-            .balances
-            .iter_from(balance_key(from.clone(), issuer_id, 0))
-            .take(MAX_LIMIT as usize)
-        {
-            if key.owner != from || key.issuer_id != issuer_id {
-                break;
-            }
-            tokens_recovered += 1;
-            let mut t = self.get_token(key.issuer_id, token);
-
-            class_ids.push(t.metadata.class_id());
-
-            t.owner = to.clone();
-            self.issuer_tokens
-                .insert(&IssuerTokenId { issuer_id, token }, &t);
-        }
-
-        // update user balances
-        let mut old_balance_key = balance_key(from.clone(), issuer_id, 0);
-        let mut new_balance_key = balance_key(to.clone(), issuer_id, 0);
-        for class_id in class_ids {
-            old_balance_key.class_id = class_id;
-            let token_id = self.balances.remove(&old_balance_key).unwrap();
-            new_balance_key.class_id = class_id;
-            self.balances.insert(&new_balance_key, &token_id);
-        }
-
-        // ---
-        // update supply_by_owner map. We can't do it in the loop above becuse we can't modify
-        // self.balances while iterating over it
-        let supply_key = &(from.clone(), issuer_id);
-        let old_supply_from = self.supply_by_owner.remove(supply_key).unwrap_or(0);
-        if old_supply_from != tokens_recovered {
-            self.supply_by_owner.insert(
-                &(from.clone(), issuer_id),
-                &(old_supply_from - tokens_recovered),
-            );
-        }
-        let supply_key = &(to.clone(), issuer_id);
-        let old_supply_to = self.supply_by_owner.get(supply_key).unwrap_or(0);
-        self.supply_by_owner
-            .insert(supply_key, &(old_supply_to + tokens_recovered));
-
-        // ---
-        // add old_owner to a bannded list
-        self.banlist.insert(&from);
-
-        // emit Recover event
-        SbtRecover {
-            issuer: &issuer,
-            old_owner: &from,
-            new_owner: &to,
-        }
-        .emit();
-
-        // storage check
-        let required_deposit =
-            (env::storage_usage() - storage_start) as u128 * env::storage_byte_cost();
-        require!(
-            env::attached_deposit() >= required_deposit,
-            format!(
-                "not enough NEAR storage depost, required: {}",
-                required_deposit
-            )
-        );
+    fn sbt_recover(&mut self, from: AccountId, to: AccountId) -> (u32, bool) {
+        self._sbt_recover(from, to, 20)
     }
 
     /// sbt_renew will update the expire time of provided tokens.
@@ -404,10 +333,78 @@ impl SBTRegistry for Contract {
     /// Must be called by an SBT contract.
     /// Must emit `Revoke` event.
     /// Must also emit `Burn` event if the SBT tokens are burned (removed).
-    fn sbt_revoke(&mut self, token: Vec<TokenId>, burn: bool) {
+    fn sbt_revoke(&mut self, tokens: Vec<TokenId>, burn: bool) {
         let issuer = env::predecessor_account_id();
-        self.assert_issuer(&issuer);
-        env::panic_str("not implemented");
-        // add events
+        let issuer_id = self.assert_issuer(&issuer);
+        if burn == true {
+            let mut revoked_per_class: HashMap<u64, u64> = HashMap::new();
+            let mut revoked_per_owner: HashMap<AccountId, u64> = HashMap::new();
+            let tokens_burned: u64 = tokens.len().try_into().unwrap();
+            for token in tokens.clone() {
+                // update balances
+                let token_object = self.get_token(issuer_id, token);
+                let owner = token_object.owner;
+                let class_id = token_object.metadata.class_id();
+                let balance_key = &BalanceKey {
+                    issuer_id,
+                    owner: owner.clone(),
+                    class_id,
+                };
+                self.balances.remove(balance_key);
+
+                // collect the info about the tokens revoked per owner and per class
+                // to update the balances accordingly
+                revoked_per_class
+                    .entry(class_id)
+                    .and_modify(|key_value| *key_value += 1)
+                    .or_insert(1);
+                revoked_per_owner
+                    .entry(owner)
+                    .and_modify(|key_value| *key_value += 1)
+                    .or_insert(1);
+
+                // remove from issuer_tokens
+                self.issuer_tokens
+                    .remove(&IssuerTokenId { issuer_id, token });
+            }
+
+            // update supply by owner
+            for (owner_id, tokens_revoked) in revoked_per_owner {
+                let old_supply = self
+                    .supply_by_owner
+                    .get(&(owner_id.clone(), issuer_id))
+                    .unwrap();
+                self.supply_by_owner
+                    .insert(&(owner_id, issuer_id), &(old_supply - &tokens_revoked));
+            }
+
+            // update supply by class
+            for (class_id, tokens_revoked) in revoked_per_class {
+                let old_supply = self.supply_by_class.get(&(issuer_id, class_id)).unwrap();
+                self.supply_by_class
+                    .insert(&(issuer_id, class_id), &(&old_supply - &tokens_revoked));
+            }
+
+            // update supply by issuer
+            let supply_by_issuer = self.supply_by_issuer.get(&(issuer_id)).unwrap_or(0);
+            self.supply_by_issuer
+                .insert(&(issuer_id), &(supply_by_issuer - tokens_burned));
+
+            // emit event
+            SbtTokensEvent { issuer, tokens }.emit_burn();
+        } else {
+            let current_timestamp = env::block_timestamp();
+            // revoke
+            for token in tokens.clone() {
+                // update expire date for all tokens to current_timestamp
+                let mut t = self.get_token(issuer_id, token);
+                let mut m = t.metadata.v1();
+                m.expires_at = Some(current_timestamp);
+                t.metadata = m.into();
+                self.issuer_tokens
+                    .insert(&IssuerTokenId { issuer_id, token }, &t);
+            }
+            SbtTokensEvent { issuer, tokens }.emit_revoke();
+        }
     }
 }
