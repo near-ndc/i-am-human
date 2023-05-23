@@ -96,7 +96,7 @@ impl Contract {
         #[allow(unused_variables)] memo: Option<String>,
     ) -> (u32, bool) {
         // TODO: test what is the max safe amount of updates
-        self._sbt_soul_transfer(recipient, 200)
+        self._sbt_soul_transfer(recipient, 25)
     }
 
     // execution of the sbt_soul_transfer in this function to parametrize `max_updates` in
@@ -1376,6 +1376,20 @@ mod tests {
 
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
         assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 4);
+    }  
+      
+    // sbt_ban
+    #[test]
+    fn sbt_soul_transfer_ban() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        assert!(!ctr.is_banned(alice()));
+
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        ctr.sbt_soul_transfer(alice2(), None);
+
         assert!(ctr.is_banned(alice()));
         assert!(!ctr.is_banned(alice2()));
     }
@@ -1491,5 +1505,95 @@ mod tests {
         // check all the balances afterwards
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 0);
         assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer2(), None), 100);
+    }
+      
+    #[test]
+    #[should_panic(expected = "caller banned: can't make soul transfer")]
+    fn sbt_soul_transfer_from_banned_account() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 1 * MINT_DEPOSIT);
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        assert!(!ctr.is_banned(alice()));
+
+        // ban the from account
+        ctr.banlist.insert(&alice());
+        assert!(ctr.is_banned(alice()));
+
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        ctr.sbt_soul_transfer(alice2(), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "`to` is banned")]
+    fn sbt_soul_transfer_to_banned_account() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 1 * MINT_DEPOSIT);
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        assert!(!ctr.is_banned(alice()));
+
+        // ban the reciver account
+        ctr.banlist.insert(&alice2());
+        assert!(ctr.is_banned(alice2()));
+
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        ctr.sbt_soul_transfer(alice2(), None);
+    }
+
+    #[test]
+    fn sbt_soul_transfer_ban_with_continuation() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 50 * MINT_DEPOSIT);
+        let batch_metadata = mk_batch_metadata(50);
+        ctr.sbt_mint(vec![(alice(), batch_metadata)]);
+        assert!(!ctr.is_banned(alice()));
+
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        // soul transfer
+        let result: (u32, bool) = ctr.sbt_soul_transfer(alice2(), None);
+        assert!(result.1 == false);
+
+        // assert the from account is banned after the first soul transfer execution
+        assert!(ctr.is_banned(alice()));
+        assert!(!ctr.is_banned(alice2()));
+
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_soul_transfer(alice2(), None);
+        let result: (u32, bool) = ctr.sbt_soul_transfer(alice2(), None);
+        assert!(result.1 == true);
+
+        // assert it stays banned after the soul transfer has been completed
+        assert!(ctr.is_banned(alice()));
+        assert!(!ctr.is_banned(alice2()));
+    }
+
+    #[test]
+    fn sbt_recover_ban() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        assert!(!ctr.is_banned(alice()));
+
+        ctx.predecessor_account_id = issuer1();
+        testing_env!(ctx.clone());
+        ctr.sbt_recover(alice(), alice2());
+        assert!(ctr.is_banned(alice()));
+        assert!(!ctr.is_banned(alice2()));
+    }
+
+    #[test]
+    #[should_panic(expected = "account alice.near is banned")]
+    fn sbt_mint_to_banned_account() {
+        let (_, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+        let m1_1 = mk_metadata(1, Some(START + 10));
+
+        //ban alice account
+        ctr.banlist.insert(&alice());
+        assert!(ctr.is_banned(alice()));
+
+        //try to mint to a banned account
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
     }
 }
