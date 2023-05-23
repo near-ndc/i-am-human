@@ -205,7 +205,7 @@ impl Contract {
     }
 
     // If it is the first iteration of the transfer, bans the source account, otherwise returns the last transfered token
-    fn get_transfer_with_continuation_info(
+    fn get_transfer_continuation(
         &mut self,
         from: &AccountId,
         to: &AccountId,
