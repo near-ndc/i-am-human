@@ -48,7 +48,7 @@ test("Should fail: mint sbt, oracle is not an issuer", async (t) => {
     { attachedDeposit: NEAR.parse("0.008 N").toString() },
     { gas: Gas.parse('20 Tgas') }).catch((error) => { console.log('Transaction error:', error);});
   t.deepEqual(mint_result, {Err: 'registry.sbt_mint failed'});
-  const is_used_identity = await claimer.call(oracle_contract, "is_used_identity", { 'external_id': external_id});
+  const is_used_identity = await oracle_contract.view("is_used_identity", { 'external_id': external_id});
   t.false(is_used_identity);
 });
 
@@ -62,7 +62,7 @@ test("Should pass: mint sbt, oracle is an issuer", async (t) => {
     { attachedDeposit: NEAR.parse("0.008 N").toString() },
     { gas: Gas.parse('20 Tgas') }).catch((error) => { console.log('Transaction error:', error);});
   t.not(mint_result, undefined);
-  const is_used_identity = await claimer.call(oracle_contract, "is_used_identity", { 'external_id': external_id});
+  const is_used_identity = await oracle_contract.view("is_used_identity", { 'external_id': external_id});
   t.true(is_used_identity);
 });
 
@@ -70,7 +70,7 @@ test("Should pass: mint sbt token and revoke (burn)", async (t) => {
   const { registry_contract, oracle_contract, admin, claimer } = t.context.accounts;
   const add_issuer_result = await admin.call(registry_contract, "admin_add_sbt_issuer", {'issuer': oracle_contract.accountId});
   t.is(add_issuer_result, true);
-  let supply_by_issuer = await oracle_contract.call(registry_contract, "sbt_supply", {'issuer': oracle_contract.accountId});
+  let supply_by_issuer = await registry_contract.view("sbt_supply", {'issuer': oracle_contract.accountId});
   t.assert(supply_by_issuer === 0);
   const mint_result =  await claimer.call(oracle_contract, "sbt_mint",
     { 'claim_b64': claim_b64,
@@ -78,11 +78,11 @@ test("Should pass: mint sbt token and revoke (burn)", async (t) => {
     { attachedDeposit: NEAR.parse("0.008 N").toString() },
     { gas: Gas.parse('20 Tgas') }).catch((error) => { console.log('Transaction error:', error);});
   t.not(mint_result, undefined);
-  const is_used_identity = await claimer.call(oracle_contract, "is_used_identity", { 'external_id': external_id});
+  const is_used_identity = await oracle_contract.view("is_used_identity", { 'external_id': external_id});
   t.true(is_used_identity);
-  supply_by_issuer = await oracle_contract.call(registry_contract, "sbt_supply", {'issuer': oracle_contract.accountId});
+  supply_by_issuer = await registry_contract.view("sbt_supply", {'issuer': oracle_contract.accountId});
   t.assert(supply_by_issuer === 1);
   await admin.call(oracle_contract, "sbt_revoke", {'tokens': [mint_result.Ok], 'burn': true}, { gas: Gas.parse('20 Tgas') });
-  supply_by_issuer = await oracle_contract.call(registry_contract, "sbt_supply", {'issuer': oracle_contract.accountId});
+  supply_by_issuer = await registry_contract.view("sbt_supply", {'issuer': oracle_contract.accountId});
   t.assert(supply_by_issuer === 0);
 })
