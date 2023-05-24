@@ -66,7 +66,7 @@ test("Should pass, oracle is an issuer", async (t) => {
   t.true(is_used_identity);
 });
 
-test("Should pass, mint sbt token and revoke (burn)", async (t) => {
+test("Should pass: mint sbt token and revoke (burn)", async (t) => {
   const { registry_contract, oracle_contract, admin, claimer } = t.context.accounts;
   const add_issuer_result = await admin.call(registry_contract, "admin_add_sbt_issuer", {'issuer': oracle_contract.accountId});
   t.is(add_issuer_result, true);
