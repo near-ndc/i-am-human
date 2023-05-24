@@ -1,7 +1,7 @@
 // TODO: remove allow unused_variables
 #![allow(unused_variables)]
 
-use std::{collections::HashMap, hash::Hash};
+use std::collections::HashMap;
 
 use near_sdk::{near_bindgen, AccountId};
 
