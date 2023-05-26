@@ -21,7 +21,8 @@ mod errors;
 mod storage;
 mod util;
 
-pub const CLASS: ClassId = 1;
+pub const CLASS_FV_SBT: ClassId = 1;
+pub const CLASS_KYC_SBT: ClassId = 2;
 
 // Total storage deposit cost
 pub const MINT_TOTAL_COST: Balance = MINT_COST + MILI_NEAR;
@@ -144,7 +145,7 @@ impl Contract {
         let now_ms = env::block_timestamp_ms();
         let mut tokens_metadata: Vec<TokenMetadata> = Vec::new();
         tokens_metadata.push(TokenMetadata {
-            class: CLASS,
+            class: CLASS_FV_SBT,
             issued_at: Some(now_ms),
             expires_at: Some(now_ms + self.sbt_ttl_ms),
             reference: None,
@@ -153,7 +154,7 @@ impl Contract {
         //KYC token to be minted. Class is set to `2` to differentiate the token
         if claim.verified_kyc {
             tokens_metadata.push(TokenMetadata {
-                class: CLASS,
+                class: CLASS_KYC_SBT,
                 issued_at: Some(now_ms),
                 expires_at: Some(now_ms + self.sbt_ttl_ms),
                 reference: None,
