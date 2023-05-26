@@ -22,6 +22,7 @@ mod storage;
 mod util;
 
 pub const CLASS: ClassId = 1;
+
 // Total storage deposit cost
 pub const MINT_TOTAL_COST: Balance = MINT_COST + MILI_NEAR;
 
@@ -141,13 +142,24 @@ impl Contract {
         }
 
         let now_ms = env::block_timestamp_ms();
-        let metadata = TokenMetadata {
+        let mut tokens_metadata: Vec<TokenMetadata> = Vec::new();
+        tokens_metadata.push(TokenMetadata {
             class: CLASS,
             issued_at: Some(now_ms),
             expires_at: Some(now_ms + self.sbt_ttl_ms),
             reference: None,
             reference_hash: None,
-        };
+        });
+        //KYC token to be minted. Class is set to `2` to differentiate the token
+        if claim.verified_kyc {
+            tokens_metadata.push(TokenMetadata {
+                class: CLASS,
+                issued_at: Some(now_ms),
+                expires_at: Some(now_ms + self.sbt_ttl_ms),
+                reference: None,
+                reference_hash: None,
+            });
+        }
 
         self.used_identities.insert(&external_id);
 
@@ -158,7 +170,7 @@ impl Contract {
         let result = ext_registry::ext(self.registry.clone())
             .with_attached_deposit(MINT_COST)
             .with_static_gas(MINT_GAS)
-            .sbt_mint(vec![(claim.claimer, vec![metadata])])
+            .sbt_mint(vec![(claim.claimer, tokens_metadata)])
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(Gas::ONE_TERA * 3)
@@ -361,6 +373,7 @@ mod tests {
             claimer: acc_claimer(),
             external_id: external_id.to_string(),
             timestamp,
+            verified_kyc: false,
         }
     }
 
