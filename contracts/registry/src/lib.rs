@@ -399,6 +399,11 @@ impl Contract {
         previous.is_none()
     }
 
+    pub fn change_admin(&mut self, new_admin: AccountId) {
+        self.assert_authority();
+        self.authority = new_admin;
+    }
+
     //
     // Internal
     //
