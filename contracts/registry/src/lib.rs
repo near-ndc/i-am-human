@@ -1356,7 +1356,7 @@ mod tests {
         // storage will grow so need to attach deposit.
         ctx.attached_deposit = MINT_DEPOSIT;
         testing_env!(ctx.clone());
-        let result = ctr.sbt_recover(alice(), bob());
+        ctr.sbt_recover(alice(), bob());
         assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer2(), None), 1);
     }
 
