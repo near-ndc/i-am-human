@@ -1,8 +1,12 @@
 import { Worker, NEAR, Gas } from "near-workspaces";
 import test from "ava";
 
-const claim_b64 = "EQAAAGNsYWltZXIudGVzdC5uZWFyBAAAADB4MWELAAAAAAAAAA=="; //base64 of Claim 
-const sig_b64 = "c1z1yG+nnatk47PcN4IN5mqM90YkVb6S/dzVE0IzWPRHMeBmEZAz39pZL5T5YLvLI9kTj4f/HymfLA/3F9GsCQ=="; //base64 of signature of Claim 
+const claim_b64 = "EQAAAGNsYWltZXIudGVzdC5uZWFyBAAAADB4MWELAAAAAAAAAAA="; //base64 of Claim 
+const sig_b64 = "6163iDaU8LNe+uiihqs+cwXQHd/wPwBcXBHiD02Bdp/Y/+/R8/Ev1kMwNZPRTKXb/q84zNy7eOdoljIM2i0nCw=="; //base64 of signature of Claim 
+
+const claim_b64_with_kyc = "EQAAAGNsYWltZXIudGVzdC5uZWFyBAAAADB4MWELAAAAAAAAAAE="; //base64 of Claim 
+const sig_b64_with_kyc = "jwjzUJYiIsCSsnxbNhV8zXrjY7UvWN4e3d9nQePJohbwYw7iaMen65zShn3DO7r1C+ZQv179KoJabduSxCbzDw=="; //base64 of signature of Claim 
+
 const external_id = "0x1a";
 
 test.beforeEach(async (t) => {
@@ -23,7 +27,7 @@ test.beforeEach(async (t) => {
   await oracle.deploy("../res/oracle_sbt.wasm");
   const sbtMetadata = {spec: "v1.0.0", name: "test-sbt", symbol: "SBT"};
   await oracle.call(oracle, "new", 
-   {'authority': "+9Yuc5NCUOhxLeW+HoXIhn7r5Qvo66+uTshO0losqVw", //base64 of authority pub key used for claim signature authorization
+   {'authority': "1npXqp38AmvmWL3ZkC4Y/Cts5yb3od7ZnHeQUxWWpDU=", //base64 of authority pub key used for claim signature authorization
     'metadata': sbtMetadata,
     'registry': registry.accountId,
     'claim_ttl': 100000000000,
@@ -89,4 +93,20 @@ test("Should pass: mint sbt token and revoke (burn)", async (t) => {
 
 test("Should pass: mint sbt token and kyc token", async (t) => {
   //TODO: add integration test when verified_kyc == true
+  const { registry_contract, oracle_contract, admin, claimer } = t.context.accounts;
+  const add_issuer_result = await admin.call(registry_contract, "admin_add_sbt_issuer", {'issuer': oracle_contract.accountId});
+  t.is(add_issuer_result, true);
+  let supply_by_issuer = await registry_contract.view("sbt_supply", {'issuer': oracle_contract.accountId});
+  t.assert(supply_by_issuer === 0);
+  const mint_result =  await claimer.call(oracle_contract, "sbt_mint",
+    { 'claim_b64': claim_b64_with_kyc,
+      'claim_sig' : sig_b64_with_kyc },
+    { attachedDeposit: NEAR.parse("0.015 N").toString() },
+    { gas: Gas.parse('20 Tgas') }).catch((error) => { console.log('Transaction error:', error);});
+  t.not(mint_result, undefined);
+  console.log("mint result",mint_result.Ok);
+  const is_used_identity = await oracle_contract.view("is_used_identity", { 'external_id': external_id});
+  t.true(is_used_identity);
+  supply_by_issuer = await registry_contract.view("sbt_supply", {'issuer': oracle_contract.accountId});
+  t.assert(supply_by_issuer === 2);
 })

@@ -24,8 +24,10 @@ mod util;
 pub const CLASS_FV_SBT: ClassId = 1;
 pub const CLASS_KYC_SBT: ClassId = 2;
 
-// Total storage deposit cost
+// Total storage deposit cost without KYC
 pub const MINT_TOTAL_COST: Balance = MINT_COST + MILI_NEAR;
+
+pub const MINT_TOTAL_COST_WITH_KYC: Balance = 2 * MINT_COST + MILI_NEAR;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -116,7 +118,7 @@ impl Contract {
 
         if claim.verified_kyc {
             require!(
-                env::attached_deposit() == MINT_TOTAL_COST + MINT_COST,
+                env::attached_deposit() == MINT_TOTAL_COST_WITH_KYC,
                 "Requires attached deposit of exactly 0.015 NEAR"
             );
         } else {
@@ -158,6 +160,7 @@ impl Contract {
             reference: None,
             reference_hash: None,
         });
+        let mut mint_cost = MINT_COST;
         //KYC token to be minted. Class is set to `2` to differentiate the token
         if claim.verified_kyc {
             tokens_metadata.push(TokenMetadata {
@@ -167,6 +170,7 @@ impl Contract {
                 reference: None,
                 reference_hash: None,
             });
+            mint_cost += MINT_COST;
         }
 
         self.used_identities.insert(&external_id);
@@ -176,7 +180,7 @@ impl Contract {
         }
 
         let result = ext_registry::ext(self.registry.clone())
-            .with_attached_deposit(MINT_COST)
+            .with_attached_deposit(mint_cost)
             .with_static_gas(MINT_GAS)
             .sbt_mint(vec![(claim.claimer, tokens_metadata)])
             .then(
@@ -392,12 +396,12 @@ mod tests {
     }
 
     /// @timestamp: in seconds
-    fn mk_claim(timestamp: u64, external_id: &str) -> Claim {
+    fn mk_claim(timestamp: u64, external_id: &str, is_verified_kyc: bool) -> Claim {
         Claim {
             claimer: acc_claimer(),
             external_id: external_id.to_string(),
             timestamp,
-            verified_kyc: false,
+            verified_kyc: is_verified_kyc,
         }
     }
 
@@ -409,8 +413,13 @@ mod tests {
         (b64_encode(c_bz), b64_encode(sig_bz.to_vec()))
     }
 
-    fn mk_claim_sign(timestamp: u64, external_id: &str, k: &Keypair) -> (Claim, String, String) {
-        let c = mk_claim(timestamp, external_id);
+    fn mk_claim_sign(
+        timestamp: u64,
+        external_id: &str,
+        k: &Keypair,
+        is_verified_kyc: bool,
+    ) -> (Claim, String, String) {
+        let c = mk_claim(timestamp, external_id, is_verified_kyc);
         let (c_str, sig) = sign_claim(&c, &k);
         return (c, c_str, sig);
     }
@@ -439,7 +448,22 @@ mod tests {
         // fail: not enough storage deposit
         ctx.attached_deposit = MINT_TOTAL_COST - 1;
         testing_env!(ctx);
-        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k);
+        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, false);
+        let _ = ctr
+            .sbt_mint(c_str.clone(), sig.clone(), None)
+            .expect("must panic");
+    }
+
+    #[test]
+    #[should_panic(expected = "Requires attached deposit of exactly 0.015 NEAR")]
+    fn mint_with_kyc_not_enough_storage_deposit() {
+        let signer = acc_claimer();
+        let (mut ctx, mut ctr, k) = setup(&signer, &acc_u1());
+
+        // fail: not enough storage deposit
+        ctx.attached_deposit = MINT_TOTAL_COST_WITH_KYC - 1;
+        testing_env!(ctx);
+        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, true);
         let _ = ctr
             .sbt_mint(c_str.clone(), sig.clone(), None)
             .expect("must panic");
@@ -453,7 +477,7 @@ mod tests {
         // fail: tx signer is not claimer
         ctx.signer_account_id = acc_u1();
         testing_env!(ctx.clone());
-        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k);
+        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, false);
         match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
             Err(CtrError::BadRequest(s)) => assert_eq!(s, "claimer is not the transaction signer"),
 
@@ -518,7 +542,7 @@ mod tests {
     fn test_pubkey_sig() {
         let mut csprng = OsRng {};
         let k = Keypair::generate(&mut csprng);
-        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x12", &k);
+        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x12", &k, false);
         let claim_bytes = b64_decode("claim_b64", c_str).unwrap();
         let res = verify_claim(
             &k.public.to_bytes(),
@@ -530,7 +554,7 @@ mod tests {
 
     #[test]
     fn claim_serialization() {
-        let c = mk_claim(1677621259142, "some_111#$!");
+        let c = mk_claim(1677621259142, "some_111#$!", false);
         let claim_bz = c.try_to_vec().unwrap();
         let claim_str = b64_encode(claim_bz);
         let claim2 = checks::tests::deserialize_claim(&claim_str);
