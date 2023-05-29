@@ -108,16 +108,23 @@ impl Contract {
         claim_sig: String,
         memo: Option<String>,
     ) -> Result<Promise, CtrError> {
-        require!(
-            env::attached_deposit() == MINT_TOTAL_COST,
-            "Requires attached deposit of exactly 0.008 NEAR"
-        );
-
         let sig = b64_decode("claim_sig", claim_sig)?;
         let claim_bytes = b64_decode("claim_b64", claim_b64)?;
         // let claim = Claim::deserialize(&mut &claim_bytes[..])
         let claim = Claim::try_from_slice(&claim_bytes)
             .map_err(|_| CtrError::Borsh("claim".to_string()))?;
+
+        if claim.verified_kyc {
+            require!(
+                env::attached_deposit() == MINT_TOTAL_COST + MINT_COST,
+                "Requires attached deposit of exactly 0.015 NEAR"
+            );
+        } else {
+            require!(
+                env::attached_deposit() == MINT_TOTAL_COST,
+                "Requires attached deposit of exactly 0.008 NEAR"
+            );
+        }
 
         verify_claim(&self.authority_pubkey, claim_bytes, sig)?;
 

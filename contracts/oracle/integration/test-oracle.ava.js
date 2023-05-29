@@ -86,3 +86,7 @@ test("Should pass: mint sbt token and revoke (burn)", async (t) => {
   supply_by_issuer = await registry_contract.view("sbt_supply", {'issuer': oracle_contract.accountId});
   t.assert(supply_by_issuer === 0);
 })
+
+test("Should pass: mint sbt token and kyc token", async (t) => {
+  //TODO: add integration test when verified_kyc == true
+})
