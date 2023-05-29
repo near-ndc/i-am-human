@@ -211,6 +211,15 @@ impl Contract {
         }
     }
 
+    // Revokes the provided token list from the registry.
+    // Must be called by an admin
+    pub fn sbt_revoke(&mut self, tokens: Vec<TokenId>, burn: bool) -> Promise {
+        self.assert_admin();
+        ext_registry::ext(self.registry.clone())
+            .with_static_gas(MINT_GAS)
+            .sbt_revoke(tokens, burn)
+    }
+
     /**********
      * ADMIN
      **********/

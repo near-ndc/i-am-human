@@ -1385,6 +1385,7 @@ mod tests {
         assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 4);
     }
 
+    #[test]
     fn sbt_revoke() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
 
