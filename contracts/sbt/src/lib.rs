@@ -125,7 +125,7 @@ pub trait SBTRegistry {
     /// Must be called by an SBT contract.
     /// Must emit `Revoke` event.
     /// Must also emit `Burn` event if the SBT tokens are burned (removed).
-    fn sbt_revoke(&mut self, token: Vec<TokenId>, burn: bool);
+    fn sbt_revoke(&mut self, tokens: Vec<TokenId>, burn: bool);
 }
 
 // ext_registry is a helper to make cross contract registry calls
@@ -133,4 +133,5 @@ pub trait SBTRegistry {
 trait ExtRegistry {
     fn sbt_mint(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>;
     fn sbt_renew(&mut self, tokens: Vec<TokenId>, expires_at: u64);
+    fn sbt_revoke(&mut self, tokens: Vec<TokenId>, burn: bool);
 }
