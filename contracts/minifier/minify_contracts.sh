@@ -2,7 +2,6 @@
 pushd ..
 make build
 popd
-
 mkdir -p ./res-min/base/
 cp ../res/* ./res-min/base/
 
