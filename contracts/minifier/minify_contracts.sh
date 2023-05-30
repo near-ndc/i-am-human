@@ -2,13 +2,10 @@
 pushd ..
 make build
 popd
-mkdir -p ./out/base/
-cp ../res/* ./out/base/
-#for p in /work/near/core-contracts/*/res/*.wasm ; do
-#  cp $p ./out/base/
-# done
+mkdir -p ./res-min/base/
+cp ../res/* ./res-min/base/
 
-cd out
+cd res-min
 for p in ./base/*.wasm ; do
   w=$(basename -- $p)
   ../minify.sh $p
