@@ -287,7 +287,7 @@ impl Contract {
         if is_verified_kyc {
             return MINT_TOTAL_COST;
         };
-        MINT_TOTAL_COST + MINT_COST
+        MINT_TOTAL_COST_WITH_KYC
     }
 
     // TODO:
