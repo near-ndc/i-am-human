@@ -27,9 +27,8 @@ work in progress:
 
 - **SBT registry**: `registry-1.i-am-human.testnet`
 - **Demo SBT Issuer**: `sbt1.i-am-human.testnet` (the `demo_issuer` contract)
-- **Oracle**: `i-am-human-staging.testnet` (the `oracle` contract)
-  - `authority`: "zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="
-  - `claim_ttl`: 3600
+- **Fractal Issuer**: `i-am-human-staging.testnet` (the `oracle` contract).
+  Verification pubkey base64: `zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E=`, `claim_ttl`: 3600ms
 - **Community-SBT**: `community-sbt-2.i-am-human.testnet`
 
 Deprecated:

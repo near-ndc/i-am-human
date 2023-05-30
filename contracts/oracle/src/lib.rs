@@ -87,10 +87,21 @@ impl Contract {
      * QUERIES
      **********/
 
-    // all SBT queries should be done through registry
+    /// Checks if the given id was already used to mint an sbt
+    pub fn is_used_identity(&self, external_id: String) -> bool {
+        let normalised_id = normalize_external_id(external_id).expect("failed to normalize id");
+        self.used_identities.contains(&normalised_id)
+    }
 
-    /*********************
-     * NFT compatibility */
+    #[inline]
+    pub fn get_required_sbt_mint_deposit(is_verified_kyc: bool) -> Balance {
+        if is_verified_kyc {
+            return MINT_TOTAL_COST_WITH_KYC;
+        };
+        MINT_TOTAL_COST
+    }
+
+    // all SBT queries should be done through registry
 
     /**********
      * FUNCTIONS
@@ -159,7 +170,6 @@ impl Contract {
             reference: None,
             reference_hash: None,
         });
-        let mut mint_cost = MINT_COST;
         //KYC token to be minted. Class is set to `2` to differentiate the token
         if claim.verified_kyc {
             tokens_metadata.push(TokenMetadata {
@@ -169,7 +179,6 @@ impl Contract {
                 reference: None,
                 reference_hash: None,
             });
-            mint_cost = MINT_TOTAL_COST_WITH_KYC;
         }
 
         self.used_identities.insert(&external_id);
@@ -179,7 +188,7 @@ impl Contract {
         }
 
         let result = ext_registry::ext(self.registry.clone())
-            .with_attached_deposit(mint_cost)
+            .with_attached_deposit(Self::get_required_sbt_mint_deposit(claim.verified_kyc))
             .with_static_gas(MINT_GAS)
             .sbt_mint(vec![(claim.claimer, tokens_metadata)])
             .then(
@@ -275,19 +284,6 @@ impl Contract {
             self.admins.contains(&env::predecessor_account_id()),
             "not an admin"
         );
-    }
-    /// Checks if the given id was already used to mint an sbt
-    pub fn is_used_identity(&self, external_id: String) -> bool {
-        let normalised_id = normalize_external_id(external_id).expect("failed to normalize id");
-        self.used_identities.contains(&normalised_id)
-    }
-
-    #[inline]
-    pub fn get_required_sbt_mint_deposit(is_verified_kyc: bool) -> Balance {
-        if is_verified_kyc {
-            return MINT_TOTAL_COST;
-        };
-        MINT_TOTAL_COST_WITH_KYC
     }
 
     // TODO:
