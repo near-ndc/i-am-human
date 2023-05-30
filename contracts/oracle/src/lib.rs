@@ -26,7 +26,6 @@ pub const CLASS_KYC_SBT: ClassId = 2;
 
 // Total storage deposit cost without KYC
 pub const MINT_TOTAL_COST: Balance = MINT_COST + MILI_NEAR;
-
 pub const MINT_TOTAL_COST_WITH_KYC: Balance = 2 * MINT_COST + MILI_NEAR;
 
 #[near_bindgen]
