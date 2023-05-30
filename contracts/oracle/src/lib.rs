@@ -169,7 +169,7 @@ impl Contract {
                 reference: None,
                 reference_hash: None,
             });
-            mint_cost += MINT_COST;
+            mint_cost = MINT_TOTAL_COST_WITH_KYC;
         }
 
         self.used_identities.insert(&external_id);
