@@ -282,6 +282,7 @@ impl Contract {
         self.used_identities.contains(&normalised_id)
     }
 
+    [#inline]
     pub fn get_required_sbt_mint_deposit(is_verified_kyc: bool) -> Balance {
         if is_verified_kyc {
             return MINT_TOTAL_COST;
