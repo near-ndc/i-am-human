@@ -19,3 +19,4 @@ sbt = { path = "../sbt" }
 
 [dev-dependencies]
 rand = "^0.7"
+near-primitives = "^0.16.1"

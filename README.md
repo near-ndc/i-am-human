@@ -27,11 +27,13 @@ work in progress:
 
 - **SBT registry**: `registry-1.i-am-human.testnet`
 - **Demo SBT Issuer**: `sbt1.i-am-human.testnet` (the `demo_issuer` contract)
-- **GoodDollar-SBT**: `gooddollar-v1.i-am-human.testnet` (the `oracle` contract)
-  verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
+- **Oracle**: `i-am-human-staging.testnet` (the `oracle` contract)
+  - `authority`: "zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="
+  - `claim_ttl`: 3600
 - **Community-SBT**: `community-sbt-2.i-am-human.testnet`
 
 Deprecated:
 
 - `registry.i-am-human.testnet`
 - OG SBT: `og-sbt-1.i-am-human.testnet`
+- GoodDollar SBT: `gooddollar-v1.i-am-human.testnet`

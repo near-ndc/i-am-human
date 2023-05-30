@@ -15,6 +15,8 @@ pub struct Claim {
     pub external_id: String,
     /// unix time (seconds) when the claim was signed
     pub timestamp: u64,
+    /// indicates whether the user has passed a KYC or not
+    pub verified_kyc: bool,
 }
 
 pub(crate) fn normalize_external_id(id: String) -> Result<Vec<u8>, CtrError> {
