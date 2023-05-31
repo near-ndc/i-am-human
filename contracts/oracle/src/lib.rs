@@ -121,9 +121,9 @@ impl Contract {
         memo: Option<String>,
     ) -> Result<Promise, CtrError> {
         let user = env::signer_account_id();
-        if user.as_ref().chars().filter(|c| *c == '.').count() != 1 {
+        if !is_supported_account(user.as_ref().chars()) {
             return Err(CtrError::BadRequest(
-                "only root accounts are allowed to get SBT".to_owned(),
+                "only root and implicit accounts are allowed to get SBT".to_owned(),
             ));
         }
 
@@ -360,6 +360,19 @@ mod tests {
         "admin".parse().unwrap()
     }
 
+    fn acc_implicit() -> AccountId {
+        "061b1dd17603213b00e1a1e53ba060ad427cef4887bd34a5e0ef09010af23b0a"
+            .parse()
+            .unwrap()
+    }
+
+    // wrong implicit account
+    fn acc_bad_implicit() -> AccountId {
+        "061b1dd17603213b00e1a1e53ba060ad427cef4887bd34a5e0ef09010af23b0"
+            .parse()
+            .unwrap()
+    }
+
     fn start() -> u64 {
         11 * SECOND
     }
@@ -491,21 +504,42 @@ mod tests {
         let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, false);
         assert_bad_request(
             ctr.sbt_mint(c_str.clone(), sig.clone(), None),
-            "only root accounts are allowed to get SBT",
+            "only root and implicit accounts are allowed to get SBT",
         );
 
         ctx.signer_account_id = "sub.user1.near".parse().unwrap();
         testing_env!(ctx.clone());
         assert_bad_request(
             ctr.sbt_mint(c_str.clone(), sig.clone(), None),
-            "only root accounts are allowed to get SBT",
+            "only root and implicit accounts are allowed to get SBT",
         );
 
         ctx.signer_account_id = "sub.sub.user1.near".parse().unwrap();
         testing_env!(ctx.clone());
         assert_bad_request(
             ctr.sbt_mint(c_str.clone(), sig.clone(), None),
-            "only root accounts are allowed to get SBT",
+            "only root and implicit accounts are allowed to get SBT",
+        );
+
+        ctx.signer_account_id = "a123".parse().unwrap();
+        testing_env!(ctx.clone());
+        assert_bad_request(
+            ctr.sbt_mint(c_str.clone(), sig.clone(), None),
+            "only root and implicit accounts are allowed to get SBT",
+        );
+
+        ctx.signer_account_id = acc_bad_implicit();
+        testing_env!(ctx.clone());
+        assert_bad_request(
+            ctr.sbt_mint(c_str.clone(), sig.clone(), None),
+            "only root and implicit accounts are allowed to get SBT",
+        );
+
+        ctx.signer_account_id = acc_implicit();
+        testing_env!(ctx.clone());
+        assert_bad_request(
+            ctr.sbt_mint(c_str.clone(), sig.clone(), None),
+            "claimer is not the transaction signer",
         );
     }
 
