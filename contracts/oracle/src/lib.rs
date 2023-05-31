@@ -120,6 +120,13 @@ impl Contract {
         claim_sig: String,
         memo: Option<String>,
     ) -> Result<Promise, CtrError> {
+        let user = env::signer_account_id();
+        if user.as_ref().chars().filter(|c| *c == '.').count() != 1 {
+            return Err(CtrError::BadRequest(
+                "only root accounts are allowed to get SBT".to_owned(),
+            ));
+        }
+
         let sig = b64_decode("claim_sig", claim_sig)?;
         let claim_bytes = b64_decode("claim_b64", claim_b64)?;
         // let claim = Claim::deserialize(&mut &claim_bytes[..])
@@ -150,7 +157,7 @@ impl Contract {
             return Err(CtrError::BadRequest("claim expired".to_string()));
         }
 
-        if claim.claimer != env::signer_account_id() {
+        if claim.claimer != user {
             return Err(CtrError::BadRequest(
                 "claimer is not the transaction signer".to_string(),
             ));
@@ -420,6 +427,16 @@ mod tests {
         return (c, c_str, sig);
     }
 
+    fn assert_bad_request(resp: Result<Promise, CtrError>, expected_msg: &str) {
+        match resp {
+            Err(CtrError::BadRequest(s)) => {
+                assert_eq!(s, expected_msg)
+            }
+            Err(error) => panic!("expected BadRequest, got: {:?}", error),
+            Ok(_) => panic!("expected BadRequest, got: Ok"),
+        }
+    }
+
     // TODO: find out how to test out of gas.
     /*
     #[test]
@@ -463,6 +480,33 @@ mod tests {
         let _ = ctr
             .sbt_mint(c_str.clone(), sig.clone(), None)
             .expect("must panic");
+    }
+
+    #[test]
+    fn mint_no_root_account() {
+        let signer: AccountId = "user1".parse().unwrap();
+        let predecessor: AccountId = "some.other".parse().unwrap();
+        let (mut ctx, mut ctr, k) = setup(&signer, &predecessor);
+
+        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, false);
+        assert_bad_request(
+            ctr.sbt_mint(c_str.clone(), sig.clone(), None),
+            "only root accounts are allowed to get SBT",
+        );
+
+        ctx.signer_account_id = "sub.user1.near".parse().unwrap();
+        testing_env!(ctx.clone());
+        assert_bad_request(
+            ctr.sbt_mint(c_str.clone(), sig.clone(), None),
+            "only root accounts are allowed to get SBT",
+        );
+
+        ctx.signer_account_id = "sub.sub.user1.near".parse().unwrap();
+        testing_env!(ctx.clone());
+        assert_bad_request(
+            ctr.sbt_mint(c_str.clone(), sig.clone(), None),
+            "only root accounts are allowed to get SBT",
+        );
     }
 
     #[test]
