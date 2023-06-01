@@ -1,3 +1,5 @@
+use std::str::Chars;
+
 use ed25519_dalek::PUBLIC_KEY_LENGTH;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::{base64, AccountId};
@@ -34,6 +36,28 @@ pub fn b64_decode(arg: &str, data: String) -> CtrResult<Vec<u8>> {
 pub fn pubkey_from_b64(pubkey: String) -> [u8; PUBLIC_KEY_LENGTH] {
     let pk_bz = base64::decode(pubkey).expect("authority_pubkey is not a valid standard base64");
     pk_bz.try_into().expect("authority pubkey must be 32 bytes")
+}
+
+/// only root accounts and implicit accounts are supported
+pub(crate) fn is_supported_account(account: Chars) -> bool {
+    let mut num_dots = 0;
+    let mut len = 0;
+    let mut all_hex = true;
+    for c in account {
+        len += 1;
+        if c == '.' {
+            num_dots += 1;
+        }
+        all_hex = all_hex && c.is_ascii_hexdigit();
+    }
+    if num_dots == 1 {
+        return true;
+    }
+    // check if implicit account
+    if num_dots == 0 && len == 64 && all_hex {
+        return true;
+    }
+    false
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
