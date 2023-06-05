@@ -14,3 +14,11 @@ pub fn renew_gas(num_tokens: usize) -> Gas {
     // 2tera + num_tokens * 0.2tera * num_tokens
     Gas(2 * Gas::ONE_TERA.0 + num_tokens as u64 * 200_000_000_000)
 }
+
+pub fn mint_gas(num_tokens: usize) -> Balance {
+    (num_tokens as u128 + 1) * MINT_COST
+}
+
+pub fn mint_deposit(num_tokens: usize) -> Balance {
+    num_tokens as u128 * MINT_COST
+}

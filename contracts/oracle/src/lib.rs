@@ -133,17 +133,12 @@ impl Contract {
         let claim = Claim::try_from_slice(&claim_bytes)
             .map_err(|_| CtrError::Borsh("claim".to_string()))?;
 
-        if claim.verified_kyc {
-            require!(
-                env::attached_deposit() == MINT_TOTAL_COST_WITH_KYC,
-                "Requires attached deposit of exactly 0.015 NEAR"
-            );
-        } else {
-            require!(
-                env::attached_deposit() == MINT_TOTAL_COST,
-                "Requires attached deposit of exactly 0.008 NEAR"
-            );
-        }
+        let storage_deposit = Self::get_required_sbt_mint_deposit(claim.verified_kyc);
+        require!(
+            env::attached_deposit() >= storage_deposit,
+            format!("Requires attached deposit at least {}", storage_deposit)
+        );
+        let num_tokens = if claim.verified_kyc { 2 } else { 1 };
 
         verify_claim(&self.authority_pubkey, claim_bytes, sig)?;
 
@@ -195,8 +190,8 @@ impl Contract {
         }
 
         let result = ext_registry::ext(self.registry.clone())
-            .with_attached_deposit(Self::get_required_sbt_mint_deposit(claim.verified_kyc))
-            .with_static_gas(MINT_GAS)
+            .with_attached_deposit(storage_deposit)
+            .with_static_gas(mint_gas(num_tokens))
             .sbt_mint(vec![(claim.claimer, tokens_metadata)])
             .then(
                 Self::ext(env::current_account_id())

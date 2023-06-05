@@ -32,7 +32,10 @@ pub mod tests {
 
     #[test]
     fn claim_deserialization_check() {
-        let c = deserialize_claim("CgAAAGFsaWNlLm5lYXIqAAAAMHhiNGJmMGYyM2M3MDJlZmI4YTlkYTg3YTk0MDk1ZTI4ZGUzZDIxY2MzAAAAAAAAAAAA");
+        let c = deserialize_claim(
+            "CwAAAHJvYmVydC5uZWFyIAAAAGRmMWMyYjIzOTAxZDQxN2M4NTY4MGEyN2ZlYmUzMjA2RQp6ZAAAAAAA",
+        );
+        println!("claim: {:?}", c);
         assert_eq!(
             c.external_id, "0xb4bf0f23c702efb8a9da87a94095e28de3d21cc3",
             "deserialization check"
