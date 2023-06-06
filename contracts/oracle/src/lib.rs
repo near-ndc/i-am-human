@@ -76,7 +76,7 @@ impl Contract {
             registry,
             metadata: LazyOption::new(StorageKey::ContractMetadata, Some(&metadata)),
             claim_ttl,
-            sbt_ttl_ms: 1000 * 3600 * 24 * 365, // 1year in ms
+            sbt_ttl_ms: 1000 * 3600 * 24 * 548, // 1.5years in ms
             authority_pubkey: pubkey_from_b64(authority),
             used_identities: UnorderedSet::new(StorageKey::UsedIdentities),
             admins,
