@@ -186,7 +186,7 @@ impl Contract {
         &mut self,
         owner: &AccountId,
         recipient: &AccountId,
-        ban_from_account: bool,
+        ban_owner: bool,
     ) -> IssuerTokenId {
         require!(
             !self._is_banned(recipient),
