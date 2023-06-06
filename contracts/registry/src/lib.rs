@@ -233,7 +233,7 @@ impl Contract {
         let issuer = env::predecessor_account_id();
         let issuer_id = self.assert_issuer(&issuer);
         self.assert_not_banned(&to);
-        // get the last transfered token
+        // get the last transfered token and don't ban the owner.
         let (resumed, start) = self.get_transfer_continuation(&from, &to, false);
 
         let mut tokens_recovered = 0;
