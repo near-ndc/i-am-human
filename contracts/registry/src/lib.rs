@@ -213,7 +213,7 @@ impl Contract {
         &mut self,
         from: &AccountId,
         to: &AccountId,
-        ban_from_account: bool,
+        ban_owner: bool,
     ) -> (bool, IssuerTokenId) {
         match self.ongoing_soul_tx.get(from) {
             // starting the process
