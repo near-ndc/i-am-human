@@ -209,7 +209,7 @@ impl Contract {
     }
 
     // If it is the first iteration of the soul transfer, bans the source account, otherwise returns the last transfered token
-    fn get_transfer_continuation(
+    fn transfer_continuation(
         &mut self,
         from: &AccountId,
         to: &AccountId,
