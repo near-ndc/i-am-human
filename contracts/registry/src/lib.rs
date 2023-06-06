@@ -104,7 +104,7 @@ impl Contract {
     pub(crate) fn _sbt_soul_transfer(&mut self, recipient: AccountId, limit: usize) -> (u32, bool) {
         let owner = env::predecessor_account_id();
 
-        let (resumed, start) = self.get_transfer_continuation(&owner, &recipient, true);
+        let (resumed, start) = self.transfer_continuation(&owner, &recipient, true);
 
         let batch: Vec<(BalanceKey, TokenId)> = self
             .balances
@@ -192,7 +192,7 @@ impl Contract {
             !self._is_banned(recipient),
             "receiver account is banned. Cannot start the transfer"
         );
-        if ban_from_account {
+        if ban_owner {
             // we only ban the source account in the soul transfer
             // insert into banlist and assure the owner is not already banned.
             require!(
@@ -219,7 +219,7 @@ impl Contract {
             // starting the process
             None => (
                 false,
-                self.start_transfer_with_continuation(from, to, ban_from_account),
+                self.start_transfer_with_continuation(from, to, ban_owner),
             ),
             // resuming sbt_recover process
             Some(s) => (true, s),
@@ -234,7 +234,7 @@ impl Contract {
         let issuer_id = self.assert_issuer(&issuer);
         self.assert_not_banned(&to);
         // get the last transfered token and don't ban the owner.
-        let (resumed, start) = self.get_transfer_continuation(&from, &to, false);
+        let (resumed, start) = self.transfer_continuation(&from, &to, false);
 
         let mut tokens_recovered = 0;
         let mut class_ids = Vec::new();
