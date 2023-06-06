@@ -294,7 +294,6 @@ impl SBTRegistry for Contract {
     }
 
     /// sbt_recover reassigns all tokens issued by the caller, from the old owner to a new owner.
-    /// + Adds `old_owner` to a banned accounts list.
     /// + Must be called by a valid SBT issuer.
     /// + Must emit `Recover` event once all the tokens have been recovered.
     /// + Requires attaching enough tokens to cover the storage growth.

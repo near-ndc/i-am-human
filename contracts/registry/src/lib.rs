@@ -104,7 +104,7 @@ impl Contract {
     pub(crate) fn _sbt_soul_transfer(&mut self, recipient: AccountId, limit: usize) -> (u32, bool) {
         let owner = env::predecessor_account_id();
 
-        let (resumed, start) = self.get_transfer_continuation(&owner, &recipient);
+        let (resumed, start) = self.transfer_continuation(&owner, &recipient, true);
 
         let batch: Vec<(BalanceKey, TokenId)> = self
             .balances
@@ -186,17 +186,21 @@ impl Contract {
         &mut self,
         owner: &AccountId,
         recipient: &AccountId,
+        ban_owner: bool,
     ) -> IssuerTokenId {
         require!(
             !self._is_banned(recipient),
             "receiver account is banned. Cannot start the transfer"
         );
-        // insert into banlist and assure the owner is not already banned.
-        require!(
-            self.banlist.insert(owner),
-            "from account is banned. Cannot start the transfer"
-        );
-        Nep393Event::Ban(vec![owner]).emit();
+        if ban_owner {
+            // we only ban the source account in the soul transfer
+            // insert into banlist and assure the owner is not already banned.
+            require!(
+                self.banlist.insert(owner),
+                "from account is banned. Cannot start the transfer"
+            );
+            Nep393Event::Ban(vec![owner]).emit();
+        }
 
         IssuerTokenId {
             issuer_id: 0,
@@ -204,15 +208,19 @@ impl Contract {
         }
     }
 
-    // If it is the first iteration of the transfer, bans the source account, otherwise returns the last transfered token
-    fn get_transfer_continuation(
+    // If it is the first iteration of the soul transfer, bans the source account, otherwise returns the last transfered token
+    fn transfer_continuation(
         &mut self,
         from: &AccountId,
         to: &AccountId,
+        ban_owner: bool,
     ) -> (bool, IssuerTokenId) {
         match self.ongoing_soul_tx.get(from) {
             // starting the process
-            None => (false, self.start_transfer_with_continuation(from, to)),
+            None => (
+                false,
+                self.start_transfer_with_continuation(from, to, ban_owner),
+            ),
             // resuming sbt_recover process
             Some(s) => (true, s),
         }
@@ -225,8 +233,8 @@ impl Contract {
         let issuer = env::predecessor_account_id();
         let issuer_id = self.assert_issuer(&issuer);
         self.assert_not_banned(&to);
-        // if first execution ban the source account, othwerwise get the last transfered token
-        let (resumed, start) = self.get_transfer_continuation(&from, &to);
+        // get the last transfered token and don't ban the owner.
+        let (resumed, start) = self.transfer_continuation(&from, &to, false);
 
         let mut tokens_recovered = 0;
         let mut class_ids = Vec::new();
@@ -1278,9 +1286,9 @@ mod tests {
                 bob()
             ),
         );
-        assert_eq!(test_utils::get_logs().len(), 3);
-        assert_eq!(test_utils::get_logs()[2], recover_log[0]);
-        assert!(ctr.is_banned(alice()));
+        assert_eq!(test_utils::get_logs().len(), 2);
+        assert_eq!(test_utils::get_logs()[1], recover_log[0]);
+        assert!(!ctr.is_banned(alice()));
         assert!(!ctr.is_banned(bob()));
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
         assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer1(), None), 2);
@@ -1327,18 +1335,23 @@ mod tests {
     fn sbt_recover_growing_storage_desposit_fail() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
         let m1_1 = mk_metadata(1, Some(START + 10));
+        let m1_2 = mk_metadata(2, Some(START + 10));
+        let m1_3 = mk_metadata(3, Some(START + 10));
         ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 1);
 
         ctx.predecessor_account_id = issuer2();
         testing_env!(ctx.clone());
-        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
-        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 1);
+        ctr.sbt_mint(vec![(
+            alice(),
+            vec![m1_1.clone(), m1_2.clone(), m1_3.clone()],
+        )]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 3);
 
-        //set attached deposit to zero, should fails since the storage grows and we do not cover it
+        //set attached deposit to zero, should fail since the storage grows and we do not cover it
         ctx.attached_deposit = 0;
         testing_env!(ctx.clone());
-        ctr.sbt_recover(alice(), bob());
+        ctr._sbt_recover(alice(), bob(), 1);
     }
 
     #[test]
@@ -1376,10 +1389,10 @@ mod tests {
         let mut result = ctr._sbt_recover(alice(), alice2(), 3);
         assert_eq!((3, false), result);
         assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 3);
-        assert!(test_utils::get_logs().len() == 2);
+        assert!(test_utils::get_logs().len() == 1);
         result = ctr._sbt_recover(alice(), alice2(), 3);
         assert_eq!((1, true), result);
-        assert!(test_utils::get_logs().len() == 3);
+        assert!(test_utils::get_logs().len() == 2);
 
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
         assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 4);
@@ -1720,7 +1733,8 @@ mod tests {
         ctx.predecessor_account_id = issuer1();
         testing_env!(ctx.clone());
         ctr.sbt_recover(alice(), alice2());
-        assert!(ctr.is_banned(alice()));
+        // sbt_recover should not ban the source account
+        assert!(!ctr.is_banned(alice()));
         assert!(!ctr.is_banned(alice2()));
     }
 
