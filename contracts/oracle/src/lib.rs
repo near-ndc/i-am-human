@@ -4,6 +4,7 @@ use near_sdk::collections::{LazyOption, UnorderedSet};
 use near_sdk::serde::Serialize;
 use near_sdk::{
     env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
+    ONE_YOCTO,
 };
 
 use cost::*;
@@ -136,7 +137,10 @@ impl Contract {
         let storage_deposit = Self::get_required_sbt_mint_deposit(claim.verified_kyc);
         require!(
             env::attached_deposit() >= storage_deposit,
-            format!("Requires attached deposit at least {}", storage_deposit)
+            format!(
+                "Requires attached deposit at least {} yoctoNEAR",
+                storage_deposit
+            )
         );
         let num_tokens = if claim.verified_kyc { 2 } else { 1 };
 
@@ -191,7 +195,7 @@ impl Contract {
 
         let result = ext_registry::ext(self.registry.clone())
             .with_attached_deposit(storage_deposit)
-            .with_static_gas(mint_gas(num_tokens))
+            .with_static_gas(Gas(mint_gas(num_tokens) as u64))
             .sbt_mint(vec![(claim.claimer, tokens_metadata)])
             .then(
                 Self::ext(env::current_account_id())
@@ -379,7 +383,7 @@ mod tests {
         let ctx = VMContextBuilder::new()
             .signer_account_id(signer.clone())
             .predecessor_account_id(predecessor.clone())
-            .attached_deposit(MINT_TOTAL_COST)
+            .attached_deposit(MINT_TOTAL_COST * 5)
             .block_timestamp(start())
             .is_view(false)
             .build();
@@ -461,7 +465,9 @@ mod tests {
     */
 
     #[test]
-    #[should_panic(expected = "Requires attached deposit of exactly 0.008 NEAR")]
+    #[should_panic(
+        expected = "Requires attached deposit at least 8000000000000000000000 yoctoNEAR"
+    )]
     fn mint_not_enough_storage_deposit() {
         let signer = acc_claimer();
         let (mut ctx, mut ctr, k) = setup(&signer, &acc_u1());
@@ -476,7 +482,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Requires attached deposit of exactly 0.015 NEAR")]
+    #[should_panic(
+        expected = "Requires attached deposit at least 15000000000000000000000 yoctoNEAR"
+    )]
     fn mint_with_kyc_not_enough_storage_deposit() {
         let signer = acc_claimer();
         let (mut ctx, mut ctr, k) = setup(&signer, &acc_u1());
