@@ -20,7 +20,7 @@ pub struct ContractMetadata {
 }
 
 /// Versioned token metadata
-#[derive(BorshDeserialize, BorshSerialize, Serialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub enum VerTokenMetadata {
     V1(TokenMetadata),
@@ -59,7 +59,7 @@ impl From<TokenMetadata> for VerTokenMetadata {
 }
 
 /// Full information about the token
-#[derive(BorshDeserialize, BorshSerialize, Serialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct TokenData {
     pub owner: AccountId,

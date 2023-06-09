@@ -88,6 +88,7 @@ pub trait SBTRegistry {
         issuer: Option<AccountId>,
         from_class: Option<u64>,
         limit: Option<u32>,
+        non_expired: Option<bool>,
     ) -> Vec<(AccountId, Vec<OwnedToken>)>;
 
     /// checks if an `account` was banned by the registry.

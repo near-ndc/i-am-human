@@ -113,12 +113,14 @@ impl SBTRegistry for Contract {
     /// valid class id.
     /// If limit is not specified, default is used: 100.
     /// Returns list of pairs: `(Issuer address, list of token IDs)`.
+    /// `non_expired` if set to `true` returns only non-expired tokens
     fn sbt_tokens_by_owner(
         &self,
         account: AccountId,
         issuer: Option<AccountId>,
         from_class: Option<u64>,
         limit: Option<u32>,
+        non_expired: Option<bool>,
     ) -> Vec<(AccountId, Vec<OwnedToken>)> {
         if from_class.is_some() {
             require!(
@@ -146,6 +148,8 @@ impl SBTRegistry for Contract {
         let mut tokens = Vec::new();
         let mut prev_issuer = issuer_id;
 
+        let current_timestamp = env::block_timestamp();
+
         for (key, token_id) in self
             .balances
             .iter_from(balance_key(account.clone(), issuer_id, from_class))
@@ -166,12 +170,22 @@ impl SBTRegistry for Contract {
                 }
                 prev_issuer = key.issuer_id;
             }
-            let t = self.get_token(key.issuer_id, token_id);
-            tokens.push(OwnedToken {
-                token: token_id,
-                metadata: t.metadata.v1(),
-            });
-            limit -= 1;
+            let t: TokenData = self.get_token(key.issuer_id, token_id);
+            if let Some(true) = non_expired {
+                if t.clone().metadata.v1().expires_at.unwrap_or(u64::MAX) >= current_timestamp {
+                    tokens.push(OwnedToken {
+                        token: token_id,
+                        metadata: t.metadata.v1(),
+                    });
+                    limit -= 1;
+                }
+            } else {
+                tokens.push(OwnedToken {
+                    token: token_id,
+                    metadata: t.metadata.v1(),
+                });
+                limit -= 1;
+            }
             if limit == 0 {
                 break;
             }
