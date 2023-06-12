@@ -50,6 +50,12 @@ impl VerTokenMetadata {
             VerTokenMetadata::V1(x) => x.class,
         }
     }
+
+    pub fn expires_at(&self) -> Option<u64> {
+        match self {
+            VerTokenMetadata::V1(x) => x.expires_at,
+        }
+    }
 }
 
 impl From<TokenMetadata> for VerTokenMetadata {
