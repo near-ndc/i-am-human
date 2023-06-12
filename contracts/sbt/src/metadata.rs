@@ -20,16 +20,16 @@ pub struct ContractMetadata {
 }
 
 /// Versioned token metadata
-#[derive(BorshDeserialize, BorshSerialize, Serialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub enum VerTokenMetadata {
     V1(TokenMetadata),
 }
 
 /// TokenMetadata defines attributes for each SBT token.
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
 pub struct TokenMetadata {
     pub class: ClassId,                      // token class
     pub issued_at: Option<u64>, // When token was issued or minted, Unix epoch in milliseconds
@@ -59,7 +59,7 @@ impl From<TokenMetadata> for VerTokenMetadata {
 }
 
 /// Full information about the token
-#[derive(BorshDeserialize, BorshSerialize, Serialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct TokenData {
     pub owner: AccountId,

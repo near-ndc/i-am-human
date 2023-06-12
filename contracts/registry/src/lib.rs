@@ -607,11 +607,11 @@ mod tests {
         assert_eq!(1, ctr.sbt_supply_by_owner(bob(), issuer1(), Some(1)));
         assert_eq!(0, ctr.sbt_supply_by_owner(bob(), issuer1(), Some(2)));
 
-        let alice_sbts = ctr.sbt_tokens_by_owner(alice(), None, None, None);
+        let alice_sbts = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
         let expected = vec![(issuer1(), vec![mk_owned_token(1, m1_1.clone())])];
         assert_eq!(alice_sbts, expected);
 
-        let bob_sbts = ctr.sbt_tokens_by_owner(bob(), None, None, None);
+        let bob_sbts = ctr.sbt_tokens_by_owner(bob(), None, None, None, None);
         let expected = vec![(issuer1(), vec![mk_owned_token(2, m1_1.clone())])];
         assert_eq!(bob_sbts, expected);
     }
@@ -721,15 +721,15 @@ mod tests {
             (issuer2(), vec![mk_owned_token(3, m1_1.clone())]),
         ];
         assert_eq!(
-            &ctr.sbt_tokens_by_owner(alice2(), None, None, None),
+            &ctr.sbt_tokens_by_owner(alice2(), None, None, None, None),
             &a_tokens
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice2(), Some(issuer1()), None, None),
+            ctr.sbt_tokens_by_owner(alice2(), Some(issuer1()), None, None, None),
             vec![a_tokens[0].clone()],
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice2(), Some(issuer2()), None, None),
+            ctr.sbt_tokens_by_owner(alice2(), Some(issuer2()), None, None, None),
             vec![a_tokens[1].clone()]
         );
 
@@ -749,37 +749,37 @@ mod tests {
             ],
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), None, None, None),
+            ctr.sbt_tokens_by_owner(alice(), None, None, None, None),
             vec![alice_issuer2.clone(), alice_issuer3.clone()]
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None, None),
             vec![alice_issuer2.clone()]
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer3()), None, None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer3()), None, None, None),
             vec![alice_issuer3.clone()]
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), Some(1), None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), Some(1), None, None),
             vec![alice_issuer2]
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), Some(4), None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), Some(4), None, None),
             vec![(issuer2(), vec![mk_owned_token(5, m4_1.clone())])]
         );
 
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), Some(5), None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), Some(5), None, None),
             vec![]
         );
 
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), Some(5), None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), Some(5), None, None),
             vec![]
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer3()), Some(1), None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer3()), Some(1), None, None),
             vec![alice_issuer3.clone()]
         );
 
@@ -825,11 +825,11 @@ mod tests {
 
         let alice_issuer2 = (issuer2(), vec![mk_owned_token(4, m2_1.clone())]);
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), None, None, None),
+            ctr.sbt_tokens_by_owner(alice(), None, None, None, None),
             vec![alice_issuer2.clone(), alice_issuer3.clone()]
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None, None),
             vec![alice_issuer2.clone()]
         );
     }
@@ -867,9 +867,12 @@ mod tests {
         assert!(ctr.is_banned(alice()));
         assert!(!ctr.is_banned(alice2()));
 
-        assert_eq!(ctr.sbt_tokens_by_owner(alice(), None, None, None), vec![]);
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice2(), None, None, None),
+            ctr.sbt_tokens_by_owner(alice(), None, None, None, None),
+            vec![]
+        );
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice2(), None, None, None, None),
             vec![
                 (
                     issuer1(),
@@ -1163,7 +1166,7 @@ mod tests {
 
         // assert the two tokens have been renewed (new expire_at)
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None, None),
             vec![(
                 issuer1(),
                 vec![
@@ -1200,7 +1203,7 @@ mod tests {
 
         // assert tokens issued by issuer2 has been renewed (new expire_at)
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None, None),
             vec![(
                 issuer2(),
                 vec![
@@ -1212,7 +1215,7 @@ mod tests {
 
         // assert tokens issued by issuer1 has not been renewed (new expire_at)
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None, None),
             vec![(
                 issuer1(),
                 vec![
@@ -1294,7 +1297,7 @@ mod tests {
         assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer1(), None), 2);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 1); //check if alice still holds the tokens issued by a different issuer
         assert_eq!(
-            ctr.sbt_tokens_by_owner(bob(), Some(issuer1()), None, None),
+            ctr.sbt_tokens_by_owner(bob(), Some(issuer1()), None, None, None),
             vec![(
                 issuer1(),
                 vec![
@@ -1442,7 +1445,7 @@ mod tests {
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 3);
         assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer2(), None), 2);
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None, None),
             vec![(
                 issuer1(),
                 vec![
@@ -1750,5 +1753,30 @@ mod tests {
 
         //try to mint to a banned account
         ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+    }
+
+    #[test]
+    fn sbt_tokens_by_owner_non_expired() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 4 * MINT_DEPOSIT);
+        let m1_1 = mk_metadata(1, Some(START));
+        let m1_2 = mk_metadata(2, Some(START));
+        let m1_3 = mk_metadata(3, Some(START + 100));
+        let m1_4 = mk_metadata(4, Some(START + 100));
+        ctr.sbt_mint(vec![(
+            alice(),
+            vec![m1_1.clone(), m1_2.clone(), m1_3.clone(), m1_4.clone()],
+        )]);
+
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, Some(true));
+        assert_eq!(res[0].1.len(), 4);
+
+        // fast forward so the first two sbts are expired
+        ctx.block_timestamp = START + 50;
+        testing_env!(ctx.clone());
+
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, Some(true));
+        assert_eq!(res[0].1.len(), 2);
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 4);
     }
 }
