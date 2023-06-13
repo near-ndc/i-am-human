@@ -75,6 +75,22 @@ impl Contract {
         self.banlist.contains(account)
     }
 
+    /// Returns true if the given account is human.
+    pub fn is_human(&self, account: AccountId) -> bool {
+        if self._is_banned(&account) {
+            return false;
+        }
+        // TODO will need to store it in state, but this will introduce a migration
+        let issuer = if env::current_account_id().as_ref().ends_with("testnet") {
+            AccountId::new_unchecked("i-am-human-staging.testnet".to_owned())
+        } else {
+            AccountId::new_unchecked("fractal.i-am-human.near".to_owned())
+        };
+        self.sbt_tokens_by_owner(account, Some(issuer), Some(1), Some(1), None)
+            .len()
+            > 0
+    }
+
     //
     // Transactions
     //

@@ -20,7 +20,11 @@ work in progress:
 ### Mainnet
 
 - **SBT registry**: `registry.i-am-human.near`
-- **GoodDollar-SBT**: `gooddollar-v1.i-am-human.near` (the `oracle` contract)
+- **Fractal**: `fractal.i-am-human.near`, verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
+
+Deprecated:
+
+- **GoodDollar-SBT**: `gooddollar-v1.i-am-human.near`.
   verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
 
 ### Testnet
