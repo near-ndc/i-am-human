@@ -39,13 +39,19 @@ pub struct Contract {
     /// map of SBT contract -> next available token_id
     pub(crate) next_token_ids: LookupMap<IssuerId, TokenId>,
     pub(crate) next_issuer_id: IssuerId,
+
+    pub(crate) iah_classes: (AccountId, Vec<ClassId>),
 }
 
 // Implement the contract structure
 #[near_bindgen]
 impl Contract {
     #[init]
-    pub fn new(authority: AccountId) -> Self {
+    pub fn new(authority: AccountId, iah_issuer: AccountId, iah_classes: Vec<ClassId>) -> Self {
+        require!(
+            iah_classes.len() > 0,
+            "iah_classes must be a non empty list"
+        );
         Self {
             authority,
             sbt_issuers: UnorderedMap::new(StorageKey::SbtIssuers),
@@ -59,6 +65,7 @@ impl Contract {
             next_token_ids: LookupMap::new(StorageKey::NextTokenId),
             next_issuer_id: 1,
             ongoing_soul_tx: LookupMap::new(StorageKey::OngoingSoultTx),
+            iah_classes: (iah_issuer, iah_classes),
         }
     }
 
@@ -80,16 +87,23 @@ impl Contract {
         if self._is_banned(&account) {
             return false;
         }
-        // TODO will need to store it in state, but this will introduce a migration
-        let class = 1;
-        let issuer = if env::current_account_id().as_ref().ends_with("testnet") {
-            AccountId::new_unchecked("i-am-human-staging.testnet".to_owned())
-        } else {
-            fractal_mainnet()
-        };
-        let tokens = self.sbt_tokens_by_owner(account, Some(issuer), Some(class), Some(1), None);
-        println!("{:?}", tokens);
-        tokens.len() > 0 && tokens[0].1[0].metadata.class == class
+        let issuer = Some(self.iah_classes.0.clone());
+        // check if user has tokens from all classes
+        for cls in &self.iah_classes.1 {
+            let tokens = self.sbt_tokens_by_owner(
+                account.clone(),
+                issuer.clone(),
+                Some(*cls),
+                Some(1),
+                None,
+            );
+            // we need to check class, because the query can return a "next" token if a user
+            // doesn't have the token of requested class.
+            if !(tokens.len() > 0 && tokens[0].1[0].metadata.class == *cls) {
+                return false;
+            }
+        }
+        true
     }
 
     //
@@ -527,6 +541,11 @@ mod tests {
         AccountId::new_unchecked("sbt4.near".to_string())
     }
 
+    #[inline]
+    fn fractal_mainnet() -> AccountId {
+        AccountId::new_unchecked("fractal.i-am-human.near".to_string())
+    }
+
     fn admin() -> AccountId {
         AccountId::new_unchecked("sbt.near".to_string())
     }
@@ -588,7 +607,7 @@ mod tests {
             ctx.attached_deposit = deposit
         }
         testing_env!(ctx.clone());
-        let mut ctr = Contract::new(admin());
+        let mut ctr = Contract::new(admin(), fractal_mainnet(), vec![1]);
         ctr.admin_add_sbt_issuer(issuer1());
         ctr.admin_add_sbt_issuer(issuer2());
         ctr.admin_add_sbt_issuer(issuer3());
@@ -1843,9 +1862,25 @@ mod tests {
         assert!(!ctr.is_human(alice()));
         assert!(!ctr.is_human(bob()));
     }
-}
 
-#[inline]
-fn fractal_mainnet() -> AccountId {
-    AccountId::new_unchecked("fractal.i-am-human.near".to_string())
+    #[test]
+    fn is_human_multiple_classes() {
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+        ctr.iah_classes.1 = vec![1, 3];
+        ctx.current_account_id = AccountId::new_unchecked("registry.i-am-human.near".to_string());
+        testing_env!(ctx.clone());
+
+        let m1_1 = mk_metadata(1, Some(START));
+        let m1_2 = mk_metadata(2, Some(START));
+        let m1_3 = mk_metadata(3, Some(START));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        ctr.sbt_mint(vec![(bob(), vec![m1_2.clone()])]);
+        ctr.sbt_mint(vec![(carol(), vec![m1_2, m1_1.clone()])]);
+        ctr.sbt_mint(vec![(dan(), vec![m1_3, m1_1])]);
+
+        assert!(!ctr.is_human(alice()));
+        assert!(!ctr.is_human(bob()));
+        assert!(!ctr.is_human(carol()));
+        assert!(ctr.is_human(dan()));
+    }
 }
