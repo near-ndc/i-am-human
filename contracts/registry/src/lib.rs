@@ -556,6 +556,7 @@ mod tests {
         return Gas::ONE_TERA.mul(300);
     }
 
+    const MILI_SECOND: u64 = 1_000_000; // milisecond in ns
     const START: u64 = 10;
     const MINT_DEPOSIT: Balance = 6 * MILI_NEAR;
 
@@ -785,15 +786,21 @@ mod tests {
 
         // check by all tokens
         assert_eq!(
-            ctr.sbt_tokens(issuer1(), Some(1), None),
+            ctr.sbt_tokens(issuer1(), Some(1), None, None),
             vec![mk_token(1, alice2(), m1_1.clone())]
         );
-        assert_eq!(ctr.sbt_tokens(issuer2(), None, None), t2_all,);
-        assert_eq!(ctr.sbt_tokens(issuer2(), None, Some(1)), t2_all[..1]);
-        assert_eq!(ctr.sbt_tokens(issuer2(), None, Some(2)), t2_all[..2]);
-        assert_eq!(ctr.sbt_tokens(issuer2(), Some(2), Some(2)), t2_all[1..3]);
-        assert_eq!(ctr.sbt_tokens(issuer2(), Some(5), Some(5)), t2_all[4..5]);
-        assert_eq!(ctr.sbt_tokens(issuer2(), Some(6), Some(2)), vec![]);
+        assert_eq!(ctr.sbt_tokens(issuer2(), None, None, None), t2_all,);
+        assert_eq!(ctr.sbt_tokens(issuer2(), None, Some(1), None), t2_all[..1]);
+        assert_eq!(ctr.sbt_tokens(issuer2(), None, Some(2), None), t2_all[..2]);
+        assert_eq!(
+            ctr.sbt_tokens(issuer2(), Some(2), Some(2), None),
+            t2_all[1..3]
+        );
+        assert_eq!(
+            ctr.sbt_tokens(issuer2(), Some(5), Some(5), None),
+            t2_all[4..5]
+        );
+        assert_eq!(ctr.sbt_tokens(issuer2(), Some(6), Some(2), None), vec![]);
 
         //
         // now let's test buring
@@ -1313,7 +1320,7 @@ mod tests {
         assert_eq!(ctr.sbt_supply_by_class(issuer1(), 2), 1);
 
         assert_eq!(
-            ctr.sbt_tokens(issuer1(), None, None),
+            ctr.sbt_tokens(issuer1(), None, None, None),
             vec![
                 mk_token(1, bob(), m1_1.clone()),
                 mk_token(2, bob(), m2_1.clone())
@@ -1456,7 +1463,7 @@ mod tests {
             ),]
         );
         assert_eq!(
-            ctr.sbt_tokens(issuer1(), None, None),
+            ctr.sbt_tokens(issuer1(), None, None, None),
             vec![
                 mk_token(1, alice(), m1_1_revoked.clone()),
                 mk_token(2, alice(), m2_1_revoked.clone()),
@@ -1464,7 +1471,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            ctr.sbt_tokens(issuer2(), None, None),
+            ctr.sbt_tokens(issuer2(), None, None, None),
             vec![
                 mk_token(1, bob(), m1_1.clone()),
                 mk_token(2, bob(), m2_1.clone()),
@@ -1522,11 +1529,11 @@ mod tests {
         assert_eq!(ctr.sbt_supply_by_class(issuer2(), 3), 1);
 
         assert_eq!(
-            ctr.sbt_tokens(issuer1(), None, None),
+            ctr.sbt_tokens(issuer1(), None, None, None),
             vec![mk_token(4, alice(), m3_1.clone())],
         );
         assert_eq!(
-            ctr.sbt_tokens(issuer2(), None, None),
+            ctr.sbt_tokens(issuer2(), None, None, None),
             vec![
                 mk_token(1, bob(), m1_1.clone()),
                 mk_token(2, bob(), m2_1.clone()),
@@ -1758,25 +1765,43 @@ mod tests {
     #[test]
     fn sbt_tokens_by_owner_non_expired() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 4 * MINT_DEPOSIT);
+        ctx.block_timestamp = START * MILI_SECOND;
+        testing_env!(ctx.clone());
+
         let m1_1 = mk_metadata(1, Some(START));
         let m1_2 = mk_metadata(2, Some(START));
         let m1_3 = mk_metadata(3, Some(START + 100));
         let m1_4 = mk_metadata(4, Some(START + 100));
-        ctr.sbt_mint(vec![(
-            alice(),
-            vec![m1_1.clone(), m1_2.clone(), m1_3.clone(), m1_4.clone()],
-        )]);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1, m1_2, m1_3, m1_4])]);
 
         let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, Some(true));
         assert_eq!(res[0].1.len(), 4);
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 4);
+
+        let res = ctr.sbt_tokens(issuer1(), None, None, Some(true));
+        assert_eq!(res.len(), 4);
+        let res = ctr.sbt_tokens(issuer1(), None, None, Some(false));
+        assert_eq!(res.len(), 4);
+        let res = ctr.sbt_tokens(issuer1(), None, None, None);
+        assert_eq!(res.len(), 4);
 
         // fast forward so the first two sbts are expired
-        ctx.block_timestamp = START + 50;
+        ctx.block_timestamp = (START + 50) * MILI_SECOND;
         testing_env!(ctx.clone());
 
         let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, Some(true));
+        assert_eq!(res[0].1.len(), 4);
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, Some(false));
         assert_eq!(res[0].1.len(), 2);
         let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
-        assert_eq!(res[0].1.len(), 4);
+        assert_eq!(res[0].1.len(), 2);
+
+        let res = ctr.sbt_tokens(issuer1(), None, None, Some(true));
+        assert_eq!(res.len(), 4);
+        let res = ctr.sbt_tokens(issuer1(), None, None, Some(false));
+        assert_eq!(res.len(), 2);
+        let res = ctr.sbt_tokens(issuer1(), None, None, None);
+        assert_eq!(res.len(), 2);
     }
 }
