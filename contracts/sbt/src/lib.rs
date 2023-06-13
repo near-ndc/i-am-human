@@ -71,7 +71,7 @@ pub trait SBTRegistry {
     /// Query sbt tokens issued by a given contract.
     /// `limit` specifies the upper limit of how many tokens we want to return.
     /// If `from_token` is not specified, then `from_token` should be assumed
-    /// to be the first valid token id. If `with_expired` if is set to `false` then
+    /// to be the first valid token id. If `with_expired` if is set to `false` or to `None` then
     /// all tokens are returned.
     fn sbt_tokens(
         &self,
@@ -84,7 +84,7 @@ pub trait SBTRegistry {
     /// Query SBT tokens by owner.
     /// `limit` specifies the upper limit of how many tokens we want to return.
     /// If `from_class` is not specified, then `from_class` should be assumed to be the first
-    /// valid class id. If `with_expired` if is set to `false` then all tokens are returned.
+    /// valid class id. If `with_expired` if is set to `false` or `None` then all tokens are returned.
     /// Returns list of pairs: `(Contract address, list of token IDs)`.
     fn sbt_tokens_by_owner(
         &self,

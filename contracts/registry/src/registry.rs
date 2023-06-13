@@ -119,7 +119,7 @@ impl SBTRegistry for Contract {
     /// valid class id.
     /// If limit is not specified, default is used: 100.
     /// Returns list of pairs: `(Issuer address, list of token IDs)`.
-    /// if `with_expired` if is set to `false` then only all tokens are returned.
+    /// if `with_expired` is set to `true` then only non-expired tokens are returned, otherwise all tokens are returned.
     fn sbt_tokens_by_owner(
         &self,
         account: AccountId,
