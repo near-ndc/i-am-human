@@ -81,14 +81,15 @@ impl Contract {
             return false;
         }
         // TODO will need to store it in state, but this will introduce a migration
+        let class = 1;
         let issuer = if env::current_account_id().as_ref().ends_with("testnet") {
             AccountId::new_unchecked("i-am-human-staging.testnet".to_owned())
         } else {
-            AccountId::new_unchecked("fractal.i-am-human.near".to_owned())
+            fractal_mainnet()
         };
-        self.sbt_tokens_by_owner(account, Some(issuer), Some(1), Some(1), None)
-            .len()
-            > 0
+        let tokens = self.sbt_tokens_by_owner(account, Some(issuer), Some(class), Some(1), None);
+        println!("{:?}", tokens);
+        tokens.len() > 0 && tokens[0].1[0].metadata.class == class
     }
 
     //
@@ -591,6 +592,7 @@ mod tests {
         ctr.admin_add_sbt_issuer(issuer1());
         ctr.admin_add_sbt_issuer(issuer2());
         ctr.admin_add_sbt_issuer(issuer3());
+        ctr.admin_add_sbt_issuer(fractal_mainnet());
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
@@ -1820,4 +1822,30 @@ mod tests {
         let res = ctr.sbt_tokens(issuer1(), None, None, None);
         assert_eq!(res.len(), 2);
     }
+
+    #[test]
+    fn is_human() {
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+        ctx.current_account_id = AccountId::new_unchecked("registry.i-am-human.near".to_string());
+        testing_env!(ctx.clone());
+
+        let m1_1 = mk_metadata(1, Some(START));
+        let m1_2 = mk_metadata(2, Some(START));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
+        ctr.sbt_mint(vec![(bob(), vec![m1_2])]);
+
+        assert!(ctr.is_human(alice()));
+        assert!(!ctr.is_human(bob()));
+
+        // step forward, so the tokens will expire
+        ctx.block_timestamp = (START + 1) * MILI_SECOND;
+        testing_env!(ctx.clone());
+        assert!(!ctr.is_human(alice()));
+        assert!(!ctr.is_human(bob()));
+    }
+}
+
+#[inline]
+fn fractal_mainnet() -> AccountId {
+    AccountId::new_unchecked("fractal.i-am-human.near".to_string())
 }
