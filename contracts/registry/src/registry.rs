@@ -117,7 +117,7 @@ impl SBTRegistry for Contract {
     /// Query SBT tokens by owner
     /// If `from_class` is not specified, then `from_class` should be assumed to be the first
     /// valid class id.
-    /// If limit is not specified, default is used: 100.
+    /// If limit is not specified, default is used: 1000.
     /// Returns list of pairs: `(Issuer address, list of token IDs)`.
     /// if `with_expired` is set to `true` then only non-expired tokens are returned, otherwise all tokens are returned.
     fn sbt_tokens_by_owner(
@@ -144,9 +144,7 @@ impl SBTRegistry for Contract {
             // use self.sbt_contracts.get when changing to query by issuer_start
             Some(addr) => self.assert_issuer(&addr),
         };
-        let mut from_class = from_class.unwrap_or(0);
-        // iter_from starts from exclusive "left end"
-        from_class = from_class.saturating_sub(1);
+        let from_class = from_class.unwrap_or(0);
         let mut limit = limit.unwrap_or(MAX_LIMIT);
         require!(limit > 0, "limit must be bigger than 0");
 
@@ -157,13 +155,9 @@ impl SBTRegistry for Contract {
         let now = env::block_timestamp_ms();
         let non_expired = !with_expired.unwrap_or(false);
 
-        for (key, token_id) in
-            self.balances
-                .iter_from(balance_key(account.clone(), issuer_id, from_class))
-        {
-            // TODO: maybe we should continue the scan?
-            if key.owner != account {
-                break;
+        for (key, token_id) in self.balances.iter() {
+            if key.class_id < from_class || key.issuer_id < issuer_id || key.owner != account {
+                continue;
             }
             if prev_issuer != key.issuer_id {
                 if issuer_id != 0 {

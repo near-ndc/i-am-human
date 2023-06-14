@@ -1895,11 +1895,11 @@ mod tests {
         ctr.sbt_mint(vec![(alice(), batch_metadata[10..].to_vec())]);
 
         let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
-        assert_eq!(res[0].1.len(), 10); // here the results are correct
+        assert_eq!(res[0].1.len(), 10);
         assert_eq!(res[1].1.len(), 10);
 
         let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None, None);
-        assert_eq!(res[0].1.len(), 10); // here the results we are getting from the call are missing the first token (only 9 tokens returnd)
+        assert_eq!(res[0].1.len(), 10);
         let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None, None);
         assert_eq!(res[0].1.len(), 10);
     }
