@@ -428,7 +428,7 @@ impl SBTRegistry for Contract {
         let issuer = env::predecessor_account_id();
         let issuer_id = self.assert_issuer(&issuer);
         let tokens_by_owner =
-            self.sbt_tokens_by_owner(owner.clone(), Some(issuer.clone()), None, None, None);
+            self.sbt_tokens_by_owner(owner.clone(), Some(issuer.clone()), None, None, Some(true));
         require!(
             !tokens_by_owner.is_empty(),
             "no tokens to be revoked for the given owner"
