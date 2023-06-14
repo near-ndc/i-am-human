@@ -419,4 +419,100 @@ impl SBTRegistry for Contract {
             SbtTokensEvent { issuer, tokens }.emit_revoke();
         }
     }
+
+    /// Revokes all owners SBTs issued by the caller either by burning or updating their expire time.
+    /// Must be called by an SBT contract.
+    /// Must emit `Revoke` event.
+    /// Must also emit `Burn` event if the SBT tokens are burned (removed).
+    fn sbt_revoke_by_owner(&mut self, owner: AccountId, burn: bool) {
+        let issuer = env::predecessor_account_id();
+        let issuer_id = self.assert_issuer(&issuer);
+        let tokens_by_owner =
+            self.sbt_tokens_by_owner(owner.clone(), Some(issuer.clone()), None, None, None);
+        require!(
+            !tokens_by_owner.is_empty(),
+            "no tokens to be revoked for the given owner"
+        );
+        let tokens: Vec<OwnedToken> = tokens_by_owner[0].1.iter().map(|t| t.clone()).collect();
+        let token_ids: Vec<u64> = tokens.iter().map(|s| s.token).collect();
+        if burn == true {
+            let mut revoked_per_class: HashMap<u64, u64> = HashMap::new();
+            let tokens_burned: u64 = tokens.len().try_into().unwrap();
+            for token in &tokens {
+                // update balances
+                let class_id = token.metadata.class;
+                let balance_key = &BalanceKey {
+                    issuer_id,
+                    owner: owner.clone(),
+                    class_id: token.metadata.class,
+                };
+                self.balances.remove(balance_key);
+
+                // collect the info about the tokens revoked per class
+                // to update the balance accordingly
+                revoked_per_class
+                    .entry(class_id)
+                    .and_modify(|key_value| *key_value += 1)
+                    .or_insert(1);
+
+                // remove from issuer_tokens
+                self.issuer_tokens.remove(&IssuerTokenId {
+                    issuer_id,
+                    token: token.token,
+                });
+            }
+
+            // update supply by owner
+            let old_supply = self
+                .supply_by_owner
+                .get(&(owner.clone(), issuer_id))
+                .unwrap();
+            self.supply_by_owner.insert(
+                &(owner.clone(), issuer_id),
+                &(old_supply - &(tokens.len() as u64)),
+            );
+
+            // update supply by class
+            for (class_id, tokens_revoked) in revoked_per_class {
+                let old_supply = self.supply_by_class.get(&(issuer_id, class_id)).unwrap();
+                self.supply_by_class
+                    .insert(&(issuer_id, class_id), &(&old_supply - &tokens_revoked));
+            }
+
+            // update supply by issuer
+            let supply_by_issuer = self.supply_by_issuer.get(&(issuer_id)).unwrap_or(0);
+            self.supply_by_issuer
+                .insert(&(issuer_id), &(supply_by_issuer - tokens_burned));
+
+            // emit event
+            SbtTokensEvent {
+                issuer,
+                tokens: token_ids,
+            }
+            .emit_burn();
+        } else {
+            let current_timestamp = env::block_timestamp();
+            // revoke
+            for mut token in tokens.clone() {
+                // update expire date for all tokens to current_timestamp
+                token.metadata.expires_at = Some(current_timestamp);
+                let token_data = TokenData {
+                    owner: owner.clone(),
+                    metadata: VerTokenMetadata::V1(token.metadata),
+                };
+                self.issuer_tokens.insert(
+                    &IssuerTokenId {
+                        issuer_id,
+                        token: token.token,
+                    },
+                    &token_data,
+                );
+            }
+            SbtTokensEvent {
+                issuer,
+                tokens: token_ids,
+            }
+            .emit_revoke();
+        }
+    }
 }
