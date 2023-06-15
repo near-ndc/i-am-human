@@ -1918,7 +1918,6 @@ mod tests {
             "revoke",
             &format!(r#"{{"issuer":"{}","tokens":[1]}}"#, fractal_mainnet()),
         );
-
         let log_burn = mk_log_str(
             "burn",
             &format!(r#"{{"issuer":"{}","tokens":[1]}}"#, fractal_mainnet()),
