@@ -1551,7 +1551,7 @@ mod tests {
             "burn",
             &format!(r#"{{"issuer":"{}","tokens":[1,2,3]}}"#, issuer1()),
         );
-        assert_eq!(test_utils::get_logs().len(), 1);
+        assert_eq!(test_utils::get_logs().len(), 2);
         assert_eq!(test_utils::get_logs()[0], log_burn[0]);
         assert_eq!(ctr.sbt_supply(issuer1()), 1);
         assert_eq!(ctr.sbt_supply(issuer2()), 3);

@@ -405,7 +405,11 @@ impl SBTRegistry for Contract {
                 .insert(&(issuer_id), &(supply_by_issuer - tokens_burned));
 
             // emit event
-            SbtTokensEvent { issuer, tokens }.emit_burn();
+            SbtTokensEvent {
+                issuer: issuer.clone(),
+                tokens: tokens.clone(),
+            }
+            .emit_burn();
         } else {
             let current_timestamp = env::block_timestamp();
             // revoke
@@ -418,7 +422,7 @@ impl SBTRegistry for Contract {
                 self.issuer_tokens
                     .insert(&IssuerTokenId { issuer_id, token }, &t);
             }
-            SbtTokensEvent { issuer, tokens }.emit_revoke();
         }
+        SbtTokensEvent { issuer, tokens }.emit_revoke();
     }
 }
