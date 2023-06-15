@@ -223,7 +223,7 @@ mod tests {
     fn from_nftmint<'a>(n: &NftMint<'a>) -> Nep171Mint<'a> {
         Nep171Mint {
             owner_id: n.owner_id,
-            token_ids: n.token_ids.iter().map(|s| s.clone().to_owned()).collect(),
+            token_ids: n.token_ids.iter().map(|&s| s.to_owned()).collect(),
             memo: n.memo.map(|s| s.to_owned()),
         }
     }

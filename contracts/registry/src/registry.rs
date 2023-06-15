@@ -349,7 +349,7 @@ impl SBTRegistry for Contract {
     fn sbt_revoke(&mut self, tokens: Vec<TokenId>, burn: bool) {
         let issuer = env::predecessor_account_id();
         let issuer_id = self.assert_issuer(&issuer);
-        if burn == true {
+        if burn {
             let mut revoked_per_class: HashMap<u64, u64> = HashMap::new();
             let mut revoked_per_owner: HashMap<AccountId, u64> = HashMap::new();
             let tokens_burned: u64 = tokens.len().try_into().unwrap();
@@ -388,14 +388,14 @@ impl SBTRegistry for Contract {
                     .get(&(owner_id.clone(), issuer_id))
                     .unwrap();
                 self.supply_by_owner
-                    .insert(&(owner_id, issuer_id), &(old_supply - &tokens_revoked));
+                    .insert(&(owner_id, issuer_id), &(old_supply - tokens_revoked));
             }
 
             // update supply by class
             for (class_id, tokens_revoked) in revoked_per_class {
                 let old_supply = self.supply_by_class.get(&(issuer_id, class_id)).unwrap();
                 self.supply_by_class
-                    .insert(&(issuer_id, class_id), &(&old_supply - &tokens_revoked));
+                    .insert(&(issuer_id, class_id), &(old_supply - tokens_revoked));
             }
 
             // update supply by issuer

@@ -330,7 +330,7 @@ impl Contract {
                 )
             );
         }
-        return (tokens_recovered as u32, completed);
+        (tokens_recovered as u32, completed)
     }
 
     pub fn sbt_burn(
@@ -553,7 +553,7 @@ mod tests {
     }
 
     fn max_gas() -> Gas {
-        return Gas::ONE_TERA.mul(300);
+        Gas::ONE_TERA.mul(300)
     }
 
     const START: u64 = 10;
@@ -576,7 +576,7 @@ mod tests {
         ctr.admin_add_sbt_issuer(issuer3());
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
-        return (ctx, ctr);
+        (ctx, ctr)
     }
 
     #[test]
@@ -612,7 +612,7 @@ mod tests {
         assert_eq!(alice_sbts, expected);
 
         let bob_sbts = ctr.sbt_tokens_by_owner(bob(), None, None, None, None);
-        let expected = vec![(issuer1(), vec![mk_owned_token(2, m1_1.clone())])];
+        let expected = vec![(issuer1(), vec![mk_owned_token(2, m1_1)])];
         assert_eq!(bob_sbts, expected);
     }
 
@@ -701,7 +701,7 @@ mod tests {
 
         let t2_all = vec![
             mk_token(1, alice(), m1_1.clone()),
-            mk_token(2, bob(), m1_2.clone()),
+            mk_token(2, bob(), m1_2),
             mk_token(3, alice2(), m1_1.clone()),
             mk_token(4, alice(), m2_1.clone()),
             mk_token(5, alice(), m4_1.clone()),
@@ -766,7 +766,7 @@ mod tests {
         );
         assert_eq!(
             ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), Some(4), None, None),
-            vec![(issuer2(), vec![mk_owned_token(5, m4_1.clone())])]
+            vec![(issuer2(), vec![mk_owned_token(5, m4_1)])]
         );
 
         assert_eq!(
@@ -799,7 +799,7 @@ mod tests {
         // now let's test buring
         //
         ctx.predecessor_account_id = alice();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
 
         ctr.sbt_burn(issuer2(), vec![1, 5], Some("alice burning".to_owned()));
         assert_eq!(
@@ -815,22 +815,22 @@ mod tests {
 
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 1);
         assert_eq!(
-            ctr.sbt_supply_by_owner(alice(), issuer2(), Some(m2_1.clone().class)),
+            ctr.sbt_supply_by_owner(alice(), issuer2(), Some(m2_1.class)),
             1
         );
         assert_eq!(
-            ctr.sbt_supply_by_owner(alice(), issuer2(), Some(m1_1.clone().class)),
+            ctr.sbt_supply_by_owner(alice(), issuer2(), Some(m1_1.class)),
             0
         );
 
-        let alice_issuer2 = (issuer2(), vec![mk_owned_token(4, m2_1.clone())]);
+        let alice_issuer2 = (issuer2(), vec![mk_owned_token(4, m2_1)]);
         assert_eq!(
             ctr.sbt_tokens_by_owner(alice(), None, None, None, None),
-            vec![alice_issuer2.clone(), alice_issuer3.clone()]
+            vec![alice_issuer2.clone(), alice_issuer3]
         );
         assert_eq!(
             ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None, None),
-            vec![alice_issuer2.clone()]
+            vec![alice_issuer2]
         );
     }
 
@@ -850,7 +850,7 @@ mod tests {
 
         // make soul transfer
         ctx.predecessor_account_id = alice();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         let ret = ctr.sbt_soul_transfer(alice2(), None);
         assert_eq!((3, true), ret);
 
@@ -876,12 +876,9 @@ mod tests {
             vec![
                 (
                     issuer1(),
-                    vec![
-                        mk_owned_token(1, m1_1.clone()),
-                        mk_owned_token(2, m2_1.clone())
-                    ]
+                    vec![mk_owned_token(1, m1_1.clone()), mk_owned_token(2, m2_1)]
                 ),
-                (issuer2(), vec![mk_owned_token(1, m1_1.clone())]),
+                (issuer2(), vec![mk_owned_token(1, m1_1)]),
             ]
         );
     }
@@ -895,15 +892,15 @@ mod tests {
         let m2_1 = mk_metadata(2, Some(START + 11));
         let m3_1 = mk_metadata(3, Some(START + 12));
         let m4_1 = mk_metadata(4, Some(START + 13));
-        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m2_1.clone()])]);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1, m2_1])]);
 
         ctx.predecessor_account_id = issuer2();
         testing_env!(ctx.clone());
-        ctr.sbt_mint(vec![(alice(), vec![m3_1.clone(), m4_1.clone()])]);
+        ctr.sbt_mint(vec![(alice(), vec![m3_1, m4_1])]);
 
         // make soul transfer
         ctx.predecessor_account_id = alice();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         let mut result = ctr._sbt_soul_transfer(alice2(), 3);
         assert_eq!((3, false), result);
         assert!(test_utils::get_logs().len() == 1);
@@ -926,9 +923,9 @@ mod tests {
 
     #[test]
     fn soul_transfer_no_tokens_from_caller() {
-        let (mut ctx, mut ctr) = setup(&issuer1(), 1 * MINT_DEPOSIT);
+        let (mut ctx, mut ctr) = setup(&issuer1(), MINT_DEPOSIT);
         ctx.predecessor_account_id = alice();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         assert!(!ctr.is_banned(alice()));
         assert!(!ctr.is_banned(alice2()));
         ctr.sbt_soul_transfer(alice2(), None);
@@ -1097,7 +1094,7 @@ mod tests {
 
         // resumed transfer but no more tokens to transfer
         ctx.prepaid_gas = max_gas();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         result = ctr._sbt_soul_transfer(alice2(), limit as usize);
         assert_eq!((0, true), result);
 
@@ -1154,7 +1151,7 @@ mod tests {
         // mint two tokens
         let m1_1 = mk_metadata(1, Some(START + 10));
         let m2_1 = mk_metadata(2, Some(START + 11));
-        let tokens = ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m2_1.clone()])]);
+        let tokens = ctr.sbt_mint(vec![(alice(), vec![m1_1, m2_1])]);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 2);
 
         // renvew the two tokens
@@ -1170,8 +1167,8 @@ mod tests {
             vec![(
                 issuer1(),
                 vec![
-                    mk_owned_token(1, m1_1_renewed.clone()),
-                    mk_owned_token(2, m2_1_renewed.clone())
+                    mk_owned_token(1, m1_1_renewed),
+                    mk_owned_token(2, m2_1_renewed)
                 ]
             ),]
         );
@@ -1191,8 +1188,8 @@ mod tests {
         let m1_2 = mk_metadata(1, Some(START + 10));
         let m2_2: TokenMetadata = mk_metadata(2, Some(START + 12));
         ctx.predecessor_account_id = issuer2();
-        testing_env!(ctx.clone());
-        let tokens_issuer2 = ctr.sbt_mint(vec![(alice(), vec![m1_2.clone(), m2_2.clone()])]);
+        testing_env!(ctx);
+        let tokens_issuer2 = ctr.sbt_mint(vec![(alice(), vec![m1_2, m2_2])]);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 2);
 
         // renvew the two tokens
@@ -1207,8 +1204,8 @@ mod tests {
             vec![(
                 issuer2(),
                 vec![
-                    mk_owned_token(1, m1_2_renewed.clone()),
-                    mk_owned_token(2, m2_2_renewed.clone())
+                    mk_owned_token(1, m1_2_renewed),
+                    mk_owned_token(2, m2_2_renewed)
                 ]
             ),]
         );
@@ -1218,10 +1215,7 @@ mod tests {
             ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None, None),
             vec![(
                 issuer1(),
-                vec![
-                    mk_owned_token(1, m1_1.clone()),
-                    mk_owned_token(2, m2_1.clone())
-                ]
+                vec![mk_owned_token(1, m1_1), mk_owned_token(2, m2_1)]
             ),]
         );
     }
@@ -1233,12 +1227,12 @@ mod tests {
 
         // mint two tokens
         let m1_1 = mk_metadata(1, Some(START + 10));
-        let tokens = ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        let tokens = ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 1);
 
         // check if only the issuer can renew the tokens (should panic)
         ctx.predecessor_account_id = issuer2();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.sbt_renew(tokens, START + 100);
     }
 
@@ -1248,7 +1242,7 @@ mod tests {
 
         // mint two tokens
         let m1_1 = mk_metadata(1, Some(START + 10));
-        let tokens = ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        let tokens = ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
         ctr.sbt_renew(tokens.clone(), START + 100);
         let log_mint = mk_log_str(
             "mint",
@@ -1275,7 +1269,7 @@ mod tests {
 
         //issue tokens by a different issuer
         ctx.predecessor_account_id = issuer1();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m2_1.clone()])]);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 2);
 
@@ -1323,14 +1317,8 @@ mod tests {
             ctr.sbt(issuer1(), 1).unwrap(),
             mk_token(1, bob(), m1_1.clone())
         );
-        assert_eq!(
-            ctr.sbt(issuer1(), 2).unwrap(),
-            mk_token(2, bob(), m2_1.clone())
-        );
-        assert_eq!(
-            ctr.sbt(issuer2(), 1).unwrap(),
-            mk_token(1, alice(), m1_1.clone())
-        );
+        assert_eq!(ctr.sbt(issuer1(), 2).unwrap(), mk_token(2, bob(), m2_1));
+        assert_eq!(ctr.sbt(issuer2(), 1).unwrap(), mk_token(1, alice(), m1_1));
     }
 
     #[test]
@@ -1345,15 +1333,12 @@ mod tests {
 
         ctx.predecessor_account_id = issuer2();
         testing_env!(ctx.clone());
-        ctr.sbt_mint(vec![(
-            alice(),
-            vec![m1_1.clone(), m1_2.clone(), m1_3.clone()],
-        )]);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1, m1_2, m1_3])]);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 3);
 
         //set attached deposit to zero, should fail since the storage grows and we do not cover it
         ctx.attached_deposit = 0;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr._sbt_recover(alice(), bob(), 1);
     }
 
@@ -1366,12 +1351,12 @@ mod tests {
 
         ctx.predecessor_account_id = issuer2();
         testing_env!(ctx.clone());
-        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 1);
 
         // storage will grow so need to attach deposit.
         ctx.attached_deposit = MINT_DEPOSIT;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.sbt_recover(alice(), bob());
         assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer2(), None), 1);
     }
@@ -1383,10 +1368,7 @@ mod tests {
         let m2_1 = mk_metadata(2, Some(START + 11));
         let m3_1 = mk_metadata(3, Some(START + 12));
         let m4_1 = mk_metadata(4, Some(START + 13));
-        ctr.sbt_mint(vec![(
-            alice(),
-            vec![m1_1.clone(), m2_1.clone(), m3_1.clone(), m4_1.clone()],
-        )]);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1, m2_1, m3_1, m4_1])]);
 
         // sbt_recover
         let mut result = ctr._sbt_recover(alice(), alice2(), 3);
@@ -1430,7 +1412,7 @@ mod tests {
 
         //revoke tokens issued by issuer1
         ctx.predecessor_account_id = issuer1();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.sbt_revoke(tokens_issuer_1, false);
 
         let log_revoke = mk_log_str(
@@ -1458,17 +1440,17 @@ mod tests {
         assert_eq!(
             ctr.sbt_tokens(issuer1(), None, None),
             vec![
-                mk_token(1, alice(), m1_1_revoked.clone()),
-                mk_token(2, alice(), m2_1_revoked.clone()),
-                mk_token(3, alice(), m3_1_revoked.clone())
+                mk_token(1, alice(), m1_1_revoked),
+                mk_token(2, alice(), m2_1_revoked),
+                mk_token(3, alice(), m3_1_revoked)
             ]
         );
         assert_eq!(
             ctr.sbt_tokens(issuer2(), None, None),
             vec![
-                mk_token(1, bob(), m1_1.clone()),
-                mk_token(2, bob(), m2_1.clone()),
-                mk_token(3, alice(), m3_1.clone())
+                mk_token(1, bob(), m1_1),
+                mk_token(2, bob(), m2_1),
+                mk_token(3, alice(), m3_1)
             ]
         )
     }
@@ -1500,7 +1482,7 @@ mod tests {
 
         //revoke tokens issued by issuer1
         ctx.predecessor_account_id = issuer1();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.sbt_revoke(tokens_to_burn, true);
 
         let log_burn = mk_log_str(
@@ -1528,9 +1510,9 @@ mod tests {
         assert_eq!(
             ctr.sbt_tokens(issuer2(), None, None),
             vec![
-                mk_token(1, bob(), m1_1.clone()),
-                mk_token(2, bob(), m2_1.clone()),
-                mk_token(3, alice(), m3_1.clone())
+                mk_token(1, bob(), m1_1),
+                mk_token(2, bob(), m2_1),
+                mk_token(3, alice(), m3_1)
             ]
         )
     }
@@ -1540,11 +1522,11 @@ mod tests {
     fn sbt_soul_transfer_ban() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
         let m1_1 = mk_metadata(1, Some(START + 10));
-        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
         assert!(!ctr.is_banned(alice()));
 
         ctx.predecessor_account_id = alice();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.sbt_soul_transfer(alice2(), None);
 
         assert!(ctr.is_banned(alice()));
@@ -1667,9 +1649,9 @@ mod tests {
     #[test]
     #[should_panic(expected = "from account is banned. Cannot start the transfer")]
     fn sbt_soul_transfer_from_banned_account() {
-        let (mut ctx, mut ctr) = setup(&issuer1(), 1 * MINT_DEPOSIT);
+        let (mut ctx, mut ctr) = setup(&issuer1(), MINT_DEPOSIT);
         let m1_1 = mk_metadata(1, Some(START + 10));
-        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
         assert!(!ctr.is_banned(alice()));
 
         // ban the from account
@@ -1677,16 +1659,16 @@ mod tests {
         assert!(ctr.is_banned(alice()));
 
         ctx.predecessor_account_id = alice();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.sbt_soul_transfer(alice2(), None);
     }
 
     #[test]
     #[should_panic(expected = "receiver account is banned. Cannot start the transfer")]
     fn sbt_soul_transfer_to_banned_account() {
-        let (mut ctx, mut ctr) = setup(&issuer1(), 1 * MINT_DEPOSIT);
+        let (mut ctx, mut ctr) = setup(&issuer1(), MINT_DEPOSIT);
         let m1_1 = mk_metadata(1, Some(START + 10));
-        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
         assert!(!ctr.is_banned(alice()));
 
         // ban the reciver account
@@ -1694,7 +1676,7 @@ mod tests {
         assert!(ctr.is_banned(alice2()));
 
         ctx.predecessor_account_id = alice();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.sbt_soul_transfer(alice2(), None);
     }
 
@@ -1709,17 +1691,17 @@ mod tests {
         testing_env!(ctx.clone());
         // soul transfer
         let result: (u32, bool) = ctr.sbt_soul_transfer(alice2(), None);
-        assert!(result.1 == false);
+        assert!(!result.1);
 
         // assert the from account is banned after the first soul transfer execution
         assert!(ctr.is_banned(alice()));
         assert!(!ctr.is_banned(alice2()));
 
         ctx.prepaid_gas = max_gas();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.sbt_soul_transfer(alice2(), None);
         let result: (u32, bool) = ctr.sbt_soul_transfer(alice2(), None);
-        assert!(result.1 == true);
+        assert!(result.1);
 
         // assert it stays banned after the soul transfer has been completed
         assert!(ctr.is_banned(alice()));
@@ -1730,11 +1712,11 @@ mod tests {
     fn sbt_recover_ban() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
         let m1_1 = mk_metadata(1, Some(START + 10));
-        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
         assert!(!ctr.is_banned(alice()));
 
         ctx.predecessor_account_id = issuer1();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.sbt_recover(alice(), alice2());
         // sbt_recover should not ban the source account
         assert!(!ctr.is_banned(alice()));
@@ -1752,7 +1734,7 @@ mod tests {
         assert!(ctr.is_banned(alice()));
 
         //try to mint to a banned account
-        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
     }
 
     #[test]
@@ -1762,17 +1744,14 @@ mod tests {
         let m1_2 = mk_metadata(2, Some(START));
         let m1_3 = mk_metadata(3, Some(START + 100));
         let m1_4 = mk_metadata(4, Some(START + 100));
-        ctr.sbt_mint(vec![(
-            alice(),
-            vec![m1_1.clone(), m1_2.clone(), m1_3.clone(), m1_4.clone()],
-        )]);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1, m1_2, m1_3, m1_4])]);
 
         let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, Some(true));
         assert_eq!(res[0].1.len(), 4);
 
         // fast forward so the first two sbts are expired
         ctx.block_timestamp = START + 50;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
 
         let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, Some(true));
         assert_eq!(res[0].1.len(), 2);

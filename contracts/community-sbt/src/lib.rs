@@ -215,7 +215,7 @@ mod tests {
     }
 
     fn contract_metadata() -> ContractMetadata {
-        return ContractMetadata {
+        ContractMetadata {
             spec: "community-sbt-0.0.1".to_string(),
             name: "community-sbt".to_string(),
             symbol: "COMMUNITY_SBT".to_string(),
@@ -223,7 +223,7 @@ mod tests {
             base_uri: None,
             reference: None,
             reference_hash: None,
-        };
+        }
     }
 
     fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
@@ -239,7 +239,7 @@ mod tests {
         let ctr = Contract::new(registry(), vec![admin()], contract_metadata(), START);
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
-        return (ctx, ctr);
+        (ctx, ctr)
     }
 
     #[test]

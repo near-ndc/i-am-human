@@ -19,7 +19,7 @@ pub use crate::util::*;
 
 mod errors;
 mod storage;
-mod util;
+pub mod util;
 
 pub const CLASS_FV_SBT: ClassId = 1;
 pub const CLASS_KYC_SBT: ClassId = 2;
@@ -328,16 +328,12 @@ pub enum CallbackResult<T, E> {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod checks;
 
-#[cfg(all(test, not(target_arch = "wasm32")))]
+#[cfg(test)]
 mod tests {
-    extern crate ed25519_dalek;
-    extern crate rand;
-
     use crate::*;
+    use ed25519_dalek::{Keypair, Signer};
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::{testing_env, VMContext};
-
-    use ed25519_dalek::{Keypair, Signer};
     use rand::rngs::OsRng;
 
     fn b64_encode(data: Vec<u8>) -> String {
@@ -408,7 +404,7 @@ mod tests {
         );
         testing_env!(ctx.clone());
 
-        return (ctx, ctr, keypair);
+        (ctx, ctr, keypair)
     }
 
     /// @timestamp: in seconds
@@ -436,8 +432,8 @@ mod tests {
         is_verified_kyc: bool,
     ) -> (Claim, String, String) {
         let c = mk_claim(timestamp, external_id, is_verified_kyc);
-        let (c_str, sig) = sign_claim(&c, &k);
-        return (c, c_str, sig);
+        let (c_str, sig) = sign_claim(&c, k);
+        (c, c_str, sig)
     }
 
     fn assert_bad_request(resp: Result<Promise, CtrError>, expected_msg: &str) {
@@ -475,9 +471,7 @@ mod tests {
         ctx.attached_deposit = MINT_TOTAL_COST - 1;
         testing_env!(ctx);
         let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, false);
-        let _ = ctr
-            .sbt_mint(c_str.clone(), sig.clone(), None)
-            .expect("must panic");
+        let _ = ctr.sbt_mint(c_str, sig, None).expect("must panic");
     }
 
     #[test]
@@ -490,9 +484,7 @@ mod tests {
         ctx.attached_deposit = MINT_TOTAL_COST_WITH_KYC - 1;
         testing_env!(ctx);
         let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, true);
-        let _ = ctr
-            .sbt_mint(c_str.clone(), sig.clone(), None)
-            .expect("must panic");
+        let _ = ctr.sbt_mint(c_str, sig, None).expect("must panic");
     }
 
     #[test]
@@ -536,9 +528,9 @@ mod tests {
         );
 
         ctx.signer_account_id = acc_implicit();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         assert_bad_request(
-            ctr.sbt_mint(c_str.clone(), sig.clone(), None),
+            ctr.sbt_mint(c_str, sig, None),
             "claimer is not the transaction signer",
         );
     }
@@ -572,7 +564,7 @@ mod tests {
         }
 
         // fail: claim_ttl passed way more
-        ctx.signer_account_id = signer.clone();
+        ctx.signer_account_id = signer;
         ctx.block_timestamp = start() + CLAIM_TTL * 10 * SECOND;
         testing_env!(ctx.clone());
         match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
@@ -594,12 +586,12 @@ mod tests {
 
         // should create a SBT for a valid claim
         ctx.block_timestamp = start() + SECOND;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         let resp = ctr.sbt_mint(c_str.clone(), sig.clone(), None);
         assert!(resp.is_ok(), "should accept valid claim");
 
         // fail: signer already has SBT
-        match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
+        match ctr.sbt_mint(c_str, sig, None) {
             Err(CtrError::DuplicatedID(_)) => (),
             Err(error) => panic!("expected DuplicatedID, got: {:?}", error),
             Ok(_) => panic!("expected DuplicatedID, got: Ok"),
