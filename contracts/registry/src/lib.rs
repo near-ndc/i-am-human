@@ -1885,7 +1885,7 @@ mod tests {
     }
 
     #[test]
-    fn is_human_multiple_classes_expired() {
+    fn is_human_multiple_classes_with_expired_tokens() {
         let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
         ctr.iah_classes.1 = vec![1, 3];
         ctx.current_account_id = AccountId::new_unchecked("registry.i-am-human.near".to_string());
@@ -1918,7 +1918,6 @@ mod tests {
             "revoke",
             &format!(r#"{{"issuer":"{}","tokens":[1]}}"#, fractal_mainnet()),
         );
-
         let log_burn = mk_log_str(
             "burn",
             &format!(r#"{{"issuer":"{}","tokens":[1]}}"#, fractal_mainnet()),
