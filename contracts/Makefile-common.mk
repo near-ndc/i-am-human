@@ -1,14 +1,17 @@
 build:
 	@RUSTFLAGS='-C link-arg=-s' cargo build --target wasm32-unknown-unknown --release
+	@mkdir -p ../res
 	@cp ../target/wasm32-unknown-unknown/release/*.wasm ../res/
 
 build-quick:
 	@RUSTFLAGS='-C link-arg=-s' cargo build --target wasm32-unknown-unknown
+	@mkdir -p ../res
 	@cp ../target/wasm32-unknown-unknown/release/*.wasm ../res/
 
 
 build-all:
 	@RUSTFLAGS='-C link-arg=-s' cargo build --all --target wasm32-unknown-unknown --release
+	@mkdir -p ../res
 	@cp ../target/wasm32-unknown-unknown/release/*.wasm ../res/
 
 

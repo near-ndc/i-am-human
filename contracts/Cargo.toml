@@ -8,8 +8,8 @@ members = [
     "demo-issuer",
     "soulbound-class",
     "ubi",
+    "tests"
 ]
-
 
 # compilation profile for a release target
 [profile.release]
@@ -31,3 +31,10 @@ near-contract-standards = "^4.1.1"
 uint = { version = "^0.9.5", default-features = false }
 serde_json = "^1.0"
 ed25519-dalek = "1"
+rand = { version = "^0.7", default-features = false }
+near-primitives = "0.17.0"
+assert_matches = "1.5.0"
+workspaces = { version = "0.7.0", features = ["unstable"] }
+near-units = "0.2.0"
+tokio = { version = "1.24.2", features = ["full"] }
+anyhow = "1.0.68"

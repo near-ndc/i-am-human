@@ -5,8 +5,7 @@ authors = ["Robert Zaremba 'https://zaremba.ch/'"]
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
-
+crate-type = ["cdylib", "lib"]
 
 [dependencies]
 uint.workspace = true
@@ -18,5 +17,6 @@ cost = { path = "../cost" }
 sbt = { path = "../sbt" }
 
 [dev-dependencies]
-rand = "^0.7"
-near-primitives = "^0.16.1"
+getrandom = { version = "0.2", features = ["js"] }
+rand.workspace = true
+near-primitives.workspace = true
