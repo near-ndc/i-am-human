@@ -599,7 +599,6 @@ mod tests {
     fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
-            // .attached_deposit(deposit_dec.into())
             .block_timestamp(START)
             .is_view(false)
             .build();
@@ -1802,7 +1801,7 @@ mod tests {
     #[test]
     fn sbt_tokens_by_owner_non_expired() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 4 * MINT_DEPOSIT);
-        ctx.block_timestamp = START * MILI_SECOND;
+        ctx.block_timestamp = START * MILI_SECOND; // 11 seconds
         testing_env!(ctx.clone());
 
         let m1_1 = mk_metadata(1, Some(START));
