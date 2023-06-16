@@ -599,7 +599,6 @@ mod tests {
     fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
-            // .attached_deposit(deposit_dec.into())
             .block_timestamp(START)
             .is_view(false)
             .build();
@@ -1551,7 +1550,7 @@ mod tests {
             "burn",
             &format!(r#"{{"issuer":"{}","tokens":[1,2,3]}}"#, issuer1()),
         );
-        assert_eq!(test_utils::get_logs().len(), 1);
+        assert_eq!(test_utils::get_logs().len(), 2);
         assert_eq!(test_utils::get_logs()[0], log_burn[0]);
         assert_eq!(ctr.sbt_supply(issuer1()), 1);
         assert_eq!(ctr.sbt_supply(issuer2()), 3);
@@ -1802,7 +1801,7 @@ mod tests {
     #[test]
     fn sbt_tokens_by_owner_non_expired() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 4 * MINT_DEPOSIT);
-        ctx.block_timestamp = START * MILI_SECOND;
+        ctx.block_timestamp = START * MILI_SECOND; // 11 seconds
         testing_env!(ctx.clone());
 
         let m1_1 = mk_metadata(1, Some(START));
@@ -1902,5 +1901,61 @@ mod tests {
         assert_eq!(res[0].1.len(), 10);
         let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None, None);
         assert_eq!(res[0].1.len(), 10);
+    }
+  
+    #[test]
+    fn is_human_multiple_classes_with_expired_tokens() {
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+        ctr.iah_classes.1 = vec![1, 3];
+        ctx.current_account_id = AccountId::new_unchecked("registry.i-am-human.near".to_string());
+        testing_env!(ctx.clone());
+
+        let m1_1 = mk_metadata(1, Some(START + 100));
+        let m1_2 = mk_metadata(2, Some(START + 100));
+        let m1_3 = mk_metadata(3, Some(START));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1, m1_2, m1_3])]);
+
+        assert!(ctr.is_human(alice()));
+        // step forward, so token class==3 will expire
+        ctx.block_timestamp = (START + 1) * MILI_SECOND;
+        testing_env!(ctx.clone());
+        assert!(!ctr.is_human(alice()));
+    }
+  
+    #[test]
+    fn sbt_revoke_events() {
+        let (ctx, mut ctr) = setup(&fractal_mainnet(), 2 * MINT_DEPOSIT);
+        let m1_1 = mk_metadata(1, Some(START));
+        let tokens = ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
+
+        // clear the events
+        testing_env!(ctx.clone());
+
+        // revoke (burn == false)
+        ctr.sbt_revoke(vec![tokens[0]], false);
+
+        let log_revoke = mk_log_str(
+            "revoke",
+            &format!(r#"{{"issuer":"{}","tokens":[1]}}"#, fractal_mainnet()),
+        );
+        let log_burn = mk_log_str(
+            "burn",
+            &format!(r#"{{"issuer":"{}","tokens":[1]}}"#, fractal_mainnet()),
+        );
+
+        // check only revoke event is emitted
+        assert_eq!(test_utils::get_logs().len(), 1);
+        assert_eq!(test_utils::get_logs(), log_revoke);
+
+        // clear the events
+        testing_env!(ctx.clone());
+
+        // revoke (burn == true)
+        ctr.sbt_revoke(tokens, true);
+
+        // check both burn and revoke events are emitted
+        assert_eq!(test_utils::get_logs().len(), 2); // -> only 1 event is emmited
+        assert_eq!(test_utils::get_logs(), vec![log_burn, log_revoke].concat());
+        // -> missing revoke event
     }
 }
