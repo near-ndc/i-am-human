@@ -343,16 +343,16 @@ impl SBTRegistry for Contract {
         let issuer_id = self.assert_issuer(&issuer);
         let tokens_by_owner =
             self.sbt_tokens_by_owner(owner.clone(), Some(issuer.clone()), None, None, Some(true));
-        require!(
-            !tokens_by_owner.is_empty(),
-            "no tokens to be revoked for the given owner"
-        );
-        let tokens: Vec<OwnedToken> = tokens_by_owner[0].1.iter().map(|t| t.clone()).collect();
-        let token_ids: Vec<u64> = tokens.iter().map(|s| s.token).collect();
+        if tokens_by_owner.is_empty() {
+            return;
+        };
+        let tokens = &tokens_by_owner[0].1;
+        let mut token_ids = Vec::new();
+        // let token_ids: Vec<u64> = tokens.iter().map(|s| s.token).collect();
         if burn == true {
             let mut revoked_per_class: HashMap<u64, u64> = HashMap::new();
             let tokens_burned: u64 = tokens.len().try_into().unwrap();
-            for token in &tokens {
+            for token in tokens {
                 // update balances
                 let class_id = token.metadata.class;
                 let balance_key = &BalanceKey {
@@ -374,6 +374,7 @@ impl SBTRegistry for Contract {
                     issuer_id,
                     token: token.token,
                 });
+                token_ids.push(token.token);
             }
 
             // update supply by owner
@@ -421,6 +422,7 @@ impl SBTRegistry for Contract {
                     },
                     &token_data,
                 );
+                token_ids.push(token.token);
             }
         }
         SbtTokensEvent {
