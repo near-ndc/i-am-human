@@ -430,10 +430,13 @@ impl Contract {
     /// returns false if the `issuer` contract was already registered.
     pub fn admin_add_sbt_issuer(&mut self, issuer: AccountId) -> bool {
         self.assert_authority();
-        let previous = self.sbt_issuers.insert(&issuer, &self.next_issuer_id);
+        if self.sbt_issuers.get(&issuer).is_some() {
+            return false;
+        }
+        self.sbt_issuers.insert(&issuer, &self.next_issuer_id);
         self.issuer_id_map.insert(&self.next_issuer_id, &issuer);
         self.next_issuer_id += 1;
-        previous.is_none()
+        true
     }
 
     pub fn change_admin(&mut self, new_admin: AccountId) {
@@ -722,6 +725,36 @@ mod tests {
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
+    }
+
+    #[test]
+    fn add_sbt_issuer() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+        // in setup we add 4 issuers, so the next id will be 5.
+        assert_eq!(5, ctr.next_issuer_id);
+        assert_eq!(1, ctr.assert_issuer(&issuer1()));
+        assert_eq!(2, ctr.assert_issuer(&issuer2()));
+        assert_eq!(3, ctr.assert_issuer(&issuer3()));
+        assert_eq!(4, ctr.assert_issuer(&fractal_mainnet()));
+
+        assert_eq!(issuer1(), ctr.issuer_by_id(1));
+        assert_eq!(issuer2(), ctr.issuer_by_id(2));
+        assert_eq!(issuer3(), ctr.issuer_by_id(3));
+        assert_eq!(fractal_mainnet(), ctr.issuer_by_id(4));
+
+        ctx.predecessor_account_id = admin();
+        testing_env!(ctx.clone());
+        let ok = ctr.admin_add_sbt_issuer(issuer1());
+        assert!(
+            !ok,
+            "isser1 should be already added, so it should return false"
+        );
+        assert_eq!(5, ctr.next_issuer_id, "next_issuer_id should not change");
+        assert_eq!(
+            1,
+            ctr.assert_issuer(&issuer1()),
+            "issuer1 id should not change"
+        );
     }
 
     #[test]
