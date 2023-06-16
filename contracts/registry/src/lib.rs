@@ -598,6 +598,46 @@ impl Contract {
 
         ret_token_ids
     }
+
+    //
+    // TESTING
+    // list of functions used in backstage for testing
+    //
+
+    fn assert_testnet(&self) {
+        require!(
+            env::current_account_id().as_ref().ends_with("testnet"),
+            "must be testnet"
+        );
+    }
+
+    /// returns false if the `issuer` contract was already registered.
+    pub fn testing_add_sbt_issuer(&mut self, issuer: AccountId) -> bool {
+        self.assert_testnet();
+        match self.sbt_issuers.insert(&issuer, &self.next_issuer_id) {
+            None => {
+                self.issuer_id_map.insert(&self.next_issuer_id, &issuer);
+                self.next_issuer_id += 1;
+                return true;
+            }
+            _ => false,
+        }
+    }
+
+    #[payable]
+    pub fn testing_sbt_mint(
+        &mut self,
+        issuer: AccountId,
+        token_spec: Vec<(AccountId, Vec<TokenMetadata>)>,
+    ) -> Vec<TokenId> {
+        self.assert_testnet();
+        self._sbt_mint(&issuer, token_spec)
+    }
+
+    pub fn testing_sbt_renew(&mut self, issuer: AccountId, tokens: Vec<TokenId>, expires_at: u64) {
+        self.assert_testnet();
+        self._sbt_renew(issuer, tokens, expires_at)
+    }
 }
 
 #[cfg(test)]
