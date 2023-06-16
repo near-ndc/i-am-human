@@ -1,13 +1,8 @@
-// TODO: remove allow unused_variables
-#![allow(unused_variables)]
-
 use std::collections::HashMap;
 
 use near_sdk::{near_bindgen, AccountId};
 
 use crate::*;
-use cost::*;
-use sbt::*;
 
 const MAX_LIMIT: u32 = 1000;
 
@@ -217,95 +212,8 @@ impl SBTRegistry for Contract {
     /// provided.
     #[payable]
     fn sbt_mint(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId> {
-        let storage_start = env::storage_usage();
-        let storage_deposit = env::attached_deposit();
-        require!(
-            storage_deposit >= 6 * MILI_NEAR,
-            "min required storage deposit: 0.006 NEAR"
-        );
-
         let issuer = &env::predecessor_account_id();
-        let issuer_id = self.assert_issuer(issuer);
-        let mut num_tokens = 0;
-        for el in token_spec.iter() {
-            num_tokens += el.1.len() as u64;
-        }
-        let mut token = self.next_token_id(issuer_id, num_tokens);
-        let ret_token_ids = (token..token + num_tokens).collect();
-        let mut supply_by_class = HashMap::new();
-        let mut per_recipient: HashMap<AccountId, Vec<TokenId>> = HashMap::new();
-
-        for (owner, metadatas) in token_spec {
-            // no need to check ongoing_soult_tx, because it will automatically ban the source account
-            self.assert_not_banned(&owner);
-
-            let recipient_tokens = per_recipient.entry(owner.clone()).or_default();
-            let metadatas_len = metadatas.len();
-
-            for metadata in metadatas {
-                let prev = self.balances.insert(
-                    &balance_key(owner.clone(), issuer_id, metadata.class),
-                    &token,
-                );
-                require!(
-                    prev.is_none(),
-                    format! {"{} already has SBT of class {}", owner, metadata.class}
-                );
-
-                // update supply by class
-                match supply_by_class.get_mut(&metadata.class) {
-                    None => {
-                        supply_by_class.insert(metadata.class, 1);
-                    }
-                    Some(s) => *s += 1,
-                };
-
-                self.issuer_tokens.insert(
-                    &IssuerTokenId { issuer_id, token },
-                    &TokenData {
-                        owner: owner.clone(),
-                        metadata: metadata.into(),
-                    },
-                );
-                recipient_tokens.push(token);
-
-                token += 1;
-            }
-
-            // update supply by owner
-            let skey = (owner, issuer_id);
-            let sowner = self.supply_by_owner.get(&skey).unwrap_or(0) + metadatas_len as u64;
-            self.supply_by_owner.insert(&skey, &sowner);
-        }
-
-        for (cls, new_supply) in supply_by_class {
-            let key = (issuer_id, cls);
-            let s = self.supply_by_class.get(&key).unwrap_or(0) + new_supply;
-            self.supply_by_class.insert(&key, &s);
-        }
-
-        let new_supply = self.supply_by_issuer.get(&issuer_id).unwrap_or(0) + num_tokens;
-        self.supply_by_issuer.insert(&issuer_id, &new_supply);
-
-        let mut minted: Vec<(&AccountId, &Vec<TokenId>)> = per_recipient.iter().collect();
-        minted.sort_by(|a, b| a.0.cmp(b.0));
-        SbtMint {
-            issuer,
-            tokens: minted,
-        }
-        .emit();
-
-        let required_deposit =
-            (env::storage_usage() - storage_start) as u128 * env::storage_byte_cost();
-        require!(
-            storage_deposit >= required_deposit,
-            format!(
-                "not enough NEAR storage depost, required: {}",
-                required_deposit
-            )
-        );
-
-        ret_token_ids
+        self._sbt_mint(issuer, token_spec)
     }
 
     /// sbt_recover reassigns all tokens issued by the caller, from the old owner to a new owner.
