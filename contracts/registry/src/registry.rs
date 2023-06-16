@@ -141,12 +141,15 @@ impl SBTRegistry for Contract {
             return vec![];
         }
 
-        let issuer_id = match issuer {
+        let mut issuer_id = match issuer {
             None => 0,
             // use self.sbt_contracts.get when changing to query by issuer_start
             Some(addr) => self.assert_issuer(&addr),
         };
-        let from_class = from_class.unwrap_or(0);
+        issuer_id = issuer_id.saturating_sub(1);
+        let mut from_class = from_class.unwrap_or(0);
+        // iter_from starts from exclusive "left end"
+        from_class = from_class.saturating_sub(1);
         let mut limit = limit.unwrap_or(MAX_LIMIT);
         require!(limit > 0, "limit must be bigger than 0");
 
@@ -157,21 +160,27 @@ impl SBTRegistry for Contract {
         let now = env::block_timestamp_ms();
         let with_expired = with_expired.unwrap_or(false);
 
-        for (key, token_id) in self.balances.iter() {
-            if key.class_id < from_class || key.issuer_id < issuer_id || key.owner != account {
+        let first_key = self
+            .balances
+            .lower(&balance_key(account.clone(), issuer_id, from_class))
+            .unwrap_or(balance_key(account.clone(), issuer_id, from_class));
+
+        for (key, token_id) in self.balances.iter_from(first_key) {
+            // TODO: maybe we should continue the scan?
+            if key.owner != account {
                 continue;
             }
-            if prev_issuer != key.issuer_id {
-                if issuer_id != 0 {
-                    break;
-                }
-                if !tokens.is_empty() {
-                    let issuer = self.issuer_by_id(prev_issuer);
-                    resp.push((issuer, tokens));
-                    tokens = Vec::new();
-                }
-                prev_issuer = key.issuer_id;
-            }
+            // if prev_issuer != key.issuer_id {
+            //     // if issuer_id != 0 {
+            //     //     break;
+            //     // }
+            //     if !tokens.is_empty() {
+            //         let issuer = self.issuer_by_id(prev_issuer);
+            //         resp.push((issuer, tokens));
+            //         tokens = Vec::new();
+            //     }
+            //     prev_issuer = key.issuer_id;
+            // }
             let t: TokenData = self.get_token(key.issuer_id, token_id);
             if !with_expired && t.metadata.expires_at().unwrap_or(now) < now {
                 continue;

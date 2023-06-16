@@ -63,7 +63,7 @@ impl Contract {
             balances: TreeMap::new(StorageKey::Balances),
             issuer_tokens: LookupMap::new(StorageKey::IssuerTokens),
             next_token_ids: LookupMap::new(StorageKey::NextTokenId),
-            next_issuer_id: 1,
+            next_issuer_id: 2, // first issuer_id is 1
             ongoing_soul_tx: LookupMap::new(StorageKey::OngoingSoultTx),
             iah_classes: (iah_issuer, iah_classes),
         }
@@ -607,6 +607,7 @@ mod tests {
         }
         testing_env!(ctx.clone());
         let mut ctr = Contract::new(admin(), fractal_mainnet(), vec![1]);
+        ctr.admin_add_sbt_issuer(alice());
         ctr.admin_add_sbt_issuer(issuer1());
         ctr.admin_add_sbt_issuer(issuer2());
         ctr.admin_add_sbt_issuer(issuer3());
@@ -1885,7 +1886,7 @@ mod tests {
 
     #[test]
     fn sbt_tokens_by_owner_per_issuer() {
-        let (mut ctx, mut ctr) = setup(&&issuer1(), 20 * MINT_DEPOSIT);
+        let (mut ctx, mut ctr) = setup(&issuer1(), 20 * MINT_DEPOSIT);
         let batch_metadata = mk_batch_metadata(20);
         ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
 
@@ -1902,7 +1903,7 @@ mod tests {
         let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None, None);
         assert_eq!(res[0].1.len(), 10);
     }
-  
+
     #[test]
     fn is_human_multiple_classes_with_expired_tokens() {
         let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
@@ -1921,7 +1922,7 @@ mod tests {
         testing_env!(ctx.clone());
         assert!(!ctr.is_human(alice()));
     }
-  
+
     #[test]
     fn sbt_revoke_events() {
         let (ctx, mut ctr) = setup(&fractal_mainnet(), 2 * MINT_DEPOSIT);
