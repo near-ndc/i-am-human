@@ -430,13 +430,7 @@ impl Contract {
     /// returns false if the `issuer` contract was already registered.
     pub fn admin_add_sbt_issuer(&mut self, issuer: AccountId) -> bool {
         self.assert_authority();
-        if self.sbt_issuers.get(&issuer).is_some() {
-            return false;
-        }
-        self.sbt_issuers.insert(&issuer, &self.next_issuer_id);
-        self.issuer_id_map.insert(&self.next_issuer_id, &issuer);
-        self.next_issuer_id += 1;
-        true
+        self._add_sbt_issuer(&issuer)
     }
 
     pub fn change_admin(&mut self, new_admin: AccountId) {
@@ -490,6 +484,16 @@ impl Contract {
             self.authority == env::predecessor_account_id(),
             "not an admin"
         )
+    }
+
+    fn _add_sbt_issuer(&mut self, issuer: &AccountId) -> bool {
+        if self.sbt_issuers.get(issuer).is_some() {
+            return false;
+        }
+        self.sbt_issuers.insert(issuer, &self.next_issuer_id);
+        self.issuer_id_map.insert(&self.next_issuer_id, issuer);
+        self.next_issuer_id += 1;
+        true
     }
 
     fn _sbt_renew(&mut self, issuer: AccountId, tokens: Vec<TokenId>, expires_at: u64) {
