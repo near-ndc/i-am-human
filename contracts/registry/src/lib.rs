@@ -621,14 +621,7 @@ impl Contract {
     /// returns false if the `issuer` contract was already registered.
     pub fn testing_add_sbt_issuer(&mut self, issuer: AccountId) -> bool {
         self.assert_testnet();
-        match self.sbt_issuers.insert(&issuer, &self.next_issuer_id) {
-            None => {
-                self.issuer_id_map.insert(&self.next_issuer_id, &issuer);
-                self.next_issuer_id += 1;
-                return true;
-            }
-            _ => false,
-        }
+        self._add_sbt_issuer(&issuer)
     }
 
     #[payable]
