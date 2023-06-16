@@ -17,6 +17,7 @@ impl SBTRegistry for Contract {
      * QUERIES
      **********/
 
+    /// returns the token, if it does not exist returns None
     fn sbt(&self, issuer: AccountId, token: TokenId) -> Option<Token> {
         let issuer_id = self.assert_issuer(&issuer);
         self.issuer_tokens
@@ -24,6 +25,7 @@ impl SBTRegistry for Contract {
             .map(|td| td.to_token(token))
     }
 
+    /// returns total amount of tokens minted by the given issuer
     fn sbt_supply(&self, issuer: AccountId) -> u64 {
         let issuer_id = match self.sbt_issuers.get(&issuer) {
             None => return 0,
@@ -155,7 +157,7 @@ impl SBTRegistry for Contract {
         let mut prev_issuer = issuer_id;
 
         let now = env::block_timestamp_ms();
-        let non_expired = !with_expired.unwrap_or(false);
+        let with_expired = with_expired.unwrap_or(false);
 
         for (key, token_id) in
             self.balances
@@ -177,7 +179,7 @@ impl SBTRegistry for Contract {
                 prev_issuer = key.issuer_id;
             }
             let t: TokenData = self.get_token(key.issuer_id, token_id);
-            if non_expired && t.metadata.expires_at().unwrap_or(now) < now {
+            if !with_expired && t.metadata.expires_at().unwrap_or(now) < now {
                 continue;
             }
             tokens.push(OwnedToken {
@@ -403,7 +405,11 @@ impl SBTRegistry for Contract {
                 .insert(&(issuer_id), &(supply_by_issuer - tokens_burned));
 
             // emit event
-            SbtTokensEvent { issuer, tokens }.emit_burn();
+            SbtTokensEvent {
+                issuer: issuer.clone(),
+                tokens: tokens.clone(),
+            }
+            .emit_burn();
         } else {
             let current_timestamp = env::block_timestamp();
             // revoke
@@ -416,8 +422,8 @@ impl SBTRegistry for Contract {
                 self.issuer_tokens
                     .insert(&IssuerTokenId { issuer_id, token }, &t);
             }
-            SbtTokensEvent { issuer, tokens }.emit_revoke();
         }
+        SbtTokensEvent { issuer, tokens }.emit_revoke();
     }
 
     /// Revokes all owners SBTs issued by the caller either by burning or updating their expire time.
