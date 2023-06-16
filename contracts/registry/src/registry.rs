@@ -486,8 +486,8 @@ impl SBTRegistry for Contract {
 
             // emit event
             SbtTokensEvent {
-                issuer,
-                tokens: token_ids,
+                issuer: issuer.clone(),
+                tokens: token_ids.clone(),
             }
             .emit_burn();
         } else {
@@ -508,11 +508,11 @@ impl SBTRegistry for Contract {
                     &token_data,
                 );
             }
-            SbtTokensEvent {
-                issuer,
-                tokens: token_ids,
-            }
-            .emit_revoke();
         }
+        SbtTokensEvent {
+            issuer,
+            tokens: token_ids,
+        }
+        .emit_revoke();
     }
 }

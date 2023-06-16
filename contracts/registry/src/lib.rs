@@ -1886,7 +1886,7 @@ mod tests {
             "burn",
             &format!(r#"{{"issuer":"{}","tokens":[1,2]}}"#, issuer2()),
         );
-        assert_eq!(test_utils::get_logs().len(), 2);
+        assert_eq!(test_utils::get_logs().len(), 3);
         assert_eq!(test_utils::get_logs()[1], log_burn[0]);
 
         // make sure the balances are updated correctly
@@ -1991,7 +1991,8 @@ mod tests {
 
         assert_eq!(ctr.sbt_supply(issuer1()), 20);
         assert_eq!(ctr.sbt_supply(issuer2()), 9);
-      
+    }
+
     #[test]
     fn is_human() {
         let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
