@@ -230,7 +230,7 @@ impl SBTRegistry for Contract {
     }
 
     /// sbt_renew will update the expire time of provided tokens.
-    /// `expires_at` is a unix timestamp (in seconds).
+    /// `expires_at` is a unix timestamp miliseconds.
     /// Must be called by an SBT contract.
     /// Must emit `Renew` event.
     /// Use `cost::renew_gas` to calculate expected amount of gas that should be assigned for this
