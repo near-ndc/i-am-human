@@ -489,6 +489,21 @@ impl Contract {
         )
     }
 
+    fn _sbt_renew(&mut self, issuer: AccountId, tokens: Vec<TokenId>, expires_at: u64) {
+        let issuer_id = self.assert_issuer(&issuer);
+        for token in &tokens {
+            let token = *token;
+            let mut t = self.get_token(issuer_id, token);
+            self.assert_not_banned(&t.owner);
+            let mut m = t.metadata.v1();
+            m.expires_at = Some(expires_at);
+            t.metadata = m.into();
+            self.issuer_tokens
+                .insert(&IssuerTokenId { issuer_id, token }, &t);
+        }
+        SbtTokensEvent { issuer, tokens }.emit_renew();
+    }
+
     fn _sbt_mint(
         &mut self,
         issuer: &AccountId,
