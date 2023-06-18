@@ -308,7 +308,7 @@ impl SBTRegistry for Contract {
             }
             .emit_burn();
         } else {
-            let current_timestamp = env::block_timestamp();
+            let current_timestamp = env::block_timestamp_ms();
             // revoke
             for token in tokens.clone() {
                 // update expire date for all tokens to current_timestamp
