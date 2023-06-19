@@ -121,7 +121,7 @@ pub trait SBTRegistry {
     fn sbt_recover(&mut self, from: AccountId, to: AccountId) -> (u32, bool);
 
     /// sbt_renew will update the expire time of provided tokens.
-    /// `expires_at` is a unix timestamp (in miliseconds).
+    /// `expires_at` is a unix timestamp in miliseconds.
     /// Must be called by an SBT contract.
     /// Must emit `Renew` event.
     fn sbt_renew(&mut self, tokens: Vec<TokenId>, expires_at: u64);
