@@ -714,7 +714,7 @@ mod tests {
     fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
-            .block_timestamp(START)
+            .block_timestamp(START * MILI_SECOND)
             .is_view(false)
             .build();
         if deposit > 0 {
@@ -1597,7 +1597,7 @@ mod tests {
         let m2_1 = mk_metadata(2, Some(START + 11));
         let m3_1 = mk_metadata(3, Some(START + 21));
 
-        let current_timestamp = ctx.block_timestamp;
+        let current_timestamp = ctx.block_timestamp / MILI_SECOND;
 
         let m1_1_revoked = mk_metadata(1, Some(current_timestamp));
         let m2_1_revoked = mk_metadata(2, Some(current_timestamp));
@@ -2003,7 +2003,7 @@ mod tests {
         ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m1_2.clone()])]);
 
         let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
-        assert!(res.len() == 2);
+        assert_eq!(res.len(), 2);
         assert_eq!(res[0].1.len(), 2);
         assert_eq!(res[1].1.len(), 2);
         assert_eq!(ctr.sbt_supply(issuer1()), 2);

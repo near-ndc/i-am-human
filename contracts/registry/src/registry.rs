@@ -394,11 +394,11 @@ impl SBTRegistry for Contract {
             }
             .emit_burn();
         } else {
-            let current_timestamp = env::block_timestamp();
+            let current_timestamp_ms = env::block_timestamp_ms();
             // revoke
             for mut token in tokens.clone() {
                 // update expire date for all tokens to current_timestamp
-                token.metadata.expires_at = Some(current_timestamp);
+                token.metadata.expires_at = Some(current_timestamp_ms);
                 let token_data = TokenData {
                     owner: owner.clone(),
                     metadata: VerTokenMetadata::V1(token.metadata),
