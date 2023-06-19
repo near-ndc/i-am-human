@@ -61,7 +61,7 @@ impl Contract {
             balances: TreeMap::new(StorageKey::Balances),
             issuer_tokens: LookupMap::new(StorageKey::IssuerTokens),
             next_token_ids: LookupMap::new(StorageKey::NextTokenId),
-            next_issuer_id: 2, // first issuer_id is 1
+            next_issuer_id: 1, // first issuer_id is 1
             ongoing_soul_tx: LookupMap::new(StorageKey::OngoingSoultTx),
             iah_classes: (iah_issuer, iah_classes),
         }
@@ -714,7 +714,7 @@ mod tests {
     fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
-            .block_timestamp(START)
+            .block_timestamp(START * MILI_SECOND)
             .is_view(false)
             .build();
         if deposit > 0 {
@@ -722,7 +722,6 @@ mod tests {
         }
         testing_env!(ctx.clone());
         let mut ctr = Contract::new(admin(), fractal_mainnet(), vec![1]);
-        ctr.admin_add_sbt_issuer(alice());
         ctr.admin_add_sbt_issuer(issuer1());
         ctr.admin_add_sbt_issuer(issuer2());
         ctr.admin_add_sbt_issuer(issuer3());
