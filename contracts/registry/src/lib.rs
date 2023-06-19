@@ -61,7 +61,7 @@ impl Contract {
             balances: TreeMap::new(StorageKey::Balances),
             issuer_tokens: LookupMap::new(StorageKey::IssuerTokens),
             next_token_ids: LookupMap::new(StorageKey::NextTokenId),
-            next_issuer_id: 1, // first issuer_id is 1
+            next_issuer_id: 1,
             ongoing_soul_tx: LookupMap::new(StorageKey::OngoingSoultTx),
             iah_classes: (iah_issuer, iah_classes),
         }

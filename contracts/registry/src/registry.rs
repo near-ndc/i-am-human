@@ -136,7 +136,7 @@ impl SBTRegistry for Contract {
             return vec![];
         }
 
-        let issuer_id = match issuer.clone() {
+        let issuer_id = match &issuer {
             None => 0,
             // use self.sbt_contracts.get when changing to query by issuer_start
             Some(addr) => self.assert_issuer(&addr),
@@ -168,7 +168,6 @@ impl SBTRegistry for Contract {
             if (issuer_id > 0 && key.issuer_id != issuer_id) || key.class_id < from_class {
                 continue;
             }
-
             if prev_issuer != key.issuer_id {
                 if issuer_id != 0 {
                     break;
