@@ -2029,6 +2029,26 @@ mod tests {
     }
 
     #[test]
+    fn sbt_tokens_by_owner_per_issuer() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 20 * MINT_DEPOSIT);
+        let batch_metadata = mk_batch_metadata(20);
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[10..].to_vec())]);
+
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 10);
+        assert_eq!(res[1].1.len(), 10);
+
+        let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None, None);
+        assert_eq!(res[0].1.len(), 10);
+        let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None, None);
+        assert_eq!(res[0].1.len(), 10);
+    }
+
+    #[test]
     fn is_human_multiple_classes_with_expired_tokens() {
         let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
         ctr.iah_classes.1 = vec![1, 3];
@@ -2046,6 +2066,7 @@ mod tests {
         testing_env!(ctx.clone());
         assert!(!ctr.is_human(alice()));
     }
+
     #[test]
     fn sbt_revoke_events() {
         let (ctx, mut ctr) = setup(&fractal_mainnet(), 2 * MINT_DEPOSIT);
