@@ -114,7 +114,7 @@ impl SBTRegistry for Contract {
     /// Query SBT tokens by owner
     /// If `from_class` is not specified, then `from_class` should be assumed to be the first
     /// valid class id.
-    /// If limit is not specified, default is used: 100.
+    /// If limit is not specified, default is used: MAX_LIMIT.
     /// Returns list of pairs: `(Issuer address, list of token IDs)`.
     /// if `with_expired` is set to `true` then only non-expired tokens are returned, otherwise all tokens are returned.
     fn sbt_tokens_by_owner(
@@ -136,14 +136,16 @@ impl SBTRegistry for Contract {
             return vec![];
         }
 
-        let issuer_id = match issuer {
+        let issuer_id = match &issuer {
             None => 0,
-            // use self.sbt_contracts.get when changing to query by issuer_start
             Some(addr) => self.assert_issuer(&addr),
         };
-        let mut from_class = from_class.unwrap_or(0);
-        // iter_from starts from exclusive "left end"
-        from_class = from_class.saturating_sub(1);
+        let from_class = from_class.unwrap_or(0);
+        // iter_from starts from exclusive "left end". We need to iteretare from one before.
+        let first_key = balance_key(account.clone(), issuer_id, from_class.saturating_sub(1));
+        let now = env::block_timestamp_ms();
+        let with_expired = with_expired.unwrap_or(false);
+
         let mut limit = limit.unwrap_or(MAX_LIMIT);
         require!(limit > 0, "limit must be bigger than 0");
 
@@ -151,14 +153,7 @@ impl SBTRegistry for Contract {
         let mut tokens = Vec::new();
         let mut prev_issuer = issuer_id;
 
-        let now = env::block_timestamp_ms();
-        let with_expired = with_expired.unwrap_or(false);
-
-        for (key, token_id) in
-            self.balances
-                .iter_from(balance_key(account.clone(), issuer_id, from_class))
-        {
-            // TODO: maybe we should continue the scan?
+        for (key, token_id) in self.balances.iter_from(first_key) {
             if key.owner != account {
                 break;
             }
@@ -308,13 +303,13 @@ impl SBTRegistry for Contract {
             }
             .emit_burn();
         } else {
-            let current_timestamp = env::block_timestamp();
+            let current_timestamp_ms = env::block_timestamp_ms();
             // revoke
             for token in tokens.clone() {
                 // update expire date for all tokens to current_timestamp
                 let mut t = self.get_token(issuer_id, token);
                 let mut m = t.metadata.v1();
-                m.expires_at = Some(current_timestamp);
+                m.expires_at = Some(current_timestamp_ms);
                 t.metadata = m.into();
                 self.issuer_tokens
                     .insert(&IssuerTokenId { issuer_id, token }, &t);
