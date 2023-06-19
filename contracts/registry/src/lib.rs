@@ -1,13 +1,11 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, TreeMap, UnorderedMap, UnorderedSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
 
-use sbt::{
-    emit_soul_transfer, ClassId, Nep393Event, SBTRegistry, SbtRecover, SbtTokensEvent, TokenData,
-    TokenId,
-};
+use cost::MILI_NEAR;
+use sbt::*;
 
 use crate::storage::*;
 
@@ -432,10 +430,7 @@ impl Contract {
     /// returns false if the `issuer` contract was already registered.
     pub fn admin_add_sbt_issuer(&mut self, issuer: AccountId) -> bool {
         self.assert_authority();
-        let previous = self.sbt_issuers.insert(&issuer, &self.next_issuer_id);
-        self.issuer_id_map.insert(&self.next_issuer_id, &issuer);
-        self.next_issuer_id += 1;
-        previous.is_none()
+        self._add_sbt_issuer(&issuer)
     }
 
     pub fn change_admin(&mut self, new_admin: AccountId) {
@@ -489,6 +484,126 @@ impl Contract {
             self.authority == env::predecessor_account_id(),
             "not an admin"
         )
+    }
+
+    fn _add_sbt_issuer(&mut self, issuer: &AccountId) -> bool {
+        if self.sbt_issuers.get(issuer).is_some() {
+            return false;
+        }
+        self.sbt_issuers.insert(issuer, &self.next_issuer_id);
+        self.issuer_id_map.insert(&self.next_issuer_id, issuer);
+        self.next_issuer_id += 1;
+        true
+    }
+
+    fn _sbt_renew(&mut self, issuer: AccountId, tokens: Vec<TokenId>, expires_at: u64) {
+        let issuer_id = self.assert_issuer(&issuer);
+        for token in &tokens {
+            let token = *token;
+            let mut t = self.get_token(issuer_id, token);
+            self.assert_not_banned(&t.owner);
+            let mut m = t.metadata.v1();
+            m.expires_at = Some(expires_at);
+            t.metadata = m.into();
+            self.issuer_tokens
+                .insert(&IssuerTokenId { issuer_id, token }, &t);
+        }
+        SbtTokensEvent { issuer, tokens }.emit_renew();
+    }
+
+    fn _sbt_mint(
+        &mut self,
+        issuer: &AccountId,
+        token_spec: Vec<(AccountId, Vec<TokenMetadata>)>,
+    ) -> Vec<TokenId> {
+        let storage_start = env::storage_usage();
+        let storage_deposit = env::attached_deposit();
+        require!(
+            storage_deposit >= 6 * MILI_NEAR,
+            "min required storage deposit: 0.006 NEAR"
+        );
+
+        let issuer_id = self.assert_issuer(issuer);
+        let mut num_tokens = 0;
+        for el in token_spec.iter() {
+            num_tokens += el.1.len() as u64;
+        }
+        let mut token = self.next_token_id(issuer_id, num_tokens);
+        let ret_token_ids = (token..token + num_tokens).collect();
+        let mut supply_by_class = HashMap::new();
+        let mut per_recipient: HashMap<AccountId, Vec<TokenId>> = HashMap::new();
+
+        for (owner, metadatas) in token_spec {
+            // no need to check ongoing_soult_tx, because it will automatically ban the source account
+            self.assert_not_banned(&owner);
+
+            let recipient_tokens = per_recipient.entry(owner.clone()).or_default();
+            let metadatas_len = metadatas.len();
+
+            for metadata in metadatas {
+                let prev = self.balances.insert(
+                    &balance_key(owner.clone(), issuer_id, metadata.class),
+                    &token,
+                );
+                require!(
+                    prev.is_none(),
+                    format! {"{} already has SBT of class {}", owner, metadata.class}
+                );
+
+                // update supply by class
+                match supply_by_class.get_mut(&metadata.class) {
+                    None => {
+                        supply_by_class.insert(metadata.class, 1);
+                    }
+                    Some(s) => *s += 1,
+                };
+
+                self.issuer_tokens.insert(
+                    &IssuerTokenId { issuer_id, token },
+                    &TokenData {
+                        owner: owner.clone(),
+                        metadata: metadata.into(),
+                    },
+                );
+                recipient_tokens.push(token);
+
+                token += 1;
+            }
+
+            // update supply by owner
+            let skey = (owner, issuer_id);
+            let sowner = self.supply_by_owner.get(&skey).unwrap_or(0) + metadatas_len as u64;
+            self.supply_by_owner.insert(&skey, &sowner);
+        }
+
+        for (cls, new_supply) in supply_by_class {
+            let key = (issuer_id, cls);
+            let s = self.supply_by_class.get(&key).unwrap_or(0) + new_supply;
+            self.supply_by_class.insert(&key, &s);
+        }
+
+        let new_supply = self.supply_by_issuer.get(&issuer_id).unwrap_or(0) + num_tokens;
+        self.supply_by_issuer.insert(&issuer_id, &new_supply);
+
+        let mut minted: Vec<(&AccountId, &Vec<TokenId>)> = per_recipient.iter().collect();
+        minted.sort_by(|a, b| a.0.cmp(b.0));
+        SbtMint {
+            issuer,
+            tokens: minted,
+        }
+        .emit();
+
+        let required_deposit =
+            (env::storage_usage() - storage_start) as u128 * env::storage_byte_cost();
+        require!(
+            storage_deposit >= required_deposit,
+            format!(
+                "not enough NEAR storage depost, required: {}",
+                required_deposit
+            )
+        );
+
+        ret_token_ids
     }
 }
 
@@ -615,6 +730,36 @@ mod tests {
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
+    }
+
+    #[test]
+    fn add_sbt_issuer() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+        // in setup we add 4 issuers, so the next id will be 5.
+        assert_eq!(5, ctr.next_issuer_id);
+        assert_eq!(1, ctr.assert_issuer(&issuer1()));
+        assert_eq!(2, ctr.assert_issuer(&issuer2()));
+        assert_eq!(3, ctr.assert_issuer(&issuer3()));
+        assert_eq!(4, ctr.assert_issuer(&fractal_mainnet()));
+
+        assert_eq!(issuer1(), ctr.issuer_by_id(1));
+        assert_eq!(issuer2(), ctr.issuer_by_id(2));
+        assert_eq!(issuer3(), ctr.issuer_by_id(3));
+        assert_eq!(fractal_mainnet(), ctr.issuer_by_id(4));
+
+        ctx.predecessor_account_id = admin();
+        testing_env!(ctx.clone());
+        let ok = ctr.admin_add_sbt_issuer(issuer1());
+        assert!(
+            !ok,
+            "isser1 should be already added, so it should return false"
+        );
+        assert_eq!(5, ctr.next_issuer_id, "next_issuer_id should not change");
+        assert_eq!(
+            1,
+            ctr.assert_issuer(&issuer1()),
+            "issuer1 id should not change"
+        );
     }
 
     #[test]
