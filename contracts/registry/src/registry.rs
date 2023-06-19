@@ -337,7 +337,6 @@ impl SBTRegistry for Contract {
         };
         let tokens = &tokens_by_owner[0].1;
         let mut token_ids = Vec::new();
-        // let token_ids: Vec<u64> = tokens.iter().map(|s| s.token).collect();
         if burn == true {
             let mut revoked_per_class: HashMap<u64, u64> = HashMap::new();
             let tokens_burned: u64 = tokens.len().try_into().unwrap();

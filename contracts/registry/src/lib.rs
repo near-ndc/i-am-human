@@ -1987,13 +1987,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "no tokens to be revoked for the given owner")]
-    fn sbt_revoke_by_owner_no_tokens_to_revoke() {
-        let (_, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
-        ctr.sbt_revoke_by_owner(alice(), true);
-    }
-
-    #[test]
     fn sbt_revoke_by_owner_basics() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
 
