@@ -142,14 +142,13 @@ impl SBTRegistry for Contract {
             Some(addr) => self.assert_issuer(&addr),
         };
 
-        let first_key: BalanceKey;
         let from_class = from_class.unwrap_or(0);
         // iter_from starts from exclusive "left end". We need to iteretare from one before.
-        if issuer.is_some() {
-            first_key = balance_key(account.clone(), issuer_id.saturating_sub(1), from_class);
+        let first_key = if issuer.is_some() {
+            balance_key(account.clone(), issuer_id.saturating_sub(1), from_class)
         } else {
-            first_key = balance_key(account.clone(), issuer_id, from_class.saturating_sub(1));
-        }
+            balance_key(account.clone(), issuer_id, from_class.saturating_sub(1))
+        };
         let mut limit = limit.unwrap_or(MAX_LIMIT);
         require!(limit > 0, "limit must be bigger than 0");
 
