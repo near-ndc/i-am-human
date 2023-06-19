@@ -714,7 +714,7 @@ mod tests {
     fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
-            .block_timestamp(START)
+            .block_timestamp(START * MILI_SECOND) // multiplying by mili seconds for easier testing
             .is_view(false)
             .build();
         if deposit > 0 {
