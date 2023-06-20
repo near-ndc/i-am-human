@@ -541,6 +541,7 @@ impl Contract {
             let metadatas_len = metadatas.len();
 
             for metadata in metadatas {
+                require!(metadata.class > 0, "Class must be > 0");
                 let prev = self.balances.insert(
                     &balance_key(owner.clone(), issuer_id, metadata.class),
                     &token,
@@ -697,7 +698,7 @@ mod tests {
 
     fn mk_batch_metadata(n: u64) -> Vec<TokenMetadata> {
         let mut batch_metadata: Vec<TokenMetadata> = Vec::new();
-        for i in 0..n {
+        for i in 1..=n {
             batch_metadata.push(mk_metadata(i, Some(START + i)))
         }
         batch_metadata
@@ -714,7 +715,7 @@ mod tests {
     fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
-            .block_timestamp(START * MILI_SECOND)
+            .block_timestamp(START * MILI_SECOND) // multiplying by mili seconds for easier testing
             .is_view(false)
             .build();
         if deposit > 0 {
@@ -1597,7 +1598,7 @@ mod tests {
         let m2_1 = mk_metadata(2, Some(START + 11));
         let m3_1 = mk_metadata(3, Some(START + 21));
 
-        let current_timestamp = ctx.block_timestamp / MILI_SECOND;
+        let current_timestamp = ctx.block_timestamp / MILI_SECOND; // convert nano to mili seconds
 
         let m1_1_revoked = mk_metadata(1, Some(current_timestamp));
         let m2_1_revoked = mk_metadata(2, Some(current_timestamp));
@@ -2173,6 +2174,64 @@ mod tests {
     }
 
     #[test]
+    fn sbt_tokens_by_owner_per_issuer() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 20 * MINT_DEPOSIT);
+        let batch_metadata = mk_batch_metadata(30);
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+
+        ctx.predecessor_account_id = issuer3();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[10..20].to_vec())]);
+
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[20..].to_vec())]);
+
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert_eq!(res.len(), 3);
+        assert_eq!(res[0].1.len(), 10);
+        assert_eq!(res[1].1.len(), 10);
+        assert_eq!(res[2].1.len(), 10);
+        // assert that returns always in the ascending order (not minting order)
+        assert_eq!(res[0].0, issuer1());
+        assert_eq!(res[1].0, issuer2());
+        assert_eq!(res[2].0, issuer3());
+
+        let expected_tokens: Vec<u64> = (1..=10).collect();
+
+        let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None, None);
+        assert_eq!(res.len(), 1);
+        assert_eq!(
+            res[0].1.iter().map(|t| t.token).collect::<Vec<u64>>(),
+            expected_tokens,
+        );
+        let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None, None);
+        assert_eq!(res.len(), 1);
+        assert_eq!(
+            res[0].1.iter().map(|t| t.token).collect::<Vec<u64>>(),
+            expected_tokens,
+        );
+        let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer3()), None, None, None);
+        assert_eq!(res.len(), 1);
+        assert_eq!(
+            res[0].1.iter().map(|t| t.token).collect::<Vec<u64>>(),
+            expected_tokens,
+        );
+
+        // mint more tokens for issuer1()
+        ctx.predecessor_account_id = issuer1();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[20..30].to_vec())]);
+        let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None, None);
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].0, issuer1());
+        assert_eq!(
+            res[0].1.iter().map(|t| t.token).collect::<Vec<u64>>(),
+            (1..=20).collect::<Vec<u64>>()
+        );
+    }
+
+    #[test]
     fn is_human_multiple_classes_with_expired_tokens() {
         let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
         ctr.iah_classes.1 = vec![1, 3];
@@ -2190,6 +2249,7 @@ mod tests {
         testing_env!(ctx.clone());
         assert!(!ctr.is_human(alice()));
     }
+
     #[test]
     fn sbt_revoke_events() {
         let (ctx, mut ctr) = setup(&fractal_mainnet(), 2 * MINT_DEPOSIT);
