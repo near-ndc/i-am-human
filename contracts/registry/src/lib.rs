@@ -1,13 +1,11 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, TreeMap, UnorderedMap, UnorderedSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
 
-use sbt::{
-    emit_soul_transfer, ClassId, Nep393Event, SBTRegistry, SbtRecover, SbtTokensEvent, TokenData,
-    TokenId,
-};
+use cost::MILI_NEAR;
+use sbt::*;
 
 use crate::storage::*;
 
@@ -39,13 +37,19 @@ pub struct Contract {
     /// map of SBT contract -> next available token_id
     pub(crate) next_token_ids: LookupMap<IssuerId, TokenId>,
     pub(crate) next_issuer_id: IssuerId,
+
+    pub(crate) iah_classes: (AccountId, Vec<ClassId>),
 }
 
 // Implement the contract structure
 #[near_bindgen]
 impl Contract {
     #[init]
-    pub fn new(authority: AccountId) -> Self {
+    pub fn new(authority: AccountId, iah_issuer: AccountId, iah_classes: Vec<ClassId>) -> Self {
+        require!(
+            iah_classes.len() > 0,
+            "iah_classes must be a non empty list"
+        );
         Self {
             authority,
             sbt_issuers: UnorderedMap::new(StorageKey::SbtIssuers),
@@ -59,6 +63,7 @@ impl Contract {
             next_token_ids: LookupMap::new(StorageKey::NextTokenId),
             next_issuer_id: 1,
             ongoing_soul_tx: LookupMap::new(StorageKey::OngoingSoultTx),
+            iah_classes: (iah_issuer, iah_classes),
         }
     }
 
@@ -73,6 +78,30 @@ impl Contract {
     #[inline]
     fn _is_banned(&self, account: &AccountId) -> bool {
         self.banlist.contains(account)
+    }
+
+    /// Returns true if the given account is human.
+    pub fn is_human(&self, account: AccountId) -> bool {
+        if self._is_banned(&account) {
+            return false;
+        }
+        let issuer = Some(self.iah_classes.0.clone());
+        // check if user has tokens from all classes
+        for cls in &self.iah_classes.1 {
+            let tokens = self.sbt_tokens_by_owner(
+                account.clone(),
+                issuer.clone(),
+                Some(*cls),
+                Some(1),
+                None,
+            );
+            // we need to check class, because the query can return a "next" token if a user
+            // doesn't have the token of requested class.
+            if !(tokens.len() > 0 && tokens[0].1[0].metadata.class == *cls) {
+                return false;
+            }
+        }
+        true
     }
 
     //
@@ -401,10 +430,7 @@ impl Contract {
     /// returns false if the `issuer` contract was already registered.
     pub fn admin_add_sbt_issuer(&mut self, issuer: AccountId) -> bool {
         self.assert_authority();
-        let previous = self.sbt_issuers.insert(&issuer, &self.next_issuer_id);
-        self.issuer_id_map.insert(&self.next_issuer_id, &issuer);
-        self.next_issuer_id += 1;
-        previous.is_none()
+        self._add_sbt_issuer(&issuer)
     }
 
     pub fn change_admin(&mut self, new_admin: AccountId) {
@@ -459,6 +485,127 @@ impl Contract {
             "not an admin"
         )
     }
+
+    fn _add_sbt_issuer(&mut self, issuer: &AccountId) -> bool {
+        if self.sbt_issuers.get(issuer).is_some() {
+            return false;
+        }
+        self.sbt_issuers.insert(issuer, &self.next_issuer_id);
+        self.issuer_id_map.insert(&self.next_issuer_id, issuer);
+        self.next_issuer_id += 1;
+        true
+    }
+
+    fn _sbt_renew(&mut self, issuer: AccountId, tokens: Vec<TokenId>, expires_at: u64) {
+        let issuer_id = self.assert_issuer(&issuer);
+        for token in &tokens {
+            let token = *token;
+            let mut t = self.get_token(issuer_id, token);
+            self.assert_not_banned(&t.owner);
+            let mut m = t.metadata.v1();
+            m.expires_at = Some(expires_at);
+            t.metadata = m.into();
+            self.issuer_tokens
+                .insert(&IssuerTokenId { issuer_id, token }, &t);
+        }
+        SbtTokensEvent { issuer, tokens }.emit_renew();
+    }
+
+    fn _sbt_mint(
+        &mut self,
+        issuer: &AccountId,
+        token_spec: Vec<(AccountId, Vec<TokenMetadata>)>,
+    ) -> Vec<TokenId> {
+        let storage_start = env::storage_usage();
+        let storage_deposit = env::attached_deposit();
+        require!(
+            storage_deposit >= 6 * MILI_NEAR,
+            "min required storage deposit: 0.006 NEAR"
+        );
+
+        let issuer_id = self.assert_issuer(issuer);
+        let mut num_tokens = 0;
+        for el in token_spec.iter() {
+            num_tokens += el.1.len() as u64;
+        }
+        let mut token = self.next_token_id(issuer_id, num_tokens);
+        let ret_token_ids = (token..token + num_tokens).collect();
+        let mut supply_by_class = HashMap::new();
+        let mut per_recipient: HashMap<AccountId, Vec<TokenId>> = HashMap::new();
+
+        for (owner, metadatas) in token_spec {
+            // no need to check ongoing_soult_tx, because it will automatically ban the source account
+            self.assert_not_banned(&owner);
+
+            let recipient_tokens = per_recipient.entry(owner.clone()).or_default();
+            let metadatas_len = metadatas.len();
+
+            for metadata in metadatas {
+                require!(metadata.class > 0, "Class must be > 0");
+                let prev = self.balances.insert(
+                    &balance_key(owner.clone(), issuer_id, metadata.class),
+                    &token,
+                );
+                require!(
+                    prev.is_none(),
+                    format! {"{} already has SBT of class {}", owner, metadata.class}
+                );
+
+                // update supply by class
+                match supply_by_class.get_mut(&metadata.class) {
+                    None => {
+                        supply_by_class.insert(metadata.class, 1);
+                    }
+                    Some(s) => *s += 1,
+                };
+
+                self.issuer_tokens.insert(
+                    &IssuerTokenId { issuer_id, token },
+                    &TokenData {
+                        owner: owner.clone(),
+                        metadata: metadata.into(),
+                    },
+                );
+                recipient_tokens.push(token);
+
+                token += 1;
+            }
+
+            // update supply by owner
+            let skey = (owner, issuer_id);
+            let sowner = self.supply_by_owner.get(&skey).unwrap_or(0) + metadatas_len as u64;
+            self.supply_by_owner.insert(&skey, &sowner);
+        }
+
+        for (cls, new_supply) in supply_by_class {
+            let key = (issuer_id, cls);
+            let s = self.supply_by_class.get(&key).unwrap_or(0) + new_supply;
+            self.supply_by_class.insert(&key, &s);
+        }
+
+        let new_supply = self.supply_by_issuer.get(&issuer_id).unwrap_or(0) + num_tokens;
+        self.supply_by_issuer.insert(&issuer_id, &new_supply);
+
+        let mut minted: Vec<(&AccountId, &Vec<TokenId>)> = per_recipient.iter().collect();
+        minted.sort_by(|a, b| a.0.cmp(b.0));
+        SbtMint {
+            issuer,
+            tokens: minted,
+        }
+        .emit();
+
+        let required_deposit =
+            (env::storage_usage() - storage_start) as u128 * env::storage_byte_cost();
+        require!(
+            storage_deposit >= required_deposit,
+            format!(
+                "not enough NEAR storage depost, required: {}",
+                required_deposit
+            )
+        );
+
+        ret_token_ids
+    }
 }
 
 #[cfg(test)]
@@ -510,6 +657,11 @@ mod tests {
         AccountId::new_unchecked("sbt4.near".to_string())
     }
 
+    #[inline]
+    fn fractal_mainnet() -> AccountId {
+        AccountId::new_unchecked("fractal.i-am-human.near".to_string())
+    }
+
     fn admin() -> AccountId {
         AccountId::new_unchecked("sbt.near".to_string())
     }
@@ -546,7 +698,7 @@ mod tests {
 
     fn mk_batch_metadata(n: u64) -> Vec<TokenMetadata> {
         let mut batch_metadata: Vec<TokenMetadata> = Vec::new();
-        for i in 0..n {
+        for i in 1..=n {
             batch_metadata.push(mk_metadata(i, Some(START + i)))
         }
         batch_metadata
@@ -556,27 +708,58 @@ mod tests {
         Gas::ONE_TERA.mul(300)
     }
 
+    const MILI_SECOND: u64 = 1_000_000; // milisecond in ns
     const START: u64 = 10;
     const MINT_DEPOSIT: Balance = 6 * MILI_NEAR;
 
     fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
-            // .attached_deposit(deposit_dec.into())
-            .block_timestamp(START)
+            .block_timestamp(START * MILI_SECOND) // multiplying by mili seconds for easier testing
             .is_view(false)
             .build();
         if deposit > 0 {
             ctx.attached_deposit = deposit
         }
         testing_env!(ctx.clone());
-        let mut ctr = Contract::new(admin());
+        let mut ctr = Contract::new(admin(), fractal_mainnet(), vec![1]);
         ctr.admin_add_sbt_issuer(issuer1());
         ctr.admin_add_sbt_issuer(issuer2());
         ctr.admin_add_sbt_issuer(issuer3());
+        ctr.admin_add_sbt_issuer(fractal_mainnet());
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         (ctx, ctr)
+    }
+
+    #[test]
+    fn add_sbt_issuer() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+        // in setup we add 4 issuers, so the next id will be 5.
+        assert_eq!(5, ctr.next_issuer_id);
+        assert_eq!(1, ctr.assert_issuer(&issuer1()));
+        assert_eq!(2, ctr.assert_issuer(&issuer2()));
+        assert_eq!(3, ctr.assert_issuer(&issuer3()));
+        assert_eq!(4, ctr.assert_issuer(&fractal_mainnet()));
+
+        assert_eq!(issuer1(), ctr.issuer_by_id(1));
+        assert_eq!(issuer2(), ctr.issuer_by_id(2));
+        assert_eq!(issuer3(), ctr.issuer_by_id(3));
+        assert_eq!(fractal_mainnet(), ctr.issuer_by_id(4));
+
+        ctx.predecessor_account_id = admin();
+        testing_env!(ctx.clone());
+        let ok = ctr.admin_add_sbt_issuer(issuer1());
+        assert!(
+            !ok,
+            "isser1 should be already added, so it should return false"
+        );
+        assert_eq!(5, ctr.next_issuer_id, "next_issuer_id should not change");
+        assert_eq!(
+            1,
+            ctr.assert_issuer(&issuer1()),
+            "issuer1 id should not change"
+        );
     }
 
     #[test]
@@ -785,15 +968,21 @@ mod tests {
 
         // check by all tokens
         assert_eq!(
-            ctr.sbt_tokens(issuer1(), Some(1), None),
+            ctr.sbt_tokens(issuer1(), Some(1), None, None),
             vec![mk_token(1, alice2(), m1_1.clone())]
         );
-        assert_eq!(ctr.sbt_tokens(issuer2(), None, None), t2_all,);
-        assert_eq!(ctr.sbt_tokens(issuer2(), None, Some(1)), t2_all[..1]);
-        assert_eq!(ctr.sbt_tokens(issuer2(), None, Some(2)), t2_all[..2]);
-        assert_eq!(ctr.sbt_tokens(issuer2(), Some(2), Some(2)), t2_all[1..3]);
-        assert_eq!(ctr.sbt_tokens(issuer2(), Some(5), Some(5)), t2_all[4..5]);
-        assert_eq!(ctr.sbt_tokens(issuer2(), Some(6), Some(2)), vec![]);
+        assert_eq!(ctr.sbt_tokens(issuer2(), None, None, None), t2_all,);
+        assert_eq!(ctr.sbt_tokens(issuer2(), None, Some(1), None), t2_all[..1]);
+        assert_eq!(ctr.sbt_tokens(issuer2(), None, Some(2), None), t2_all[..2]);
+        assert_eq!(
+            ctr.sbt_tokens(issuer2(), Some(2), Some(2), None),
+            t2_all[1..3]
+        );
+        assert_eq!(
+            ctr.sbt_tokens(issuer2(), Some(5), Some(5), None),
+            t2_all[4..5]
+        );
+        assert_eq!(ctr.sbt_tokens(issuer2(), Some(6), Some(2), None), vec![]);
 
         //
         // now let's test buring
@@ -1307,7 +1496,7 @@ mod tests {
         assert_eq!(ctr.sbt_supply_by_class(issuer1(), 2), 1);
 
         assert_eq!(
-            ctr.sbt_tokens(issuer1(), None, None),
+            ctr.sbt_tokens(issuer1(), None, None, None),
             vec![
                 mk_token(1, bob(), m1_1.clone()),
                 mk_token(2, bob(), m2_1.clone())
@@ -1391,7 +1580,7 @@ mod tests {
         let m2_1 = mk_metadata(2, Some(START + 11));
         let m3_1 = mk_metadata(3, Some(START + 21));
 
-        let current_timestamp = ctx.block_timestamp;
+        let current_timestamp = ctx.block_timestamp / MILI_SECOND; // convert nano to mili seconds
 
         let m1_1_revoked = mk_metadata(1, Some(current_timestamp));
         let m2_1_revoked = mk_metadata(2, Some(current_timestamp));
@@ -1438,7 +1627,7 @@ mod tests {
             ),]
         );
         assert_eq!(
-            ctr.sbt_tokens(issuer1(), None, None),
+            ctr.sbt_tokens(issuer1(), None, None, None),
             vec![
                 mk_token(1, alice(), m1_1_revoked),
                 mk_token(2, alice(), m2_1_revoked),
@@ -1446,7 +1635,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            ctr.sbt_tokens(issuer2(), None, None),
+            ctr.sbt_tokens(issuer2(), None, None, None),
             vec![
                 mk_token(1, bob(), m1_1),
                 mk_token(2, bob(), m2_1),
@@ -1489,7 +1678,7 @@ mod tests {
             "burn",
             &format!(r#"{{"issuer":"{}","tokens":[1,2,3]}}"#, issuer1()),
         );
-        assert_eq!(test_utils::get_logs().len(), 1);
+        assert_eq!(test_utils::get_logs().len(), 2);
         assert_eq!(test_utils::get_logs()[0], log_burn[0]);
         assert_eq!(ctr.sbt_supply(issuer1()), 1);
         assert_eq!(ctr.sbt_supply(issuer2()), 3);
@@ -1504,11 +1693,11 @@ mod tests {
         assert_eq!(ctr.sbt_supply_by_class(issuer2(), 3), 1);
 
         assert_eq!(
-            ctr.sbt_tokens(issuer1(), None, None),
+            ctr.sbt_tokens(issuer1(), None, None, None),
             vec![mk_token(4, alice(), m3_1.clone())],
         );
         assert_eq!(
-            ctr.sbt_tokens(issuer2(), None, None),
+            ctr.sbt_tokens(issuer2(), None, None, None),
             vec![
                 mk_token(1, bob(), m1_1),
                 mk_token(2, bob(), m2_1),
@@ -1740,6 +1929,9 @@ mod tests {
     #[test]
     fn sbt_tokens_by_owner_non_expired() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 4 * MINT_DEPOSIT);
+        ctx.block_timestamp = START * MILI_SECOND; // 11 seconds
+        testing_env!(ctx.clone());
+
         let m1_1 = mk_metadata(1, Some(START));
         let m1_2 = mk_metadata(2, Some(START));
         let m1_3 = mk_metadata(3, Some(START + 100));
@@ -1748,14 +1940,188 @@ mod tests {
 
         let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, Some(true));
         assert_eq!(res[0].1.len(), 4);
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 4);
+
+        let res = ctr.sbt_tokens(issuer1(), None, None, Some(true));
+        assert_eq!(res.len(), 4);
+        let res = ctr.sbt_tokens(issuer1(), None, None, Some(false));
+        assert_eq!(res.len(), 4);
+        let res = ctr.sbt_tokens(issuer1(), None, None, None);
+        assert_eq!(res.len(), 4);
 
         // fast forward so the first two sbts are expired
-        ctx.block_timestamp = START + 50;
+        ctx.block_timestamp = (START + 50) * MILI_SECOND;
         testing_env!(ctx);
 
         let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, Some(true));
+        assert_eq!(res[0].1.len(), 4);
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, Some(false));
         assert_eq!(res[0].1.len(), 2);
         let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
-        assert_eq!(res[0].1.len(), 4);
+        assert_eq!(res[0].1.len(), 2);
+
+        let res = ctr.sbt_tokens(issuer1(), None, None, Some(true));
+        assert_eq!(res.len(), 4);
+        let res = ctr.sbt_tokens(issuer1(), None, None, Some(false));
+        assert_eq!(res.len(), 2);
+        let res = ctr.sbt_tokens(issuer1(), None, None, None);
+        assert_eq!(res.len(), 2);
+    }
+
+    #[test]
+    fn is_human() {
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+        ctx.current_account_id = AccountId::new_unchecked("registry.i-am-human.near".to_string());
+        testing_env!(ctx.clone());
+
+        let m1_1 = mk_metadata(1, Some(START));
+        let m1_2 = mk_metadata(2, Some(START));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
+        ctr.sbt_mint(vec![(bob(), vec![m1_2])]);
+
+        assert!(ctr.is_human(alice()));
+        assert!(!ctr.is_human(bob()));
+
+        // step forward, so the tokens will expire
+        ctx.block_timestamp = (START + 1) * MILI_SECOND;
+        testing_env!(ctx.clone());
+        assert!(!ctr.is_human(alice()));
+        assert!(!ctr.is_human(bob()));
+    }
+
+    #[test]
+    fn is_human_multiple_classes() {
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+        ctr.iah_classes.1 = vec![1, 3];
+        ctx.current_account_id = AccountId::new_unchecked("registry.i-am-human.near".to_string());
+        testing_env!(ctx.clone());
+
+        let m1_1 = mk_metadata(1, Some(START));
+        let m1_2 = mk_metadata(2, Some(START));
+        let m1_3 = mk_metadata(3, Some(START));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        ctr.sbt_mint(vec![(bob(), vec![m1_2.clone()])]);
+        ctr.sbt_mint(vec![(carol(), vec![m1_2, m1_1.clone()])]);
+        ctr.sbt_mint(vec![(dan(), vec![m1_3, m1_1])]);
+
+        assert!(!ctr.is_human(alice()));
+        assert!(!ctr.is_human(bob()));
+        assert!(!ctr.is_human(carol()));
+        assert!(ctr.is_human(dan()));
+    }
+
+    #[test]
+    fn sbt_tokens_by_owner_per_issuer() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 20 * MINT_DEPOSIT);
+        let batch_metadata = mk_batch_metadata(30);
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+
+        ctx.predecessor_account_id = issuer3();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[10..20].to_vec())]);
+
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[20..].to_vec())]);
+
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert_eq!(res.len(), 3);
+        assert_eq!(res[0].1.len(), 10);
+        assert_eq!(res[1].1.len(), 10);
+        assert_eq!(res[2].1.len(), 10);
+        // assert that returns always in the ascending order (not minting order)
+        assert_eq!(res[0].0, issuer1());
+        assert_eq!(res[1].0, issuer2());
+        assert_eq!(res[2].0, issuer3());
+
+        let expected_tokens: Vec<u64> = (1..=10).collect();
+
+        let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None, None);
+        assert_eq!(res.len(), 1);
+        assert_eq!(
+            res[0].1.iter().map(|t| t.token).collect::<Vec<u64>>(),
+            expected_tokens,
+        );
+        let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None, None);
+        assert_eq!(res.len(), 1);
+        assert_eq!(
+            res[0].1.iter().map(|t| t.token).collect::<Vec<u64>>(),
+            expected_tokens,
+        );
+        let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer3()), None, None, None);
+        assert_eq!(res.len(), 1);
+        assert_eq!(
+            res[0].1.iter().map(|t| t.token).collect::<Vec<u64>>(),
+            expected_tokens,
+        );
+
+        // mint more tokens for issuer1()
+        ctx.predecessor_account_id = issuer1();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[20..30].to_vec())]);
+        let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None, None);
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].0, issuer1());
+        assert_eq!(
+            res[0].1.iter().map(|t| t.token).collect::<Vec<u64>>(),
+            (1..=20).collect::<Vec<u64>>()
+        );
+    }
+
+    #[test]
+    fn is_human_multiple_classes_with_expired_tokens() {
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+        ctr.iah_classes.1 = vec![1, 3];
+        ctx.current_account_id = AccountId::new_unchecked("registry.i-am-human.near".to_string());
+        testing_env!(ctx.clone());
+
+        let m1_1 = mk_metadata(1, Some(START + 100));
+        let m1_2 = mk_metadata(2, Some(START + 100));
+        let m1_3 = mk_metadata(3, Some(START));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1, m1_2, m1_3])]);
+
+        assert!(ctr.is_human(alice()));
+        // step forward, so token class==3 will expire
+        ctx.block_timestamp = (START + 1) * MILI_SECOND;
+        testing_env!(ctx.clone());
+        assert!(!ctr.is_human(alice()));
+    }
+
+    #[test]
+    fn sbt_revoke_events() {
+        let (ctx, mut ctr) = setup(&fractal_mainnet(), 2 * MINT_DEPOSIT);
+        let m1_1 = mk_metadata(1, Some(START));
+        let tokens = ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
+
+        // clear the events
+        testing_env!(ctx.clone());
+
+        // revoke (burn == false)
+        ctr.sbt_revoke(vec![tokens[0]], false);
+
+        let log_revoke = mk_log_str(
+            "revoke",
+            &format!(r#"{{"issuer":"{}","tokens":[1]}}"#, fractal_mainnet()),
+        );
+        let log_burn = mk_log_str(
+            "burn",
+            &format!(r#"{{"issuer":"{}","tokens":[1]}}"#, fractal_mainnet()),
+        );
+
+        // check only revoke event is emitted
+        assert_eq!(test_utils::get_logs().len(), 1);
+        assert_eq!(test_utils::get_logs(), log_revoke);
+
+        // clear the events
+        testing_env!(ctx.clone());
+
+        // revoke (burn == true)
+        ctr.sbt_revoke(tokens, true);
+
+        // check both burn and revoke events are emitted
+        assert_eq!(test_utils::get_logs().len(), 2); // -> only 1 event is emmited
+        assert_eq!(test_utils::get_logs(), vec![log_burn, log_revoke].concat());
+        // -> missing revoke event
     }
 }

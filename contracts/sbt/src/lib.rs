@@ -69,18 +69,22 @@ pub trait SBTRegistry {
     ) -> u64;
 
     /// Query sbt tokens issued by a given contract.
+    /// `limit` specifies the upper limit of how many tokens we want to return.
     /// If `from_token` is not specified, then `from_token` should be assumed
-    /// to be the first valid token id.
+    /// to be the first valid token id. If `with_expired` if is set to `false` or to `None` then
+    /// all tokens are returned.
     fn sbt_tokens(
         &self,
         issuer: AccountId,
         from_token: Option<u64>,
         limit: Option<u32>,
+        with_expired: Option<bool>,
     ) -> Vec<Token>;
 
-    /// Query SBT tokens by owner
+    /// Query SBT tokens by owner.
+    /// `limit` specifies the upper limit of how many tokens we want to return.
     /// If `from_class` is not specified, then `from_class` should be assumed to be the first
-    /// valid class id.
+    /// valid class id. If `with_expired` if is set to `false` or `None` then all tokens are returned.
     /// Returns list of pairs: `(Contract address, list of token IDs)`.
     fn sbt_tokens_by_owner(
         &self,
@@ -88,7 +92,7 @@ pub trait SBTRegistry {
         issuer: Option<AccountId>,
         from_class: Option<u64>,
         limit: Option<u32>,
-        non_expired: Option<bool>,
+        with_expired: Option<bool>,
     ) -> Vec<(AccountId, Vec<OwnedToken>)>;
 
     /// checks if an `account` was banned by the registry.
@@ -117,7 +121,7 @@ pub trait SBTRegistry {
     fn sbt_recover(&mut self, from: AccountId, to: AccountId) -> (u32, bool);
 
     /// sbt_renew will update the expire time of provided tokens.
-    /// `expires_at` is a unix timestamp (in miliseconds).
+    /// `expires_at` is a unix timestamp in miliseconds.
     /// Must be called by an SBT contract.
     /// Must emit `Renew` event.
     fn sbt_renew(&mut self, tokens: Vec<TokenId>, expires_at: u64);

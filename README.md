@@ -20,19 +20,23 @@ work in progress:
 ### Mainnet
 
 - **SBT registry**: `registry.i-am-human.near`
-- **GoodDollar-SBT**: `gooddollar-v1.i-am-human.near` (the `oracle` contract)
+- **Fractal**: `fractal.i-am-human.near`, verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
+
+Deprecated:
+
+- **GoodDollar-SBT**: `gooddollar-v1.i-am-human.near`.
   verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
 
 ### Testnet
 
 - **SBT registry**: `registry-1.i-am-human.testnet`
 - **Demo SBT Issuer**: `sbt1.i-am-human.testnet` (the `demo_issuer` contract)
-- **Fractal Issuer**: `i-am-human-staging.testnet` (the `oracle` contract).
-  Verification pubkey base64: `zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E=`, `claim_ttl`: 3600ms
-- **Community-SBT**: `community-sbt-2.i-am-human.testnet`
+- **Fractal Issuer**: `i-am-human-staging.testnet` (the `oracle` contract). Verification pubkey base64: `zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E=`, `claim_ttl`: 3600ms
+  - FV class: 1
+- **Community-SBT**: `community-v1.i-am-human.testnet`
+  - OG class: 1
 
 Deprecated:
 
 - `registry.i-am-human.testnet`
-- OG SBT: `og-sbt-1.i-am-human.testnet`
 - GoodDollar SBT: `gooddollar-v1.i-am-human.testnet`
