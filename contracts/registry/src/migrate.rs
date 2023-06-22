@@ -36,7 +36,7 @@ impl Contract {
         // new field in the smart contract : pub(crate) iah_classes: (AccountId, Vec<ClassId>),
 
         Self {
-            authority: old_state.authority,
+            authority: old_state.authority.clone(),
             sbt_issuers: old_state.sbt_issuers,
             issuer_id_map: old_state.issuer_id_map,
             banlist: old_state.banlist,
@@ -48,7 +48,7 @@ impl Contract {
             issuer_tokens: old_state.issuer_tokens,
             next_token_ids: old_state.next_token_ids,
             next_issuer_id: old_state.next_issuer_id,
-            iah_classes: (iah_issuer, iah_classes),
+            iah_classes: (iah_issuer.clone(), iah_classes.clone()),
         }
     }
 }
