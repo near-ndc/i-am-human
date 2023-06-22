@@ -9,6 +9,7 @@ use sbt::*;
 
 use crate::storage::*;
 
+mod migrate;
 mod registry;
 mod storage;
 
