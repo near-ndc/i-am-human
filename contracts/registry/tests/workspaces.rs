@@ -1,12 +1,10 @@
 use near_units::parse_near;
-use sbt::{TokenMetadata, SECOND};
+use sbt::TokenMetadata;
 use serde_json::json;
-use workspaces::AccountId;
-use workspaces::{types::SecretKey, Account, Contract, DevNetwork, Worker};
+use workspaces::{Account, DevNetwork, Worker};
 
-async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<(Account)> {
-    // deploy old contract
-
+async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<Account> {
+    // deploy the old contract
     let (registry, regsitry_sk) = worker.dev_generate().await;
     let registry_mainnet = worker
         .create_tla(registry, regsitry_sk)
@@ -24,6 +22,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<(Account)> {
     let john_acc = worker.dev_create_account().await?;
     let elon_acc = worker.dev_create_account().await?;
 
+    // init the contract
     let res = registry_contract
         .call("new")
         .args_json(json!({"authority": authority_acc.id()}))
@@ -41,7 +40,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<(Account)> {
         .await?;
     assert!(res.is_success());
 
-    // mint IAH and OG sbt to alice
+    // populate registry with mocked data
     let token_metadata = vec![TokenMetadata {
         class: 1,
         issued_at: Some(0),
@@ -72,18 +71,20 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<(Account)> {
 async fn migration() -> anyhow::Result<()> {
     let worker = workspaces::testnet().await?;
     let registry_mainnet = init(&worker).await?;
+
+    // deploy the new contract
     let new_registry_mainnet = registry_mainnet
-        .deploy(include_bytes!("../../res/registry.wasm  "))
+        .deploy(include_bytes!("../../res/registry.wasm"))
         .await?
         .into_result()?;
 
-    let res: String = new_registry_mainnet
+    // call the migrate method
+    let res = new_registry_mainnet
         .call("migrate")
         .args_json(json!({"iah_issuer": "iah-issuer.testnet", "iah_classes": [1]}))
         .max_gas()
         .transact()
-        .await?
-        .json()?;
-    print!("{}", res);
+        .await?;
+    assert!(res.is_success());
     Ok(())
 }
