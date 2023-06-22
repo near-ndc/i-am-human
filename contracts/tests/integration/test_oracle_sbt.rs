@@ -47,6 +47,7 @@ async fn test_mint_sbt() -> anyhow::Result<()> {
         &sec_key,
     )?;
 
+    // TODO: add check for specific error text
     let _ = user_account
         .call(oracle_contract.id(), "sbt_mint")
         .args_json(signed_claim)
@@ -64,6 +65,7 @@ async fn test_mint_sbt() -> anyhow::Result<()> {
         &sec_key,
     )?;
 
+    // TODO: add check for specific error text
     let _ = user_account
         .call(oracle_contract.id(), "sbt_mint")
         .args_json(signed_claim)
@@ -80,6 +82,7 @@ async fn test_mint_sbt() -> anyhow::Result<()> {
         &sec_key,
     )?;
 
+    // TODO: add check for specific error text
     let _ = user_account
         .call(oracle_contract.id(), "sbt_mint")
         .args_json(&signed_claim)
@@ -89,6 +92,7 @@ async fn test_mint_sbt() -> anyhow::Result<()> {
         .into_result()
         .expect_err("Requires attached deposit of exactly 0.015 NEAR");
 
+    // TODO: add check for specific error text
     let _ = user_account
         .call(oracle_contract.id(), "sbt_mint")
         .args_json(json!({
