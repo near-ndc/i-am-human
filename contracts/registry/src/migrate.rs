@@ -1,6 +1,6 @@
 use crate::*;
 
-#[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
+#[derive(BorshDeserialize, PanicOnDefault)]
 pub struct OldState {
     /// Registry admin, expected to be a DAO.
     pub authority: AccountId,
