@@ -11,7 +11,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<Account> {
         .await?
         .into_result()?;
     let registry_contract = registry_mainnet
-        .deploy(include_bytes!("../../res/registry-v1-mainnet.wasm"))
+        .deploy(include_bytes!("contracts/registry-v1-mainnet.wasm"))
         .await?
         .into_result()?;
 
@@ -74,7 +74,7 @@ async fn migration() -> anyhow::Result<()> {
 
     // deploy the new contract
     let new_registry_mainnet = registry_mainnet
-        .deploy(include_bytes!("../../res/registry.wasm"))
+        .deploy(include_bytes!("contracts/registry.wasm"))
         .await?
         .into_result()?;
 
