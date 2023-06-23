@@ -5,9 +5,9 @@ use workspaces::{Account, DevNetwork, Worker};
 
 async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<Account> {
     // deploy the old contract
-    let (registry, regsitry_sk) = worker.dev_generate().await;
+    let (registry_pk, regsitry_sk) = worker.dev_generate().await;
     let registry_mainnet = worker
-        .create_tla(registry, regsitry_sk)
+        .create_tla(registry_pk, regsitry_sk)
         .await?
         .into_result()?;
     let registry_contract = registry_mainnet
