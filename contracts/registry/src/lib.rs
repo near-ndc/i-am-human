@@ -2003,12 +2003,9 @@ mod tests {
 
         ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m1_2.clone()])]);
 
-        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
-
         // revoke (burn) tokens minted for alice from issuer2
         ctr.sbt_revoke_by_owner(alice(), true);
 
-        // check the logs
         let log_burn = mk_log_str(
             "burn",
             &format!(r#"{{"issuer":"{}","tokens":[1,2]}}"#, issuer2()),
@@ -2047,7 +2044,6 @@ mod tests {
         assert_eq!(test_utils::get_logs().len(), 0);
         ctr.sbt_revoke_by_owner(alice(), false);
 
-        // check the logs
         let log_revoke = mk_log_str(
             "revoke",
             &format!(r#"{{"issuer":"{}","tokens":[1,2]}}"#, issuer1()),
