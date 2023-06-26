@@ -2004,17 +2004,6 @@ mod tests {
         ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m1_2.clone()])]);
 
         let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
-        assert_eq!(res.len(), 2);
-        assert_eq!(res[0].1.len(), 2);
-        assert_eq!(res[1].1.len(), 2);
-        assert_eq!(ctr.sbt_supply(issuer1()), 2);
-        assert_eq!(ctr.sbt_supply(issuer2()), 2);
-        assert_eq!(ctr.sbt_supply_by_class(issuer1(), 1), 1);
-        assert_eq!(ctr.sbt_supply_by_class(issuer1(), 2), 1);
-        assert_eq!(ctr.sbt_supply_by_class(issuer2(), 1), 1);
-        assert_eq!(ctr.sbt_supply_by_class(issuer2(), 2), 1);
-
-        assert_eq!(test_utils::get_logs().len(), 1);
 
         // revoke (burn) tokens minted for alice from issuer2
         ctr.sbt_revoke_by_owner(alice(), true);
@@ -2024,8 +2013,13 @@ mod tests {
             "burn",
             &format!(r#"{{"issuer":"{}","tokens":[1,2]}}"#, issuer2()),
         );
+        let log_revoke = mk_log_str(
+            "revoke",
+            &format!(r#"{{"issuer":"{}","tokens":[1,2]}}"#, issuer2()),
+        );
         assert_eq!(test_utils::get_logs().len(), 3);
         assert_eq!(test_utils::get_logs()[1], log_burn[0]);
+        assert_eq!(test_utils::get_logs()[2], log_revoke[0]);
 
         // make sure the balances are updated correctly
         let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);

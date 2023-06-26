@@ -347,7 +347,7 @@ impl SBTRegistry for Contract {
 
                 // collect the info about the tokens revoked per class
                 // to update the balance accordingly
-                revoked_per_class
+                burned_per_class
                     .entry(class_id)
                     .and_modify(|key_value| *key_value += 1)
                     .or_insert(1);
@@ -367,11 +367,11 @@ impl SBTRegistry for Contract {
                 .unwrap();
             self.supply_by_owner.insert(
                 &(owner.clone(), issuer_id),
-                &(old_supply - &(tokens.len() as u64)),
+                &(old_supply - &(tokens_burned)),
             );
 
             // update supply by class
-            for (class_id, tokens_revoked) in revoked_per_class {
+            for (class_id, tokens_revoked) in burned_per_class {
                 let old_supply = self.supply_by_class.get(&(issuer_id, class_id)).unwrap();
                 self.supply_by_class
                     .insert(&(issuer_id, class_id), &(&old_supply - &tokens_revoked));
