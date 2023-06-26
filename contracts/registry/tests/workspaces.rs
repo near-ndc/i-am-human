@@ -1,19 +1,20 @@
 use near_units::parse_near;
 use sbt::TokenMetadata;
 use serde_json::json;
-use workspaces::{Account, DevNetwork, Worker};
+use workspaces::{Account, Contract, DevNetwork, Worker};
 
-async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<Account> {
+async fn init(
+    worker: &Worker<impl DevNetwork>,
+    wasm_path: &str,
+) -> anyhow::Result<(Account, Account, Contract)> {
     // deploy the old contract
     let (registry_pk, regsitry_sk) = worker.dev_generate().await;
     let registry_mainnet = worker
         .create_tla(registry_pk, regsitry_sk)
         .await?
         .into_result()?;
-    let registry_contract = registry_mainnet
-        .deploy(include_bytes!("contracts/registry-v1-mainnet.wasm"))
-        .await?
-        .into_result()?;
+    let wasm = std::fs::read(wasm_path)?;
+    let registry_contract = registry_mainnet.deploy(&wasm).await?.into_result()?;
 
     let authority_acc = worker.dev_create_account().await?;
     let iah_issuer = worker.dev_create_account().await?;
@@ -65,12 +66,21 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<Account> {
         .await?;
     assert!(res.is_success());
 
-    return Ok(registry_mainnet);
+    return Ok((registry_mainnet, iah_issuer, registry_contract));
 }
 #[tokio::test]
-async fn migration() -> anyhow::Result<()> {
-    let worker = workspaces::testnet().await?;
-    let registry_mainnet = init(&worker).await?;
+async fn migration_testnet() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (registry_mainnet, issuer, old_registry_contract) =
+        init(&worker, "./tests/contracts/registry-v1-testnet.wasm").await?;
+
+    let supply: u64 = old_registry_contract
+        .call("sbt_supply")
+        .args_json(json!({"issuer": issuer.id()}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
 
     // deploy the new contract
     let new_registry_mainnet = registry_mainnet
@@ -86,5 +96,55 @@ async fn migration() -> anyhow::Result<()> {
         .transact()
         .await?;
     assert!(res.is_success());
+
+    let res: u64 = new_registry_mainnet
+        .call("sbt_supply")
+        .args_json(json!({"issuer": issuer.id()}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+    assert_eq!(res, supply);
+    Ok(())
+}
+
+#[tokio::test]
+async fn migration_mainnet() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (registry_mainnet, issuer, old_registry_contract) =
+        init(&worker, "./tests/contracts/registry-v1-mainnet.wasm").await?;
+
+    let supply: u64 = old_registry_contract
+        .call("sbt_supply")
+        .args_json(json!({"issuer": issuer.id()}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+
+    // deploy the new contract
+    let new_registry_mainnet = registry_mainnet
+        .deploy(include_bytes!("contracts/registry.wasm"))
+        .await?
+        .into_result()?;
+
+    // call the migrate method
+    let res = new_registry_mainnet
+        .call("migrate")
+        .args_json(json!({"iah_issuer": "iah-issuer.testnet", "iah_classes": [1]}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    let res: u64 = new_registry_mainnet
+        .call("sbt_supply")
+        .args_json(json!({"issuer": issuer.id()}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+    assert_eq!(res, supply);
+
     Ok(())
 }
