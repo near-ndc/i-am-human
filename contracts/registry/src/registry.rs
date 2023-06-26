@@ -391,21 +391,21 @@ impl SBTRegistry for Contract {
         } else {
             let current_timestamp_ms = env::block_timestamp_ms();
             // revoke
-            for mut token in tokens.clone() {
+            for token in tokens.clone() {
+                let token_id = token.token;
                 // update expire date for all tokens to current_timestamp
-                token.metadata.expires_at = Some(current_timestamp_ms);
-                let token_data = TokenData {
-                    owner: owner.clone(),
-                    metadata: VerTokenMetadata::V1(token.metadata),
-                };
+                let mut t = self.get_token(issuer_id, token_id);
+                let mut m = t.metadata.v1();
+                m.expires_at = Some(current_timestamp_ms);
+                t.metadata = m.into();
                 self.issuer_tokens.insert(
                     &IssuerTokenId {
                         issuer_id,
-                        token: token.token,
+                        token: token_id,
                     },
-                    &token_data,
+                    &t,
                 );
-                token_ids.push(token.token);
+                token_ids.push(token_id);
             }
         }
         SbtTokensEvent {
