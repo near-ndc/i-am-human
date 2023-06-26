@@ -75,9 +75,11 @@ impl Contract {
         #[allow(unused_mut)] mut metadata: TokenMetadata,
         memo: Option<String>,
     ) -> Promise {
+        let required_deposit = required_sbt_mint_deposit(1);
+        let attached_deposit = env::attached_deposit();
         require!(
-            env::attached_deposit() == MINT_COST,
-            "Requires attached deposit of exactly 0.007 NEAR"
+            attached_deposit >= required_deposit,
+            format!("deposit must be at least {}N", required_deposit)
         );
         self.assert_admin();
 
@@ -91,7 +93,7 @@ impl Contract {
         }
 
         ext_registry::ext(self.registry.clone())
-            .with_attached_deposit(required_sbt_mint_deposit(1))
+            .with_attached_deposit(attached_deposit)
             .with_static_gas(MINT_GAS)
             .sbt_mint(vec![(receiver, vec![metadata])])
     }

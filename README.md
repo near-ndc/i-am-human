@@ -43,6 +43,8 @@ The IAH Registry supports the following extra queries, which are not part of the
 
 - **SBT registry**: `registry.i-am-human.near`
 - **Fractal**: `fractal.i-am-human.near`, verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
+- **Community SBTs**: `community.i-am-human.near`
+  - OG class: 1
 
 Deprecated:
 
