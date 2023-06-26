@@ -50,7 +50,7 @@ pub trait SBTRegistry {
     fn sbt(&self, issuer: AccountId, token: TokenId) -> Option<Token>;
 
     /// Returns total amount of tokens issued by `issuer` SBT contract, including expired
-    /// tokens. Depending on the implementation, if a revoke removes a token, it then is should
+    /// tokens. Depending on the implementation, if a revoke removes a token, then it should
     /// not be included in the supply.
     fn sbt_supply(&self, issuer: AccountId) -> u64;
 
@@ -131,6 +131,12 @@ pub trait SBTRegistry {
     /// Must emit `Revoke` event.
     /// Must also emit `Burn` event if the SBT tokens are burned (removed).
     fn sbt_revoke(&mut self, tokens: Vec<TokenId>, burn: bool);
+
+    /// Revokes all owners SBTs issued by the caller either by burning or updating their expire time.
+    /// Must be called by an SBT contract.
+    /// Must emit `Revoke` event.
+    /// Must also emit `Burn` event if the SBT tokens are burned (removed).
+    fn sbt_revoke_by_owner(&mut self, owner: AccountId, burn: bool);
 }
 
 // ext_registry is a helper to make cross contract registry calls

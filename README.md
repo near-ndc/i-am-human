@@ -15,12 +15,36 @@ work in progress:
 - `soulbound-class`: An algebraic class of tokens to efficiently query if a user have required subset of tokens.
 - `ubi`: demo use case implementing universal basic income.
 
+## Example Flow
+
+For details about creating and querying SBTs, and flow diagrams, see the [NEP-393](https://github.com/near/NEPs/pull/393/).
+
+Actors:
+
+- user: someone who wants to hold SBT
+- issuer: a contract or an account which can issue SBTs and is whitelisted in a registry. Issuer is usually an entity which makes validation to mint a specific class of SBTs.
+- registry: a contract which keeps balance of SBTs.
+
+Whenever a new issuer is created, it needs a registry to mint tokens. Today, IAH registry is permissioned: the IAH Registry admin has to add a new issuer willing to mint tokens within IAH registry. In the future this may change and the process can be permissionless (any issuer will be able to mint tokens in the IAH registry).
+
+Issuer calls `registry.sbt_mint` to mint new tokens. Each token must have specified class in it's metadata. See NEP-393 to learn more about SBT classes. The mint call panics, if a recipient already holds a token with a same class of a given issuer.
+
+Anyone can query registry to check token supply or query tokens by issuer or by owner.
+
+### Additional Queries
+
+The IAH Registry supports the following extra queries, which are not part of the NEP-393 standard:
+
+- `is_human(account: AccountId) -> bool`: returns true, if the given account is not human as specified by the registry criteria.
+
 ## Deployed contracts
 
 ### Mainnet
 
 - **SBT registry**: `registry.i-am-human.near`
 - **Fractal**: `fractal.i-am-human.near`, verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
+- **Community SBTs**: `community.i-am-human.near`
+  - OG class: 1
 
 Deprecated:
 
