@@ -325,25 +325,26 @@ impl SBTRegistry for Contract {
     fn sbt_revoke_by_owner(&mut self, owner: AccountId, burn: bool) {
         let issuer = env::predecessor_account_id();
         let issuer_id = self.assert_issuer(&issuer);
-        let tokens_by_owner =
+        let mut tokens_by_owner =
             self.sbt_tokens_by_owner(owner.clone(), Some(issuer.clone()), None, None, Some(true));
         if tokens_by_owner.is_empty() {
             return;
         };
-        let tokens = &tokens_by_owner[0].1;
+        let (_, tokens) = tokens_by_owner.pop().unwrap();
+
         let mut token_ids = Vec::new();
+
         if burn == true {
             let mut burned_per_class: HashMap<u64, u64> = HashMap::new();
-            let tokens_burned: u64 = tokens.len().try_into().unwrap();
-            for token in tokens {
-                // update balances
-                let class_id = token.metadata.class;
-                let balance_key = &BalanceKey {
+            let tokens_burned = tokens.len() as u64;
+            for t in tokens {
+                token_ids.push(t.token);
+                let class_id = t.metadata.class;
+                self.balances.remove(&BalanceKey {
                     issuer_id,
                     owner: owner.clone(),
-                    class_id: token.metadata.class,
-                };
-                self.balances.remove(balance_key);
+                    class_id,
+                });
 
                 // collect the info about the tokens revoked per class
                 // to update the balance accordingly
@@ -352,60 +353,52 @@ impl SBTRegistry for Contract {
                     .and_modify(|key_value| *key_value += 1)
                     .or_insert(1);
 
-                // remove from issuer_tokens
                 self.issuer_tokens.remove(&IssuerTokenId {
                     issuer_id,
-                    token: token.token,
+                    token: t.token,
                 });
-                token_ids.push(token.token);
             }
 
-            // update supply by owner
-            let old_supply = self
-                .supply_by_owner
-                .get(&(owner.clone(), issuer_id))
-                .unwrap();
-            self.supply_by_owner.insert(
-                &(owner.clone(), issuer_id),
-                &(old_supply - &(tokens_burned)),
-            );
+            let key = &(owner.clone(), issuer_id);
+            let old_supply = self.supply_by_owner.get(key).unwrap();
+            self.supply_by_owner
+                .insert(key, &(old_supply - tokens_burned));
+
+            let supply_by_issuer = self.supply_by_issuer.get(&issuer_id).unwrap_or(0);
+            self.supply_by_issuer
+                .insert(&issuer_id, &(supply_by_issuer - tokens_burned));
 
             // update supply by class
             for (class_id, tokens_revoked) in burned_per_class {
-                let old_supply = self.supply_by_class.get(&(issuer_id, class_id)).unwrap();
+                let key = &(issuer_id, class_id);
+                let old_supply = self.supply_by_class.get(key).unwrap();
                 self.supply_by_class
-                    .insert(&(issuer_id, class_id), &(&old_supply - &tokens_revoked));
+                    .insert(key, &(old_supply - tokens_revoked));
             }
 
-            // update supply by issuer
-            let supply_by_issuer = self.supply_by_issuer.get(&(issuer_id)).unwrap_or(0);
-            self.supply_by_issuer
-                .insert(&(issuer_id), &(supply_by_issuer - tokens_burned));
-
-            // emit event
             SbtTokensEvent {
                 issuer: issuer.clone(),
                 tokens: token_ids.clone(),
             }
             .emit_burn();
         } else {
-            let current_timestamp_ms = env::block_timestamp_ms();
             // revoke
-            for mut token in tokens.clone() {
-                // update expire date for all tokens to current_timestamp
-                token.metadata.expires_at = Some(current_timestamp_ms);
+            // update expire date for all tokens to current_timestamp
+            let now = env::block_timestamp_ms();
+            for mut t in tokens {
+                token_ids.push(t.token);
+                t.metadata.expires_at = Some(now);
                 let token_data = TokenData {
                     owner: owner.clone(),
-                    metadata: VerTokenMetadata::V1(token.metadata),
+                    metadata: t.metadata.into(),
                 };
                 self.issuer_tokens.insert(
                     &IssuerTokenId {
                         issuer_id,
-                        token: token.token,
+                        token: t.token,
                     },
                     &token_data,
                 );
-                token_ids.push(token.token);
             }
         }
         SbtTokensEvent {
