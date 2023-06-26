@@ -333,7 +333,7 @@ impl SBTRegistry for Contract {
         let tokens = &tokens_by_owner[0].1;
         let mut token_ids = Vec::new();
         if burn == true {
-            let mut revoked_per_class: HashMap<u64, u64> = HashMap::new();
+            let mut burned_per_class: HashMap<u64, u64> = HashMap::new();
             let tokens_burned: u64 = tokens.len().try_into().unwrap();
             for token in tokens {
                 // update balances
