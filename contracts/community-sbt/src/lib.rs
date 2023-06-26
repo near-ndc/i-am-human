@@ -1,8 +1,8 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, UnorderedSet};
-use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
+use near_sdk::{env, near_bindgen, require, AccountId, Balance, PanicOnDefault, Promise};
 
-use cost::{MINT_COST, MINT_GAS};
+use cost::{MILI_NEAR, MINT_COST, MINT_GAS};
 use sbt::*;
 
 pub use crate::storage::*;
@@ -21,7 +21,7 @@ pub struct Contract {
 
     /// contract metadata
     pub metadata: LazyOption<ContractMetadata>,
-    /// time to live in ms. Used for token expiry
+    /// time to live in ms. Overwrites metadata.expire_at.
     pub ttl: u64,
 }
 
@@ -29,8 +29,7 @@ pub struct Contract {
 #[near_bindgen]
 impl Contract {
     /// @admins: initial set of admins
-    /// @ttl: default (if expire_at is set in sbt_mint metadata) and maximum (if expire_at is
-    ///    not  set in metadata) time to live for SBT expire. Must be number in miliseconds.
+    /// @ttl: time to live for SBT expire. Must be number in miliseconds.
     #[init]
     pub fn new(
         registry: AccountId,
@@ -68,55 +67,40 @@ impl Contract {
 
     /// Mints a new SBT for the given receiver.
     /// If `metadata.expires_at` is None then we set it to max: ` now+self.ttl`.
-    /// Panics if `metadata.expires_at > now+self.ttl`.
+    /// Panics if `metadata.expires_at > now+self.ttl` or when ClassID is not set or not 1.
     #[payable]
     pub fn sbt_mint(
         &mut self,
         receiver: AccountId,
         #[allow(unused_mut)] mut metadata: TokenMetadata,
         memo: Option<String>,
-    ) {
+    ) -> Promise {
         require!(
             env::attached_deposit() == MINT_COST,
             "Requires attached deposit of exactly 0.007 NEAR"
         );
-
-        self.assert_issuer();
-        if str::ends_with(env::current_account_id().as_ref(), "near") {
-            require!(str::ends_with(receiver.as_ref(), "near"))
-        } else {
-            require!(str::ends_with(receiver.as_ref(), "testnet"))
-        }
+        self.assert_admin();
 
         let now_ms = env::block_timestamp_ms();
-        let default_expires_at = now_ms + self.ttl;
-        if let Some(e) = metadata.expires_at {
-            require!(
-                e <= default_expires_at,
-                format!("max metadata.expire_at is {}", default_expires_at)
-            );
-        } else {
-            metadata.expires_at = Some(default_expires_at);
-        }
+        metadata.expires_at = Some(now_ms + self.ttl);
         metadata.issued_at = Some(now_ms);
-        if metadata.class == 0 {
-            metadata.class = 1;
-        }
+        require!(metadata.class != 1, "class ID must be 1");
 
         if let Some(memo) = memo {
             env::log_str(&format!("SBT mint memo: {}", memo));
         }
+
         ext_registry::ext(self.registry.clone())
-            .with_attached_deposit(MINT_COST) // no extra cost needed
+            .with_attached_deposit(required_sbt_mint_deposit(1))
             .with_static_gas(MINT_GAS)
-            .sbt_mint(vec![(receiver, vec![metadata])]);
+            .sbt_mint(vec![(receiver, vec![metadata])])
     }
 
     /// sbt_renew will update the expire time of provided tokens.
-    /// `ttl` is duration in seconds to set expire time: `now+ttl`.
+    /// `ttl` is duration in milliseconds to set expire time: `now+ttl`.
     /// Panics if ttl > self.ttl or `tokens` is an empty list.
     pub fn sbt_renew(&mut self, tokens: Vec<TokenId>, ttl: u64, memo: Option<String>) {
-        self.assert_issuer();
+        self.assert_admin();
         require!(
             ttl <= self.ttl,
             format!("ttl must be smaller than {}", self.ttl)
@@ -132,8 +116,12 @@ impl Contract {
 
     /// admin: remove SBT from the given accounts.
     /// Panics if `accounts` is an empty list.
-    pub fn revoke_for(&mut self, accounts: Vec<AccountId>, _memo: Option<String>) {
-        self.assert_issuer();
+    pub fn revoke_for(
+        &mut self,
+        accounts: Vec<AccountId>,
+        #[allow(unused_variables)] memo: Option<String>,
+    ) {
+        self.assert_admin();
         require!(!accounts.is_empty(), "accounts must be a non empty list");
         panic!("not implemented");
         // let mut tokens = Vec::with_capacity(accounts.len());
@@ -145,34 +133,11 @@ impl Contract {
         // }
     }
 
-    pub fn add_admins(&mut self, admins: Vec<AccountId>) {
-        self.assert_issuer();
-        for a in admins {
-            self.admins.insert(&a);
-        }
-    }
-
-    /// Any admin can remove any other admin.
-    // TODO: probably we should change this.
-    pub fn remove_admins(&mut self, admins: Vec<AccountId>) {
-        self.assert_issuer();
-        for a in admins {
-            self.admins.remove(&a);
-        }
-    }
-
-    /// Testing function
-    /// @`ttl`: expire time to live in seconds
-    pub fn admin_change_ttl(&mut self, ttl: u64) {
-        self.assert_issuer();
-        self.ttl = ttl;
-    }
-
     /**********
      * INTERNAL
      **********/
 
-    fn assert_issuer(&self) {
+    fn assert_admin(&self) {
         require!(
             self.admins.contains(&env::predecessor_account_id()),
             "must be issuer"
@@ -185,6 +150,11 @@ impl SBTContract for Contract {
     fn sbt_metadata(&self) -> ContractMetadata {
         self.metadata.get().unwrap()
     }
+}
+
+#[inline]
+pub fn required_sbt_mint_deposit(num_tokens: usize) -> Balance {
+    (num_tokens as u128) * MINT_COST + MILI_NEAR
 }
 
 #[cfg(test)]
@@ -200,10 +170,6 @@ mod tests {
 
     fn alice() -> AccountId {
         AccountId::new_unchecked("alice.near".to_string())
-    }
-
-    fn bob() -> AccountId {
-        AccountId::new_unchecked("bob.near".to_string())
     }
 
     fn admin() -> AccountId {
@@ -247,67 +213,5 @@ mod tests {
         let (_, ctr) = setup(&alice(), MINT_DEPOSIT);
         assert!(ctr.is_admin(admin()));
         assert!(!ctr.is_admin(alice()));
-    }
-
-    #[test]
-    fn add_admins() {
-        let (_, mut ctr) = setup(&admin(), MINT_DEPOSIT);
-        assert!(ctr.is_admin(admin()));
-        assert!(!ctr.is_admin(alice()));
-        assert!(!ctr.is_admin(bob()));
-        // add two new admins
-        ctr.add_admins(vec![alice(), bob()]);
-        assert!(ctr.is_admin(admin()));
-        assert!(ctr.is_admin(alice()));
-        assert!(ctr.is_admin(bob()));
-    }
-
-    #[test]
-    #[should_panic(expected = "must be issuer")]
-    fn add_admins_non_issuer() {
-        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
-        assert!(ctr.is_admin(admin()));
-        assert!(!ctr.is_admin(alice()));
-        // non issuer tries to add a new admin
-        ctr.add_admins(vec![bob()]);
-    }
-
-    #[test]
-    fn remove_admins() {
-        let (_, mut ctr) = setup(&admin(), MINT_DEPOSIT);
-        // add two new admins
-        ctr.add_admins(vec![alice(), bob()]);
-        assert!(ctr.is_admin(admin()));
-        assert!(ctr.is_admin(alice()));
-        assert!(ctr.is_admin(bob()));
-        // remove to admins
-        ctr.remove_admins(vec![admin(), alice()]);
-        assert!(!ctr.is_admin(admin()));
-        assert!(!ctr.is_admin(alice()));
-        assert!(ctr.is_admin(bob()));
-    }
-
-    #[test]
-    #[should_panic(expected = "must be issuer")]
-    fn remove_admins_non_issuer() {
-        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
-        assert!(ctr.is_admin(admin()));
-        // non issuer tries to add a new admin
-        ctr.remove_admins(vec![admin()]);
-    }
-
-    #[test]
-    fn change_ttl() {
-        let (_, mut ctr) = setup(&admin(), MINT_DEPOSIT);
-        assert!(ctr.ttl == START);
-        ctr.admin_change_ttl(START + 1);
-        assert!(ctr.ttl == START + 1);
-    }
-
-    #[test]
-    #[should_panic(expected = "must be issuer")]
-    fn change_ttl_non_issuer() {
-        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
-        ctr.admin_change_ttl(START + 1);
     }
 }

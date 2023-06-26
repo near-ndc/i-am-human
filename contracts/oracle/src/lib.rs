@@ -242,7 +242,7 @@ impl Contract {
     pub fn sbt_revoke(&mut self, tokens: Vec<TokenId>, burn: bool) -> Promise {
         self.assert_admin();
         ext_registry::ext(self.registry.clone())
-            .with_static_gas(MINT_GAS)
+            .with_static_gas(MINT_GAS * tokens.len() as u64)
             .sbt_revoke(tokens, burn)
     }
 
