@@ -12,6 +12,7 @@ The contract can mint tokens of multiple classes. The class restriction is imple
 
 #### Minting
 
+The mint function requires a deposit which is computed by the (`required_sbt_mint_deposit`)[https://github.com/alpha-fi/i-am-human/blob/master/contracts/community-sbt/src/lib.rs#L158] function. The whole deposit is passed to the registry to cover the storage costs.
 Metadata attributes:
 
 - `expires_at` is be overwritten to `now + ttl` (ttl is the parameter set to in the contract constructor).
