@@ -68,45 +68,6 @@ async fn init(
 
     return Ok((registry_mainnet, iah_issuer, registry_contract));
 }
-#[tokio::test]
-async fn migration_testnet() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
-    let (registry_mainnet, issuer, old_registry_contract) =
-        init(&worker, "./tests/contracts/registry-v1-testnet.wasm").await?;
-
-    let supply: u64 = old_registry_contract
-        .call("sbt_supply")
-        .args_json(json!({"issuer": issuer.id()}))
-        .max_gas()
-        .transact()
-        .await?
-        .json()?;
-
-    // deploy the new contract
-    let new_registry_mainnet = registry_mainnet
-        .deploy(include_bytes!("contracts/registry.wasm"))
-        .await?
-        .into_result()?;
-
-    // call the migrate method
-    let res = new_registry_mainnet
-        .call("migrate")
-        .args_json(json!({"iah_issuer": "iah-issuer.testnet", "iah_classes": [1]}))
-        .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_success());
-
-    let res: u64 = new_registry_mainnet
-        .call("sbt_supply")
-        .args_json(json!({"issuer": issuer.id()}))
-        .max_gas()
-        .transact()
-        .await?
-        .json()?;
-    assert_eq!(res, supply);
-    Ok(())
-}
 
 #[tokio::test]
 async fn migration_mainnet() -> anyhow::Result<()> {
