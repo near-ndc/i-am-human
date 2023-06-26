@@ -86,7 +86,7 @@ impl Contract {
         let now_ms = env::block_timestamp_ms();
         metadata.expires_at = Some(now_ms + self.ttl);
         metadata.issued_at = Some(now_ms);
-        require!(metadata.class != 1, "class ID must be 1");
+        require!(metadata.class == 1, "class ID must be 1");
 
         if let Some(memo) = memo {
             env::log_str(&format!("SBT mint memo: {}", memo));
