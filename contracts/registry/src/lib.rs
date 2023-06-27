@@ -2,7 +2,10 @@ use std::collections::{HashMap, HashSet};
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, TreeMap, UnorderedMap, UnorderedSet};
-use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
+use near_sdk::json_types::Base64VecU8;
+use near_sdk::{
+    env, near_bindgen, require, AccountId, Gas, PanicOnDefault, Promise, PromiseOrValue,
+};
 
 use cost::MILI_NEAR;
 use sbt::*;
@@ -12,6 +15,8 @@ use crate::storage::*;
 pub mod migrate;
 pub mod registry;
 pub mod storage;
+
+const IS_HUMAN_GAS: Gas = Gas(12 * Gas::ONE_TERA.0);
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -210,6 +215,28 @@ impl Contract {
         }
 
         (token_counter as u32, completed)
+    }
+
+    /// Checks if the `account` is human. If yes, calls the `ctr.function` with args serialized
+    /// with base64. Normally, `args` is a JSON string serialized as base64.
+    /// If the `account` is not human, then returns false.
+    #[payable]
+    pub fn is_human_call(
+        &mut self,
+        account: AccountId,
+        ctr: AccountId,
+        function: String,
+        args: Base64VecU8,
+    ) -> PromiseOrValue<bool> {
+        if !self.is_human(account) {
+            return PromiseOrValue::Value(false);
+        }
+        PromiseOrValue::Promise(Promise::new(ctr).function_call(
+            function,
+            args.into(),
+            env::attached_deposit(),
+            env::prepaid_gas() - IS_HUMAN_GAS,
+        ))
     }
 
     pub(crate) fn start_transfer_with_continuation(
