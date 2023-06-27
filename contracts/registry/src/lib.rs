@@ -9,8 +9,9 @@ use sbt::*;
 
 use crate::storage::*;
 
-mod registry;
-mod storage;
+pub mod migrate;
+pub mod registry;
+pub mod storage;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
