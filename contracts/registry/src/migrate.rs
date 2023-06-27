@@ -46,7 +46,7 @@ impl Contract {
             next_token_ids: old_state.next_token_ids,
             next_issuer_id: old_state.next_issuer_id,
             ongoing_soul_tx: old_state.ongoing_soul_tx,
-            iah_classes: (iah_issuer.clone(), iah_classes.clone()),
+            iah_sbts: (iah_issuer.clone(), iah_classes.clone()),
         }
     }
 }
