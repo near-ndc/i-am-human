@@ -1989,6 +1989,140 @@ mod tests {
     }
 
     #[test]
+    fn sbt_revoke_by_owner_basics() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+
+        let m1_1 = mk_metadata(1, Some(START + 100));
+        let m1_2 = mk_metadata(2, Some(START + 100));
+        let m1_1_expired = mk_metadata(1, Some(START));
+        let m1_2_expired = mk_metadata(2, Some(START));
+
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m1_2.clone()])]);
+
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m1_2.clone()])]);
+
+        // revoke (burn) tokens minted for alice from issuer2
+        ctr.sbt_revoke_by_owner(alice(), true);
+
+        let log_burn = mk_log_str(
+            "burn",
+            &format!(r#"{{"issuer":"{}","tokens":[1,2]}}"#, issuer2()),
+        );
+        let log_revoke = mk_log_str(
+            "revoke",
+            &format!(r#"{{"issuer":"{}","tokens":[1,2]}}"#, issuer2()),
+        );
+        assert_eq!(test_utils::get_logs().len(), 3);
+        assert_eq!(test_utils::get_logs()[1], log_burn[0]);
+        assert_eq!(test_utils::get_logs()[2], log_revoke[0]);
+
+        // make sure the balances are updated correctly
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert!(res.len() == 1);
+        assert_eq!(res[0].1.len(), 2);
+        assert_eq!(ctr.sbt_supply(issuer1()), 2);
+        assert_eq!(ctr.sbt_supply(issuer2()), 0);
+        assert_eq!(ctr.sbt_supply_by_class(issuer1(), 1), 1);
+        assert_eq!(ctr.sbt_supply_by_class(issuer1(), 2), 1);
+        assert_eq!(ctr.sbt_supply_by_class(issuer2(), 1), 0);
+        assert_eq!(ctr.sbt_supply_by_class(issuer2(), 2), 0);
+
+        assert_eq!(
+            ctr.sbt_tokens(issuer1(), None, None, None),
+            vec![
+                mk_token(1, alice(), m1_1.clone()),
+                mk_token(2, alice(), m1_2.clone()),
+            ],
+        );
+        assert!(ctr.sbt_tokens(issuer2(), None, None, None).len() == 0);
+
+        // revoke (not burn) tokens minted for alice from issuer1
+        ctx.predecessor_account_id = issuer1();
+        testing_env!(ctx.clone());
+        assert_eq!(test_utils::get_logs().len(), 0);
+        ctr.sbt_revoke_by_owner(alice(), false);
+
+        let log_revoke = mk_log_str(
+            "revoke",
+            &format!(r#"{{"issuer":"{}","tokens":[1,2]}}"#, issuer1()),
+        );
+        assert_eq!(test_utils::get_logs().len(), 1);
+        assert_eq!(test_utils::get_logs()[0], log_revoke[0]);
+
+        // fast forward
+        ctx.block_timestamp = (START + 50) * MILI_SECOND;
+        testing_env!(ctx.clone());
+
+        // make sure the balances are updated correctly
+        let res_with_expired = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert!(res_with_expired.len() == 0);
+        let res_without_expired = ctr.sbt_tokens_by_owner(alice(), None, None, None, Some(true));
+        assert!(res_without_expired.len() == 1);
+        assert_eq!(res[0].1.len(), 2);
+        assert_eq!(ctr.sbt_supply(issuer1()), 2);
+        assert_eq!(ctr.sbt_supply(issuer2()), 0);
+        assert_eq!(ctr.sbt_supply_by_class(issuer1(), 1), 1);
+        assert_eq!(ctr.sbt_supply_by_class(issuer1(), 2), 1);
+        assert_eq!(ctr.sbt_supply_by_class(issuer2(), 1), 0);
+        assert_eq!(ctr.sbt_supply_by_class(issuer2(), 2), 0);
+
+        assert_eq!(
+            ctr.sbt_tokens(issuer1(), None, None, Some(true)),
+            vec![
+                mk_token(1, alice(), m1_1_expired.clone()),
+                mk_token(2, alice(), m1_2_expired.clone()),
+            ],
+        );
+        assert!(ctr.sbt_tokens(issuer1(), None, None, None).len() == 0);
+        assert!(ctr.sbt_tokens(issuer2(), None, None, None).len() == 0);
+    }
+
+    #[test]
+    fn sbt_revoke_by_owner_batch() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 20 * MINT_DEPOSIT);
+
+        // mint tokens to alice and bob from issuer1
+        let batch_metadata = mk_batch_metadata(20);
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata[10..].to_vec())]);
+
+        // mint tokens to alice and bob from issuer2
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata[11..].to_vec())]);
+
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 10);
+        assert_eq!(res[1].1.len(), 10);
+
+        let res = ctr.sbt_tokens_by_owner(bob(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 10);
+        assert_eq!(res[1].1.len(), 9);
+
+        assert_eq!(ctr.sbt_supply(issuer1()), 20);
+        assert_eq!(ctr.sbt_supply(issuer2()), 19);
+
+        // revoke (burn) tokens minted for alice from issuer2
+        ctr.sbt_revoke_by_owner(alice(), true);
+
+        // make sure the balances are updated correctly
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 10);
+        // assert_eq!(res[1].1.len(), 0);
+
+        let res = ctr.sbt_tokens_by_owner(bob(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 10);
+        assert_eq!(res[1].1.len(), 9);
+
+        assert_eq!(ctr.sbt_supply(issuer1()), 20);
+        assert_eq!(ctr.sbt_supply(issuer2()), 9);
+    }
+
+    #[test]
     fn is_human() {
         let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
         ctx.current_account_id = AccountId::new_unchecked("registry.i-am-human.near".to_string());
