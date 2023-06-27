@@ -86,8 +86,9 @@ impl Contract {
         self.banlist.contains(account)
     }
 
-    /// Returns empty list if the account is NOT a human. Otherwise return list
-    /// of SBTs proving his humanity.
+    /// Returns empty list if the account is NOT a human.
+    /// Otherwise returns list of SBTs (identifed by issuer and list of tokens) proving
+    /// the `account` humanity.
     pub fn is_human(&self, account: AccountId) -> Vec<(AccountId, Vec<TokenId>)> {
         if self._is_banned(&account) {
             return vec![];

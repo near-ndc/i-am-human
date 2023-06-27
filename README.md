@@ -31,11 +31,9 @@ Issuer calls `registry.sbt_mint` to mint new tokens. Each token must have specif
 
 Anyone can query registry to check token supply or query tokens by issuer or by owner.
 
-### Additional Queries
+### Registry Usage
 
-The IAH Registry supports the following extra queries, which are not part of the NEP-393 standard:
-
-- `is_human(account: AccountId) -> bool`: returns true, if the given account is not human as specified by the registry criteria.
+- [`contracts/registry/README.md`](contracts/registry/README.md).
 
 ## Deployed contracts
 
