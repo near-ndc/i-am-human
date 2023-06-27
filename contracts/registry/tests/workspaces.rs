@@ -206,11 +206,11 @@ async fn migration_mainnet() -> anyhow::Result<()> {
     )
     .await?;
 
+    // build the contract
+    let wasm = workspaces::compile_project("../").await?;
+
     // deploy the new contract
-    let new_registry_contract = registry
-        .deploy(include_bytes!("../../res/registry.wasm"))
-        .await?
-        .into_result()?;
+    let new_registry_contract = registry.deploy(&wasm).await?.into_result()?;
 
     // call the migrate method
     let res = new_registry_contract
@@ -257,10 +257,13 @@ async fn migration_mainnet_real_data() -> anyhow::Result<()> {
         .await?
         .json()?;
 
+    // build the contract
+    let wasm = workspaces::compile_project("../").await?;
+
     // deploy the new contract
     let new_registry_mainnet = old_registry_contract
         .as_account()
-        .deploy(include_bytes!("../../res/registry.wasm"))
+        .deploy(&wasm)
         .await?
         .into_result()?;
 
