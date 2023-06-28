@@ -86,6 +86,8 @@ pub trait SBTRegistry {
     /// If `from_class` is not specified, then `from_class` should be assumed to be the first
     /// valid class id. If `with_expired` if is set to `false` or `None` then all tokens are returned.
     /// Returns list of pairs: `(Contract address, list of token IDs)`.
+    /// If `with_expired` is set to `true` then all the tokens are returned including expired ones
+    /// otherwise only non-expired tokens are returned.
     fn sbt_tokens_by_owner(
         &self,
         account: AccountId,
