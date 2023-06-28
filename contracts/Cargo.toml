@@ -5,9 +5,11 @@ members = [
     "community-sbt",
     "oracle",
     "registry",
-    "demo-issuer",
     "soulbound-class",
+
+    "human_checker",
     "ubi",
+    "demo-issuer",
 ]
 
 
