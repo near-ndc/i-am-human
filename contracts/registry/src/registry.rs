@@ -117,7 +117,8 @@ impl SBTRegistry for Contract {
     /// If `issuer` is specified, then returns only tokens minted by that issuer.
     /// If limit is not specified, default is used: MAX_LIMIT.
     /// Returns list of pairs: `(Issuer address, list of token IDs)`.
-    /// if `with_expired` is set to `true` then only non-expired tokens are returned, otherwise all tokens are returned.
+    /// If `with_expired` is set to `true` then all the tokens are returned including expired ones
+    /// otherwise only non-expired tokens are returned.
     fn sbt_tokens_by_owner(
         &self,
         account: AccountId,
