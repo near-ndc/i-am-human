@@ -28,7 +28,7 @@ jobs:
       - name: Build
         if: env.GIT_DIFF
         working-directory: ./contracts
-        run: cargo build --verbose
+        run: make build
       - name: Clippy
         if: env.GIT_DIFF
         working-directory: ./contracts
