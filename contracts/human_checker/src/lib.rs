@@ -49,6 +49,10 @@ impl Contract {
         self.used_tokens.insert(&user, &tokens);
         true
     }
+
+    pub fn contains_user(&self, user: AccountId) -> bool {
+        self.used_tokens.contains_key(&user)
+    }
 }
 
 #[cfg(test)]

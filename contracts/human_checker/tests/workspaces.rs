@@ -101,7 +101,7 @@ async fn is_human_call() -> anyhow::Result<()> {
     let args_base64: Base64VecU8 = args.into();
 
     // call the is_human_call method for alice (human)
-    let res: bool = registry
+    let mut res: bool = registry
         .call("is_human_call")
         .args_json(json!({"account": alice.id(), "ctr": human_checker.id(), "function": REGISTER_HUMAN_TOKEN, "args": args_base64}))
         .max_gas()
@@ -110,8 +110,18 @@ async fn is_human_call() -> anyhow::Result<()> {
         .json()?;
     assert!(res);
 
+    // check the key exists in human checker
+    res = human_checker
+        .call("contains_user")
+        .args_json(json!({"user": alice.id()}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+    assert!(res);
+
     // call the is_human_call method bob (sbt but non human)
-    let res: bool = registry
+    res = registry
         .call("is_human_call")
         .args_json(json!({"account": bob.id(), "ctr": human_checker.id(), "function": REGISTER_HUMAN_TOKEN, "args": args_base64}))
         .max_gas()
@@ -120,10 +130,30 @@ async fn is_human_call() -> anyhow::Result<()> {
         .json()?;
     assert!(!res);
 
+    // check the key does not exists in human checker
+    res = human_checker
+        .call("contains_user")
+        .args_json(json!({"user": bob.id()}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+    assert!(!res);
+
     // call the is_human_call method john (no sbt)
-    let res: bool = registry
+    res= registry
         .call("is_human_call")
         .args_json(json!({"account": john.id(), "ctr": human_checker.id(), "function": REGISTER_HUMAN_TOKEN, "args": args_base64}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+    assert!(!res);
+
+    // check the key does not exists in human checker
+    res = human_checker
+        .call("contains_user")
+        .args_json(json!({"user": john.id()}))
         .max_gas()
         .transact()
         .await?
