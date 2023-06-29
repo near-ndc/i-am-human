@@ -50,7 +50,7 @@ impl Contract {
         true
     }
 
-    pub fn contains_user(&self, user: AccountId) -> bool {
+    pub fn recorded_sbts(&self, user: AccountId) -> bool {
         self.used_tokens.contains_key(&user)
     }
 }
