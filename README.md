@@ -31,17 +31,20 @@ Issuer calls `registry.sbt_mint` to mint new tokens. Each token must have specif
 
 Anyone can query registry to check token supply or query tokens by issuer or by owner.
 
-### Registry Usage
+### Additional Queries
 
-- [`contracts/registry/README.md`](contracts/registry/README.md).
+The IAH Registry supports the following extra queries, which are not part of the NEP-393 standard:
+
+- `is_human(account: AccountId) -> bool`: returns true, if the given account is not human as specified by the registry criteria.
 
 ## Deployed contracts
 
 ### Mainnet
 
-- **SBT registry**: `registry.i-am-human.near`
-- **Fractal**: `fractal.i-am-human.near`, verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
-- **Community SBTs**: `community.i-am-human.near`
+- **SBT registry**: `registry.i-am-human.near` @ registry/v1.0.0
+- **Fractal**: `fractal.i-am-human.near` @ oracle/v1.0.0
+  - verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
+- **Community SBTs**: `community.i-am-human.near` @ community-sbt/v2.0.0
   - OG class: 1
 
 Deprecated:
