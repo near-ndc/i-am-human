@@ -7,7 +7,7 @@ use sbt::*;
 pub const MILI_NEAR: Balance = 1_000_000_000_000_000_000__000;
 pub const REG_HUMAN_DEPOSIT: Balance = 3 * MILI_NEAR;
 
-type HumanSBTs = Vec<(AccountId, Vec<TokenId>)>;
+pub type HumanSBTs = Vec<(AccountId, Vec<TokenId>)>;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
