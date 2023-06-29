@@ -224,6 +224,8 @@ impl Contract {
     /// Checks if the `account` is human. If yes, calls the `ctr.function` with args serialized
     /// with base64. Normally, `args` is a JSON string serialized as base64.
     /// If the `account` is not human, then returns false.
+    /// NOTICE: the function is in development, and subject to change (alpha stage). You should
+    /// rather not use it.
     #[payable]
     pub fn is_human_call(
         &mut self,
