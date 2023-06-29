@@ -112,7 +112,7 @@ async fn is_human_call() -> anyhow::Result<()> {
 
     // check the key exists in human checker
     res = human_checker
-        .call("contains_user")
+        .call("recorded_sbts")
         .args_json(json!({"user": alice.id()}))
         .max_gas()
         .transact()
@@ -132,7 +132,7 @@ async fn is_human_call() -> anyhow::Result<()> {
 
     // check the key does not exists in human checker
     res = human_checker
-        .call("contains_user")
+        .call("recorded_sbts")
         .args_json(json!({"user": bob.id()}))
         .max_gas()
         .transact()
@@ -152,7 +152,7 @@ async fn is_human_call() -> anyhow::Result<()> {
 
     // check the key does not exists in human checker
     res = human_checker
-        .call("contains_user")
+        .call("recorded_sbts")
         .args_json(json!({"user": john.id()}))
         .max_gas()
         .transact()
