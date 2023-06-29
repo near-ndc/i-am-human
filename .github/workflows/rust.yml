@@ -25,6 +25,11 @@ jobs:
           PATTERNS: |
             **/**.rs
             contracts/Cargo.lock
+
+      - name: Install dependencies
+        if: env.GIT_DIFF
+        working-directory: ./contracts
+        run: rustup target add wasm32-unknown-unknown
       - name: Build
         if: env.GIT_DIFF
         working-directory: ./contracts
