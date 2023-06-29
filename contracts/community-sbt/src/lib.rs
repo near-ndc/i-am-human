@@ -8,9 +8,6 @@ use sbt::*;
 pub use crate::storage::*;
 mod storage;
 
-/// 1s in nano seconds.
-pub const SECOND: u64 = 1_000_000_000;
-
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {

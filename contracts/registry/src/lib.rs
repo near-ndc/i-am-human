@@ -2,15 +2,21 @@ use std::collections::{HashMap, HashSet};
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, TreeMap, UnorderedMap, UnorderedSet};
-use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
+use near_sdk::json_types::Base64VecU8;
+use near_sdk::{
+    env, near_bindgen, require, AccountId, Gas, PanicOnDefault, Promise, PromiseOrValue,
+};
 
 use cost::MILI_NEAR;
 use sbt::*;
 
 use crate::storage::*;
 
-mod registry;
-mod storage;
+pub mod migrate;
+pub mod registry;
+pub mod storage;
+
+const IS_HUMAN_GAS: Gas = Gas(12 * Gas::ONE_TERA.0);
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -38,7 +44,7 @@ pub struct Contract {
     pub(crate) next_token_ids: LookupMap<IssuerId, TokenId>,
     pub(crate) next_issuer_id: IssuerId,
 
-    pub(crate) iah_classes: (AccountId, Vec<ClassId>),
+    pub(crate) iah_sbts: (AccountId, Vec<ClassId>),
 }
 
 // Implement the contract structure
@@ -63,7 +69,7 @@ impl Contract {
             next_token_ids: LookupMap::new(StorageKey::NextTokenId),
             next_issuer_id: 1,
             ongoing_soul_tx: LookupMap::new(StorageKey::OngoingSoultTx),
-            iah_classes: (iah_issuer, iah_classes),
+            iah_sbts: (iah_issuer, iah_classes),
         }
     }
 
@@ -80,14 +86,17 @@ impl Contract {
         self.banlist.contains(account)
     }
 
-    /// Returns true if the given account is human.
-    pub fn is_human(&self, account: AccountId) -> bool {
+    /// Returns empty list if the account is NOT a human.
+    /// Otherwise returns list of SBTs (identifed by issuer and list of token IDs) proving
+    /// the `account` humanity.
+    pub fn is_human(&self, account: AccountId) -> Vec<(AccountId, Vec<TokenId>)> {
         if self._is_banned(&account) {
-            return false;
+            return vec![];
         }
-        let issuer = Some(self.iah_classes.0.clone());
+        let issuer = Some(self.iah_sbts.0.clone());
+        let mut proof: Vec<TokenId> = Vec::new();
         // check if user has tokens from all classes
-        for cls in &self.iah_classes.1 {
+        for cls in &self.iah_sbts.1 {
             let tokens = self.sbt_tokens_by_owner(
                 account.clone(),
                 issuer.clone(),
@@ -98,10 +107,11 @@ impl Contract {
             // we need to check class, because the query can return a "next" token if a user
             // doesn't have the token of requested class.
             if !(tokens.len() > 0 && tokens[0].1[0].metadata.class == *cls) {
-                return false;
+                return vec![];
             }
+            proof.push(tokens[0].1[0].token)
         }
-        true
+        vec![(self.iah_sbts.0.clone(), proof)]
     }
 
     //
@@ -209,6 +219,30 @@ impl Contract {
         }
 
         (token_counter as u32, completed)
+    }
+
+    /// Checks if the `account` is human. If yes, calls the `ctr.function` with args serialized
+    /// with base64. Normally, `args` is a JSON string serialized as base64.
+    /// If the `account` is not human, then returns false.
+    /// NOTICE: the function is in development, and subject to change (alpha stage). You should
+    /// rather not use it.
+    #[payable]
+    pub fn is_human_call(
+        &mut self,
+        account: AccountId,
+        ctr: AccountId,
+        function: String,
+        args: Base64VecU8,
+    ) -> PromiseOrValue<bool> {
+        if self.is_human(account).is_empty() {
+            return PromiseOrValue::Value(false);
+        }
+        PromiseOrValue::Promise(Promise::new(ctr).function_call(
+            function,
+            args.into(),
+            env::attached_deposit(),
+            env::prepaid_gas() - IS_HUMAN_GAS,
+        ))
     }
 
     pub(crate) fn start_transfer_with_continuation(
@@ -2165,20 +2199,20 @@ mod tests {
         ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
         ctr.sbt_mint(vec![(bob(), vec![m1_2])]);
 
-        assert!(ctr.is_human(alice()));
-        assert!(!ctr.is_human(bob()));
+        assert_eq!(ctr.is_human(alice()), vec![(fractal_mainnet(), vec![1])]);
+        assert_eq!(ctr.is_human(bob()), vec![]);
 
         // step forward, so the tokens will expire
         ctx.block_timestamp = (START + 1) * MILI_SECOND;
         testing_env!(ctx.clone());
-        assert!(!ctr.is_human(alice()));
-        assert!(!ctr.is_human(bob()));
+        assert_eq!(ctr.is_human(alice()), vec![]);
+        assert_eq!(ctr.is_human(bob()), vec![]);
     }
 
     #[test]
     fn is_human_multiple_classes() {
         let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
-        ctr.iah_classes.1 = vec![1, 3];
+        ctr.iah_sbts.1 = vec![1, 3];
         ctx.current_account_id = AccountId::new_unchecked("registry.i-am-human.near".to_string());
         testing_env!(ctx.clone());
 
@@ -2190,10 +2224,10 @@ mod tests {
         ctr.sbt_mint(vec![(carol(), vec![m1_2, m1_1.clone()])]);
         ctr.sbt_mint(vec![(dan(), vec![m1_3, m1_1])]);
 
-        assert!(!ctr.is_human(alice()));
-        assert!(!ctr.is_human(bob()));
-        assert!(!ctr.is_human(carol()));
-        assert!(ctr.is_human(dan()));
+        assert_eq!(ctr.is_human(alice()), vec![]);
+        assert_eq!(ctr.is_human(bob()), vec![]);
+        assert_eq!(ctr.is_human(carol()), vec![]);
+        assert_eq!(ctr.is_human(dan()), vec![(fractal_mainnet(), vec![6, 5])]);
     }
 
     #[test]
@@ -2257,7 +2291,7 @@ mod tests {
     #[test]
     fn is_human_multiple_classes_with_expired_tokens() {
         let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
-        ctr.iah_classes.1 = vec![1, 3];
+        ctr.iah_sbts.1 = vec![1, 3];
         ctx.current_account_id = AccountId::new_unchecked("registry.i-am-human.near".to_string());
         testing_env!(ctx.clone());
 
@@ -2266,11 +2300,11 @@ mod tests {
         let m1_3 = mk_metadata(3, Some(START));
         ctr.sbt_mint(vec![(alice(), vec![m1_1, m1_2, m1_3])]);
 
-        assert!(ctr.is_human(alice()));
+        assert_eq!(ctr.is_human(alice()), vec![(fractal_mainnet(), vec![1, 3])]);
         // step forward, so token class==3 will expire
         ctx.block_timestamp = (START + 1) * MILI_SECOND;
         testing_env!(ctx.clone());
-        assert!(!ctr.is_human(alice()));
+        assert_eq!(ctr.is_human(alice()), vec![]);
     }
 
     #[test]
