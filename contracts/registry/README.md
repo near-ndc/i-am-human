@@ -21,7 +21,7 @@ The method will emit the [`Mint`](https://github.com/alpha-fi/i-am-human/blob/ma
 
 The IAH Registry supports the following extra queries, which are not part of the NEP-393 standard:
 
-- `is_human(account: AccountId) -> Proof`, where proof is list of SBTs (represented as a list of issuers and issuer minted tokens). For example, if `alice` is a human because she has `fractal: class 1` token with `tokenID=24`, then the function returns `["<fractal issuer account>", [24]]`. If the account is not a human, then an empty proof is returned (empty list).
+- `is_human(account: AccountId) -> Proof`, where proof is list of SBTs (represented as a list of issuers and issuer minted tokens). For example, if `alice` is a human because she has `fractal: class 1` token with `tokenID=24`, then the function returns `["<fractal issuer account>", [24]]`. If the account is not a human, then an empty proof is returned (empty list). The registry has a property `iah_sbts` that specifies which tokens from which issuers are required from an account to be considered a human. In case the account is missing any of the required tokens an empty proof will be returned (empty list).
 
 ## Additional Transactions
 
