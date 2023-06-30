@@ -116,7 +116,7 @@ async fn init(
     // init the contract
     let res = registry_contract
         .call("new")
-        .args_json(json!({"authority": authority_acc.id()}))
+        .args_json(json!({"authority": authority_acc.id(), }))
         .max_gas()
         .transact()
         .await?;
@@ -190,6 +190,7 @@ async fn init(
     ));
 }
 
+#[ignore = "this test is not valid after the migration"]
 #[tokio::test]
 async fn migration_mainnet() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
@@ -234,6 +235,7 @@ async fn migration_mainnet() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[ignore = "this test is not valid after the migration"]
 #[tokio::test]
 async fn migration_mainnet_real_data() -> anyhow::Result<()> {
     // import the registry contract from mainnet with data
