@@ -20,20 +20,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-      - uses: technote-space/get-diff-action@v6.1.2
+      # - uses: technote-space/get-diff-action@v6.1.2
+      #   with:
+      #     PATTERNS: |
+      #       **/**.rs
+      #       contracts/Cargo.lock
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
         with:
-          PATTERNS: |
-            **/**.rs
-            contracts/Cargo.lock
-            - name: Install latest nightly
-            uses: actions-rs/toolchain@v1
-            with:
-                toolchain: nightly
-                override: true
-                components: rustfmt, clippy
-    
-          # `cargo check` command here will use installed `nightly`
-          # as it is set as an "override" for current directory
+          toolchain: 1.69.0
+          override: true
+          components: rustfmt, clippy
     
       - name: Install dependencies
         if: env.GIT_DIFF
