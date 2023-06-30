@@ -11,6 +11,7 @@ struct Suite {
     registry: Contract,
     human_checker: Contract,
 }
+
 impl Suite {
     pub async fn is_human_call(
         &self,
@@ -26,8 +27,6 @@ impl Suite {
         .json()?;
         Ok(res)
     }
-
-    // and a helper function to query human checker:
 
     pub async fn contains_sbts(&self, user: &Account) -> anyhow::Result<bool> {
         // check the key does not exists in human checker
