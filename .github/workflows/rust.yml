@@ -26,6 +26,7 @@ jobs:
             **/**.rs
             contracts/Cargo.lock
       - name: Install latest nightly
+        if: env.GIT_DIFF
         uses: actions-rs/toolchain@v1
         with:
           toolchain: 1.69.0
