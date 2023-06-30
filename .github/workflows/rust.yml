@@ -32,7 +32,7 @@ jobs:
           override: true
           components: rustfmt, clippy
     
-      - name: Install dependencies
+      - name: Install wasm32 toolchain
         if: env.GIT_DIFF
         working-directory: ./contracts
         run: rustup target add wasm32-unknown-unknown
