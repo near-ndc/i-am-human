@@ -44,6 +44,7 @@ pub struct Contract {
     pub(crate) next_token_ids: LookupMap<IssuerId, TokenId>,
     pub(crate) next_issuer_id: IssuerId,
 
+    /// tuple of (required issuer for IAH, [required list of classes for IAH])
     pub(crate) iah_sbts: (AccountId, Vec<ClassId>),
 }
 
