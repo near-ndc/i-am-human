@@ -25,7 +25,16 @@ jobs:
           PATTERNS: |
             **/**.rs
             contracts/Cargo.lock
-
+            - name: Install latest nightly
+            uses: actions-rs/toolchain@v1
+            with:
+                toolchain: nightly
+                override: true
+                components: rustfmt, clippy
+    
+          # `cargo check` command here will use installed `nightly`
+          # as it is set as an "override" for current directory
+    
       - name: Install dependencies
         if: env.GIT_DIFF
         working-directory: ./contracts
