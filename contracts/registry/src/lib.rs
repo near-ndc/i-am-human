@@ -52,6 +52,9 @@ pub struct Contract {
 // Implement the contract structure
 #[near_bindgen]
 impl Contract {
+    /// Contract constructor.
+    /// `iah_issuer`: required issuer for is_human check.
+    /// `iah_classes`: required list of classes for is_human check.
     #[init]
     pub fn new(authority: AccountId, iah_issuer: AccountId, iah_classes: Vec<ClassId>) -> Self {
         require!(
