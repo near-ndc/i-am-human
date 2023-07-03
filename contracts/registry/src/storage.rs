@@ -9,6 +9,11 @@ pub type IssuerId = u32;
 /// This is used for code size and processing efficiency.
 pub type SBTs = Vec<(AccountId, Vec<TokenId>)>;
 
+/// List of pairs: (Issuer Account, Vector of Class IDs).
+/// This is used to create class sets used to specify required token classes,
+/// like set of tokens required to be verified as IAH
+pub type ClassSet = Vec<(AccountId, Vec<ClassId>)>;
+
 /// Helper structure for keys of the persistent collections.
 #[derive(BorshSerialize, BorshStorageKey)]
 pub enum StorageKey {

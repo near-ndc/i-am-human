@@ -82,8 +82,14 @@ impl Contract {
     // Queries
     //
 
-    pub fn sbt_contracts(&self) -> Vec<AccountId> {
+    pub fn sbt_issuers(&self) -> Vec<AccountId> {
         self.sbt_issuers.keys().collect()
+    }
+
+    /// Returns IAH class set: required token classes to be approved as a human by the
+    /// `is_human`.
+    pub fn iah_class_set(&self) -> ClassSet {
+        vec![self.iah_sbts.clone()]
     }
 
     #[inline]
@@ -769,6 +775,12 @@ mod tests {
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
+    }
+
+    #[test]
+    fn iah_class_set() {
+        let (_, ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+        assert_eq!(ctr.iah_class_set(), vec![ctr.iah_sbts]);
     }
 
     #[test]
