@@ -245,7 +245,8 @@ impl Contract {
         function: String,
         args: Base64VecU8,
     ) -> PromiseOrValue<bool> {
-        if self.is_human(account).is_empty() {
+        if self.is_human(account.clone()).is_empty() {
+            Promise::new(account).transfer(env::attached_deposit());
             return PromiseOrValue::Value(false);
         }
         PromiseOrValue::Promise(Promise::new(ctr).function_call(
