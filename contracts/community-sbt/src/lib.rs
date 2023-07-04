@@ -98,19 +98,35 @@ impl Contract {
     /// sbt_renew will update the expire time of provided tokens.
     /// `ttl` is duration in milliseconds to set expire time: `now+ttl`.
     /// Panics if ttl > self.ttl or `tokens` is an empty list.
-    pub fn sbt_renew(&mut self, tokens: Vec<TokenId>, ttl: u64, memo: Option<String>) {
+    pub fn sbt_renew(&mut self, tokens: Vec<TokenId>, ttl: u64, memo: Option<String>) -> Promise {
         self.assert_admin();
         require!(
             ttl <= self.ttl,
             format!("ttl must be smaller than {}", self.ttl)
         );
         require!(!tokens.is_empty(), "tokens must be a non empty list");
-        let expires_at_ms = env::block_timestamp_ms() + ttl * 1000;
-        ext_registry::ext(self.registry.clone()).sbt_renew(tokens, expires_at_ms);
-
         if let Some(memo) = memo {
             env::log_str(&format!("SBT renew memo: {}", memo));
         }
+
+        let expires_at_ms = env::block_timestamp_ms() + ttl * 1000;
+        ext_registry::ext(self.registry.clone()).sbt_renew(tokens, expires_at_ms)
+    }
+
+    /// Revokes list of tokens. If `burn==true`, the tokens are burned (removed). Otherwise,
+    /// the token expire_at is set to now, making the token expired. See `registry.sbt_revoke`
+    /// for more details.
+    pub fn sbt_revoke(
+        &mut self,
+        tokens: Vec<TokenId>,
+        burn: bool,
+        memo: Option<String>,
+    ) -> Promise {
+        self.assert_admin();
+        if let Some(memo) = memo {
+            env::log_str(&format!("SBT revoke memo: {}", memo));
+        }
+        ext_registry::ext(self.registry.clone()).sbt_revoke(tokens, burn)
     }
 
     /// admin: remove SBT from the given accounts.
@@ -123,6 +139,7 @@ impl Contract {
         self.assert_admin();
         require!(!accounts.is_empty(), "accounts must be a non empty list");
         panic!("not implemented");
+        // todo: requires registry update.
         // let mut tokens = Vec::with_capacity(accounts.len());
         // for a in accounts {
         //     tokens.push(t);

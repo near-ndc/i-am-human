@@ -237,7 +237,8 @@ impl SBTRegistry for Contract {
         self._sbt_renew(issuer, tokens, expires_at);
     }
 
-    /// Revokes SBT.
+    /// Revokes SBT. If `burn==true`, the tokens are burned (removed). Otherwise, the token
+    /// expire_at is set to now, making the token expired.
     /// Must be called by an SBT contract.
     /// Must emit `Revoke` event.
     /// Must also emit `Burn` event if the SBT tokens are burned (removed).

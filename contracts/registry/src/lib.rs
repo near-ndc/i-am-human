@@ -44,12 +44,17 @@ pub struct Contract {
     pub(crate) next_token_ids: LookupMap<IssuerId, TokenId>,
     pub(crate) next_issuer_id: IssuerId,
 
+    /// tuple of (required issuer for IAH, [required list of classes for IAH])
+    /// represents mandatory requirements to be verified as human by using is_human and is_human_call methods.
     pub(crate) iah_sbts: (AccountId, Vec<ClassId>),
 }
 
 // Implement the contract structure
 #[near_bindgen]
 impl Contract {
+    /// Contract constructor.
+    /// `iah_issuer`: required issuer for is_human check.
+    /// `iah_classes`: required list of classes for is_human check.
     #[init]
     pub fn new(authority: AccountId, iah_issuer: AccountId, iah_classes: Vec<ClassId>) -> Self {
         require!(
@@ -77,8 +82,14 @@ impl Contract {
     // Queries
     //
 
-    pub fn sbt_contracts(&self) -> Vec<AccountId> {
+    pub fn sbt_issuers(&self) -> Vec<AccountId> {
         self.sbt_issuers.keys().collect()
+    }
+
+    /// Returns IAH class set: required token classes to be approved as a human by the
+    /// `is_human`.
+    pub fn iah_class_set(&self) -> ClassSet {
+        vec![self.iah_sbts.clone()]
     }
 
     #[inline]
@@ -89,7 +100,7 @@ impl Contract {
     /// Returns empty list if the account is NOT a human.
     /// Otherwise returns list of SBTs (identifed by issuer and list of token IDs) proving
     /// the `account` humanity.
-    pub fn is_human(&self, account: AccountId) -> Vec<(AccountId, Vec<TokenId>)> {
+    pub fn is_human(&self, account: AccountId) -> SBTs {
         if self._is_banned(&account) {
             return vec![];
         }
@@ -234,7 +245,8 @@ impl Contract {
         function: String,
         args: Base64VecU8,
     ) -> PromiseOrValue<bool> {
-        if self.is_human(account).is_empty() {
+        if self.is_human(account.clone()).is_empty() {
+            Promise::new(account).transfer(env::attached_deposit());
             return PromiseOrValue::Value(false);
         }
         PromiseOrValue::Promise(Promise::new(ctr).function_call(
@@ -797,6 +809,12 @@ mod tests {
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
+    }
+
+    #[test]
+    fn iah_class_set() {
+        let (_, ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+        assert_eq!(ctr.iah_class_set(), vec![ctr.iah_sbts]);
     }
 
     #[test]
