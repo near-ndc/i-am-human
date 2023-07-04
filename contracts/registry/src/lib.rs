@@ -663,7 +663,7 @@ impl Contract {
 
     fn assert_testnet(&self) {
         require!(
-            env::current_account_id().as_ref().ends_with("testnet"),
+            env::current_account_id().as_str().contains("test"),
             "must be testnet"
         );
     }
