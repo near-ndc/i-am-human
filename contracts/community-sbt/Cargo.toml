@@ -1,8 +1,10 @@
 [package]
 name = "community-sbt"
-version = "1.0.0"
+version = "2.0.1"
 authors = ["Robert Zaremba 'https://zaremba.ch/'"]
-edition = "2021"
+edition = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
 
 [lib]
 crate-type = ["cdylib"]
