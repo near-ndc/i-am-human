@@ -4,14 +4,22 @@ Monorepository of contracts for the I am Human: proof of humanity protocol.
 
 List of contracts:
 
-- `sbt`: set of traits, events and common functions for [NEP-393](https://github.com/near/NEPs/pull/393/) SBT Standard.
 - `registry`: implements the SBT Registry, documented in the [NEP-393](https://github.com/near/NEPs/pull/393/)
-- `oracle`: SBT Issuer which relays on an off-chain authority signing claims for issuing SBTs.
+
+Helper crates:
+
+- `sbt`: set of traits, events and common functions for [NEP-393](https://github.com/near/NEPs/pull/393/) SBT Standard.
+- `cost`: Common functions and constants to calculate gas and storage deposit for IAH registry calls.
+- `human_checker`: Helper contract for integration tests. Notably, used for `is_human_call`.
+
+Issuers:
+
 - `demo-issuer`: basic SBT Issuer: contains a list of admins who are authorized to issue SBTs.
+- `community-sbt`: Community Issuer of SBT tokens
+- `oracle`: SBT Issuer which relays on an off-chain authority signing claims for issuing SBTs.
 
 work in progress:
 
-- `community-sbt`: Community Issuer of SBT tokens
 - `soulbound-class`: An algebraic class of tokens to efficiently query if a user have required subset of tokens.
 - `ubi`: demo use case implementing universal basic income.
 
@@ -41,15 +49,22 @@ The IAH Registry supports the following extra queries, which are not part of the
 
 ### Mainnet
 
+Production:
+
 - **SBT registry**: `registry.i-am-human.near` @ registry/v1.1.0
 - **Fractal**: `fractal.i-am-human.near` @ oracle/v1.0.0
   - verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
 - **Community SBTs**: `community.i-am-human.near` @ community-sbt/v2.0.1
   - OG class: 1
 
+Mainnet Testing:
+
+- `registry-v1.gwg-testing.near`
+  - IAH issuer: `(fractal.i-am-human.near, [1])`
+
 Deprecated:
 
-- **GoodDollar-SBT**: `gooddollar-v1.i-am-human.near`.
+- GoodDollar-SBT: `gooddollar-v1.i-am-human.near`.
   verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
 
 ### Testnet
