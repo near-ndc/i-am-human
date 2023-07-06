@@ -55,12 +55,16 @@ Production:
 - **Fractal**: `fractal.i-am-human.near` @ oracle/v1.0.0
   - verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
 - **Community SBTs**: `community.i-am-human.near` @ community-sbt/v2.0.1
-  - OG class: 1
+  classes: OG=1
+  Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
 
 Mainnet Testing:
 
 - `registry-v1.gwg-testing.near`
-  - IAH issuer: `(fractal.i-am-human.near, [1])`
+  IAH issuer: `(fractal.i-am-human.near, [1])`
+- `community-testing.i-am-human.near` @ community-sbt/v3.0.0
+  classes: OG=1, Vibes=2
+  Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
 
 Deprecated:
 
@@ -75,11 +79,11 @@ Deprecated:
   - `registry-2.i-am-human.testnet` @ registry/v1.1.0 (same as current prod version)
   - `registry-unstable.i-am-human.testnet`
 - **Demo SBT Issuer**: `sbt1.i-am-human.testnet` (the `demo_issuer` contract)
-- **Fractal Issuer**:
-  - `i-am-human-staging.testnet` (the `oracle` contract).
-    registry: `registry-1.i-am-human.testnet`; Verification pubkey base64: `zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E=`, `claim_ttl`: 3600ms, FV class: 1
-- **Community-SBT**:
-  - `community-v1.i-am-human.testnet` ; OG class: 1, registry: `registry-1.i-am-human.testnet`
+- **Fractal Issuer**: `i-am-human-staging.testnet` (the `oracle` contract).
+  registry: `registry-1.i-am-human.testnet`; Verification pubkey base64: `zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E=`, `claim_ttl`: 3600ms, FV class: 1
+- **Community-SBT**: `community-v1.i-am-human.testnet` @ community-sbt/v3.0.0
+  registry: `registry-1.i-am-human.testnet`; classes: OG=1, Vibes=2
+  Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
 
 Deprecated:
 
