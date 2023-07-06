@@ -102,19 +102,23 @@ impl Contract {
 
     /// sbt_renew will update the expire time of provided tokens.
     /// `ttl` is duration in milliseconds to set expire time: `now+ttl`.
-    /// Panics if ttl > self.ttl or `tokens` is an empty list.
+    /// Panics if ttl > self.ttl or ttl < 1h (3'600'000ms) or `tokens` is an empty list.
     pub fn sbt_renew(&mut self, tokens: Vec<TokenId>, ttl: u64, memo: Option<String>) -> Promise {
         self.assert_admin();
         require!(
-            ttl <= self.ttl,
-            format!("ttl must be smaller or equal than {}", self.ttl)
+            3_600_000 <= ttl && ttl <= self.ttl,
+            format!(
+                "ttl must be bigger than 3'600'000ms smaller or equal than {}ms",
+                self.ttl
+            )
         );
+
         require!(!tokens.is_empty(), "tokens must be a non empty list");
         if let Some(memo) = memo {
             env::log_str(&format!("SBT renew memo: {}", memo));
         }
 
-        let expires_at_ms = env::block_timestamp_ms() + ttl * 1000;
+        let expires_at_ms = env::block_timestamp_ms() + ttl;
         ext_registry::ext(self.registry.clone()).sbt_renew(tokens, expires_at_ms)
     }
 
