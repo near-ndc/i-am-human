@@ -162,18 +162,34 @@ impl Contract {
      * Admin
      **********/
 
-    /// admin: remove SBT from the given accounts.
-    /// Panics if `accounts` is an empty list.
+    /// admin: authorize `minter` to mint tokens of a `class`.
+    /// Must be called by admin, panics otherwise.
     pub fn authorize(
         &mut self,
         class: ClassId,
-        minting_authority: AccountId,
+        minter: AccountId,
         #[allow(unused_variables)] memo: Option<String>,
     ) {
         self.assert_admin();
         let mut ma = self.minting_authorities.get(&class).unwrap_or_default();
-        if !ma.contains(&minting_authority) {
-            ma.push(minting_authority);
+        if !ma.contains(&minter) {
+            ma.push(minter);
+            self.minting_authorities.insert(&class, &ma);
+        }
+    }
+
+    /// admin: revokes `class` minting for `minter`.
+    /// Must be called by admin, panics otherwise.
+    pub fn unauthorize(
+        &mut self,
+        class: ClassId,
+        minter: AccountId,
+        #[allow(unused_variables)] memo: Option<String>,
+    ) {
+        self.assert_admin();
+        let mut ma = self.minting_authorities.get(&class).unwrap_or_default();
+        if let Some(idx) = ma.iter().position(|x| x == &minter) {
+            ma.swap_remove(idx);
             self.minting_authorities.insert(&class, &ma);
         }
     }
@@ -314,6 +330,30 @@ mod tests {
         assert_eq!(ctr.minting_authorities(1), vec![authority(1), authority(2)]);
         assert_eq!(ctr.minting_authorities(2), vec![authority(2)]);
         assert_eq!(ctr.minting_authorities(3), vec![]);
+    }
+
+    #[test]
+    #[should_panic(expected = "not an admin")]
+    fn unauthorize_only_admin() {
+        let (_, mut ctr) = setup(&alice(), None);
+        ctr.unauthorize(1, authority(1), None);
+    }
+
+    #[test]
+    fn unauthorize() {
+        let (_, mut ctr) = setup(&admin(), None);
+        ctr.authorize(1, authority(2), None);
+        ctr.authorize(1, authority(3), None);
+        ctr.authorize(1, authority(4), None);
+        ctr.authorize(2, authority(2), None);
+
+        ctr.unauthorize(1, authority(2), None);
+
+        assert_eq!(
+            ctr.minting_authorities(1),
+            vec![authority(1), authority(4), authority(3)]
+        );
+        assert_eq!(ctr.minting_authorities(2), vec![authority(2)]);
     }
 
     fn mk_meteadata(class: ClassId) -> TokenMetadata {
