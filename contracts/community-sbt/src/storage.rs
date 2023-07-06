@@ -6,4 +6,5 @@ use near_sdk::BorshStorageKey;
 pub enum StorageKey {
     Admins,
     ContractMetadata,
+    MintingAuthority,
 }
