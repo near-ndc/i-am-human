@@ -61,6 +61,11 @@ impl Contract {
         self.minting_authorities.get(&class).unwrap_or_default()
     }
 
+    /// Returns registry address
+    pub fn registry(&self) -> AccountId {
+        self.registry.clone()
+    }
+
     /**********
      * Transactions
      **********/
