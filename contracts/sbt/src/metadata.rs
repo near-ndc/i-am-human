@@ -1,12 +1,12 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::json_types::Base64VecU8;
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{require, AccountId};
+use near_sdk::{require, AccountId, NearSchema};
 
 use crate::*;
 
 /// ContractMetadata defines contract wide attributes, which describes the whole contract.
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, NearSchema)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 pub struct ContractMetadata {
@@ -28,7 +28,7 @@ pub enum VerTokenMetadata {
 }
 
 /// TokenMetadata defines attributes for each SBT token.
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, NearSchema)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 pub struct TokenMetadata {
@@ -85,7 +85,7 @@ impl TokenData {
 }
 
 /// token data for sbt_tokens_by_owner response
-#[derive(Serialize)]
+#[derive(Serialize, NearSchema)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 pub struct OwnedToken {
@@ -94,7 +94,7 @@ pub struct OwnedToken {
 }
 
 /// Full information about the token
-#[derive(Serialize)]
+#[derive(Serialize, NearSchema)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 pub struct Token {
