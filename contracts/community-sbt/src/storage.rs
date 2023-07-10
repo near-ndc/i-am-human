@@ -4,6 +4,7 @@ use near_sdk::BorshStorageKey;
 /// Helper structure for keys of the persistent collections.
 #[derive(BorshSerialize, BorshStorageKey)]
 pub enum StorageKey {
-    Admins,
+    Admins, // deprecated, required for migration
     ContractMetadata,
+    MintingAuthority,
 }
