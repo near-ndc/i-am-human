@@ -318,8 +318,12 @@ impl SBTContract for Contract {
         self.metadata.get().unwrap()
     }
 }
-#[derive(Serialize, schemars::JsonSchema, borsh::BorshSchema)]
+#[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    derive(schemars::JsonSchema, borsh::BorshSchema)
+)]
 pub enum CallbackResult<T, E> {
     Ok(T),
     Err(E),
