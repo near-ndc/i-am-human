@@ -58,7 +58,7 @@ impl Contract {
      **********/
 
     /// Returns minting authorities by class.
-    /// If class is enabled, returns class minter, otherwise returns None.
+    /// If the `class` is enabled, returns class minter, otherwise returns None.
     pub fn class_minter(&self, class: ClassId) -> Option<ClassMinter> {
         self.classes.get(&class)
     }
@@ -100,14 +100,14 @@ impl Contract {
         let token_spec = vec![(receiver, vec![metadata])];
         let sbt_reg =
             ext_registry::ext(self.registry.clone()).with_attached_deposit(attached_deposit);
-        let p = if requires_iah {
+        let promise = if requires_iah {
             sbt_reg
                 .with_static_gas(MINT_GAS + IS_HUMAN_GAS)
                 .sbt_mint(token_spec)
         } else {
             sbt_reg.with_static_gas(MINT_GAS).sbt_mint_iah(token_spec)
         };
-        Ok(p)
+        Ok(promise)
     }
 
     /// sbt_renew will update the expire time of provided tokens.
