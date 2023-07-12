@@ -147,6 +147,11 @@ pub trait SBTRegistry {
 #[ext_contract(ext_registry)]
 trait ExtRegistry {
     fn sbt_mint(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>;
+    fn sbt_mint_iah(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>;
     fn sbt_renew(&mut self, tokens: Vec<TokenId>, expires_at: u64);
     fn sbt_revoke(&mut self, tokens: Vec<TokenId>, burn: bool);
+
+    // queries
+
+    fn is_human(&self, account: AccountId) -> Vec<(AccountId, Vec<TokenId>)>;
 }

@@ -131,6 +131,23 @@ impl Contract {
     // Transactions
     //
 
+    /// sbt_mint_iah is a wrapper around `sbt_mint` and `is_human`. It mints SBTs only when
+    /// all recipients are humans. Panics if one of the recipients is not a human.
+    #[payable]
+    pub fn sbt_mint_iah(
+        &mut self,
+        token_spec: Vec<(AccountId, Vec<TokenMetadata>)>,
+    ) -> Vec<TokenId> {
+        let issuer = &env::predecessor_account_id();
+        for ts in &token_spec {
+            require!(
+                !self.is_human(ts.0.clone()).is_empty(),
+                format!("{} is not a human", ts.0.clone())
+            );
+        }
+        self._sbt_mint(issuer, token_spec)
+    }
+
     /// Transfers atomically all SBT tokens from one account to another account.
     /// The caller must be an SBT holder and the `recipient` must not be a banned account.
     /// Returns the amount of tokens transferred and a boolean: `true` if the whole
@@ -1082,6 +1099,25 @@ mod tests {
             ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None, None),
             vec![alice_issuer2.clone()]
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "bob.near is not a human")]
+    fn mint_iah() {
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+        // issue IAH SBTs for alice
+        let m1_1 = mk_metadata(1, Some(START)); // class=1 is IAH
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+
+        ctx.predecessor_account_id = issuer1();
+        testing_env!(ctx.clone());
+
+        // alice is IAH verified, so mint_iah by issuer1 should work
+        let sbts = ctr.sbt_mint_iah(vec![(alice(), vec![m1_1.clone()])]);
+        assert!(!sbts.is_empty());
+
+        // bob doesn't have IAH SBTs -> the mint below panics.
+        ctr.sbt_mint_iah(vec![(bob(), vec![m1_1])]);
     }
 
     #[test]
