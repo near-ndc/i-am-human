@@ -2,8 +2,7 @@ use near_sdk::env::panic_str;
 use near_sdk::FunctionError;
 
 /// Contract errors
-#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq))]
-#[derive(Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 pub enum MintError {
     NotMinter,
     RequiredDeposit(u128),

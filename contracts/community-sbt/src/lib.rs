@@ -270,7 +270,7 @@ mod tests {
     use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId, Balance, VMContext};
     use sbt::{ClassId, ContractMetadata, TokenMetadata};
 
-    use crate::{required_sbt_mint_deposit, Contract, MintError};
+    use crate::{required_sbt_mint_deposit, ClassMinter, Contract, MintError};
 
     const START: u64 = 10;
 
@@ -302,6 +302,13 @@ mod tests {
         };
     }
 
+    fn class_minter(requires_iah: bool, minters: Vec<AccountId>) -> ClassMinter {
+        ClassMinter {
+            requires_iah,
+            minters,
+        }
+    }
+
     fn setup(predecessor: &AccountId, deposit: Option<Balance>) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
@@ -311,7 +318,7 @@ mod tests {
         ctx.attached_deposit = deposit.unwrap_or(required_sbt_mint_deposit(1));
         testing_env!(ctx.clone());
         let mut ctr = Contract::new(registry(), admin(), contract_metadata(), START);
-        ctr.enable_next_class(false, authority(1), None);
+        ctr.enable_next_class(true, authority(1), None);
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
@@ -361,15 +368,39 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "class not found")]
+    fn authorize_class_not_found() {
+        let (_, mut ctr) = setup(&admin(), None);
+        ctr.authorize(2, authority(2), None);
+    }
+
+    #[test]
     fn authorize() {
         let (_, mut ctr) = setup(&admin(), None);
+        let cls = ctr.enable_next_class(false, authority(4), None);
+        assert_eq!(cls, 2);
+        assert_eq!(ctr.next_class, cls + 1);
+        let cls = ctr.enable_next_class(false, authority(4), None);
+        assert_eq!(cls, 3);
+        assert_eq!(ctr.next_class, 4);
+
         ctr.authorize(1, authority(2), None);
         ctr.authorize(1, authority(2), None);
         ctr.authorize(2, authority(2), None);
 
-        assert_eq!(ctr.class_minter(1), vec![authority(1), authority(2)]);
-        assert_eq!(ctr.class_minter(2), vec![authority(2)]);
-        assert_eq!(ctr.class_minter(3), vec![]);
+        assert_eq!(
+            ctr.class_minter(1),
+            Some(class_minter(true, vec![authority(1), authority(2)]))
+        );
+        assert_eq!(
+            ctr.class_minter(2),
+            Some(class_minter(false, vec![authority(4), authority(2)]))
+        );
+        assert_eq!(
+            ctr.class_minter(3),
+            Some(class_minter(false, vec![authority(4)]))
+        );
+        assert_eq!(ctr.class_minter(4), None);
     }
 
     #[test]
@@ -380,8 +411,17 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "class not found")]
+    fn unauthorize_class_not_found() {
+        let (_, mut ctr) = setup(&admin(), None);
+        ctr.unauthorize(2, authority(1), None);
+    }
+
+    #[test]
     fn unauthorize() {
         let (_, mut ctr) = setup(&admin(), None);
+        ctr.enable_next_class(false, authority(3), None);
+
         ctr.authorize(1, authority(2), None);
         ctr.authorize(1, authority(3), None);
         ctr.authorize(1, authority(4), None);
@@ -391,9 +431,15 @@ mod tests {
 
         assert_eq!(
             ctr.class_minter(1),
-            vec![authority(1), authority(4), authority(3)]
+            Some(class_minter(
+                false,
+                vec![authority(1), authority(4), authority(3)]
+            ))
         );
-        assert_eq!(ctr.class_minter(2), vec![authority(2)]);
+        assert_eq!(
+            ctr.class_minter(2),
+            Some(class_minter(false, vec![authority(3), authority(2)]))
+        );
     }
 
     fn mk_meteadata(class: ClassId) -> TokenMetadata {
