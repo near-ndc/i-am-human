@@ -1,0 +1,73 @@
+
+
+/// LATEST (master)
+    pub authority: AccountId,
+
+    /// registry of approved SBT contracts to issue tokens
+    pub sbt_issuers: UnorderedMap<AccountId, IssuerId>,
+    pub issuer_id_map: LookupMap<IssuerId, AccountId>, // reverse index
+    pub(crate) banlist: UnorderedSet<AccountId>,
+    pub(crate) ongoing_soul_tx: LookupMap<AccountId, IssuerTokenId>,
+
+    pub(crate) supply_by_owner: LookupMap<(AccountId, IssuerId), u64>,
+    pub(crate) supply_by_class: LookupMap<(IssuerId, ClassId), u64>,
+    pub(crate) supply_by_issuer: LookupMap<IssuerId, u64>,
+
+    /// maps user balance key to tokenID
+    pub(crate) balances: TreeMap<BalanceKey, TokenId>,
+    pub(crate) issuer_tokens: LookupMap<IssuerTokenId, TokenData>,
+
+    /// map of SBT contract -> next available token_id
+    pub(crate) next_token_ids: LookupMap<IssuerId, TokenId>,
+    pub(crate) next_issuer_id: IssuerId,
+
+    pub(crate) iah_classes: (AccountId, Vec<ClassId>),
+
+
+
+/// TESTNET
+
+#[near_bindgen]
+#[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
+pub struct Contract {
+    pub admin: AccountId,
+
+    pub sbt_issuers: UnorderedMap<AccountId, CtrId>,
+    pub issuer_id_map: LookupMap<CtrId, AccountId>, // reverse index
+    pub banlist: UnorderedSet<AccountId>,
+
+    /// maps user account to list of token source info
+    /// maps SBT contract -> map of tokens
+    pub(crate) ctr_tokens: LookupMap<CtrTokenId, TokenData>,
+
+    pub(crate) balances: LookupMap<AccountId, UnorderedMap<CtrClassId, TokenId>>,
+
+    /// map of SBT contract -> next available token_id
+    pub(crate) next_token_ids: LookupMap<CtrId, TokenId>,
+    pub(crate) next_issuer_id: CtrId,
+
+
+/// MAINNET  , probably 5650842ab90eaec8a3fc4b2e7caa402c4bb51055
+    pub authority: AccountId,
+
+    /// registry of approved SBT contracts to issue tokens
+    pub sbt_issuers: UnorderedMap<AccountId, IssuerId>,
+    pub issuer_id_map: LookupMap<IssuerId, AccountId>, // reverse index
+    pub banlist: UnorderedSet<AccountId>,
+    pub(crate) ongoing_soul_tx: LookupMap<AccountId, IssuerTokenId>,
+
+    pub(crate) supply_by_owner: LookupMap<(AccountId, IssuerId), u64>,
+    pub(crate) supply_by_class: LookupMap<(IssuerId, ClassId), u64>,
+    pub(crate) supply_by_issuer: LookupMap<IssuerId, u64>,
+
+    /// maps user account to list of token source info
+    pub(crate) balances: TreeMap<BalanceKey, TokenId>,
+    pub(crate) issuer_tokens: LookupMap<IssuerTokenId, TokenData>,
+
+    /// map of SBT contract -> next available token_id
+    pub(crate) next_token_ids: LookupMap<IssuerId, TokenId>,
+    pub(crate) next_issuer_id: IssuerId,
+
+
+
+/// TESTNET: e4484d64d7e7ca435233f9603ff020b44b6528c5 == release/v0.2
