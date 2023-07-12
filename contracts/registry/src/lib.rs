@@ -61,7 +61,7 @@ impl Contract {
             iah_classes.len() > 0,
             "iah_classes must be a non empty list"
         );
-        Self {
+        let mut contract = Self {
             authority,
             sbt_issuers: UnorderedMap::new(StorageKey::SbtIssuers),
             issuer_id_map: LookupMap::new(StorageKey::SbtIssuersRev),
@@ -74,8 +74,10 @@ impl Contract {
             next_token_ids: LookupMap::new(StorageKey::NextTokenId),
             next_issuer_id: 1,
             ongoing_soul_tx: LookupMap::new(StorageKey::OngoingSoultTx),
-            iah_sbts: (iah_issuer, iah_classes),
-        }
+            iah_sbts: (iah_issuer.clone(), iah_classes),
+        };
+        contract._add_sbt_issuer(&iah_issuer);
+        contract
     }
 
     //
@@ -129,16 +131,34 @@ impl Contract {
     // Transactions
     //
 
+    /// sbt_mint_iah is a wrapper around `sbt_mint` and `is_human`. It mints SBTs only when
+    /// all recipients are humans. Panics if one of the recipients is not a human.
+    #[payable]
+    pub fn sbt_mint_iah(
+        &mut self,
+        token_spec: Vec<(AccountId, Vec<TokenMetadata>)>,
+    ) -> Vec<TokenId> {
+        let issuer = &env::predecessor_account_id();
+        for ts in &token_spec {
+            require!(
+                !self.is_human(ts.0.clone()).is_empty(),
+                format!("{} is not a human", ts.0.clone())
+            );
+        }
+        self._sbt_mint(issuer, token_spec)
+    }
+
     /// Transfers atomically all SBT tokens from one account to another account.
-    /// + The caller must be an SBT holder and the `to` must not be a banned account.
-    /// + Returns the amount of tokens transferred and a boolean: `true` if the whole
-    ///   process has finished, `false` when the process has not finished and should be
-    ///   continued by a subsequent call.
+    /// The caller must be an SBT holder and the `recipient` must not be a banned account.
+    /// Returns the amount of tokens transferred and a boolean: `true` if the whole
+    /// process has finished, `false` when the process has not finished and should be
+    /// continued by a subsequent call.
+    /// Emits `Ban` event for the caller at the beginning of the process.
+    /// Emits `SoulTransfer` event only once all the tokens from the caller were transferred
+    /// and at least one token was trasnfered (caller had at least 1 sbt).
     /// + User must keep calling the `sbt_soul_transfer` until `true` is returned.
-    /// + Emits `SoulTransfer` event only once all the tokens that user was in possesion
-    ///   of were transfered and at least one token was trasnfered (caller had at least 1 sbt)
     /// + If caller does not have any tokens, nothing will be transfered, the caller
-    ///    will be banned and Ban even will be emitted
+    ///   will be banned and `Ban` event will be emitted.
     #[payable]
     pub fn sbt_soul_transfer(
         &mut self,
@@ -808,10 +828,16 @@ mod tests {
         ctr.admin_add_sbt_issuer(issuer1());
         ctr.admin_add_sbt_issuer(issuer2());
         ctr.admin_add_sbt_issuer(issuer3());
-        ctr.admin_add_sbt_issuer(fractal_mainnet());
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
+    }
+
+    #[test]
+    fn init_method() {
+        let ctr = Contract::new(admin(), fractal_mainnet(), vec![1]);
+        // make sure the iah_issuer has been set as an issuer
+        assert_eq!(1, ctr.assert_issuer(&fractal_mainnet()));
     }
 
     #[test]
@@ -825,15 +851,15 @@ mod tests {
         let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
         // in setup we add 4 issuers, so the next id will be 5.
         assert_eq!(5, ctr.next_issuer_id);
-        assert_eq!(1, ctr.assert_issuer(&issuer1()));
-        assert_eq!(2, ctr.assert_issuer(&issuer2()));
-        assert_eq!(3, ctr.assert_issuer(&issuer3()));
-        assert_eq!(4, ctr.assert_issuer(&fractal_mainnet()));
+        assert_eq!(1, ctr.assert_issuer(&fractal_mainnet()));
+        assert_eq!(2, ctr.assert_issuer(&issuer1()));
+        assert_eq!(3, ctr.assert_issuer(&issuer2()));
+        assert_eq!(4, ctr.assert_issuer(&issuer3()));
 
-        assert_eq!(issuer1(), ctr.issuer_by_id(1));
-        assert_eq!(issuer2(), ctr.issuer_by_id(2));
-        assert_eq!(issuer3(), ctr.issuer_by_id(3));
-        assert_eq!(fractal_mainnet(), ctr.issuer_by_id(4));
+        assert_eq!(fractal_mainnet(), ctr.issuer_by_id(1));
+        assert_eq!(issuer1(), ctr.issuer_by_id(2));
+        assert_eq!(issuer2(), ctr.issuer_by_id(3));
+        assert_eq!(issuer3(), ctr.issuer_by_id(4));
 
         ctx.predecessor_account_id = admin();
         testing_env!(ctx.clone());
@@ -844,7 +870,7 @@ mod tests {
         );
         assert_eq!(5, ctr.next_issuer_id, "next_issuer_id should not change");
         assert_eq!(
-            1,
+            2,
             ctr.assert_issuer(&issuer1()),
             "issuer1 id should not change"
         );
@@ -1109,6 +1135,25 @@ mod tests {
             ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None, None),
             vec![alice_issuer2.clone()]
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "bob.near is not a human")]
+    fn mint_iah() {
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+        // issue IAH SBTs for alice
+        let m1_1 = mk_metadata(1, Some(START)); // class=1 is IAH
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+
+        ctx.predecessor_account_id = issuer1();
+        testing_env!(ctx.clone());
+
+        // alice is IAH verified, so mint_iah by issuer1 should work
+        let sbts = ctr.sbt_mint_iah(vec![(alice(), vec![m1_1.clone()])]);
+        assert!(!sbts.is_empty());
+
+        // bob doesn't have IAH SBTs -> the mint below panics.
+        ctr.sbt_mint_iah(vec![(bob(), vec![m1_1])]);
     }
 
     #[test]

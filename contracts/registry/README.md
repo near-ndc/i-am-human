@@ -28,6 +28,7 @@ The IAH Registry supports the following extra queries, which are not part of the
 
 ## Additional Transactions
 
+- `sbt_mint_iah(token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>` is a wrapper around `sbt_mint` and `is_human`. It mints SBTs only when all recipients are humans.
 - `is_human_call(account: AccountId, ctr: AccountId, function: String, args: Base64VecU8)` checks if the account is human (using `is_human` method). If yes, then makes a cross contract call: `ctr.function(args)`. Args are correctly expanded into function arguments. See the function documentation for more details.
 
 - `sbt_burn(issuer: AccountId, tokens: Vec<TokenId>, memo: Option<String>)` - every holder can burn some of his tokens.

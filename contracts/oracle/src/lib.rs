@@ -1,4 +1,5 @@
 use ed25519_dalek::{PublicKey, Signature, Verifier, PUBLIC_KEY_LENGTH};
+use near_sdk::__private::schemars;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, UnorderedSet};
 use near_sdk::serde::Serialize;
@@ -317,9 +318,12 @@ impl SBTContract for Contract {
         self.metadata.get().unwrap()
     }
 }
-
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    derive(schemars::JsonSchema, borsh::BorshSchema)
+)]
 pub enum CallbackResult<T, E> {
     Ok(T),
     Err(E),

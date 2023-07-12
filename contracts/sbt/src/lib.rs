@@ -114,11 +114,13 @@ pub trait SBTRegistry {
     fn sbt_mint(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>;
 
     /// sbt_recover reassigns all tokens issued by the caller, from the old owner to a new owner.
-    /// Adds `old_owner` to a banned accounts list.
     /// Must be called by a valid SBT issuer.
-    /// Must emit `Recover` event.
-    /// Must be called by an operator.
+    /// Must emit `Recover` event once all the tokens have been recovered.
     /// Requires attaching enough tokens to cover the storage growth.
+    /// Returns the amount of tokens recovered and a boolean: `true` if the whole
+    /// process has finished, `false` when the process has not finished and should be
+    /// continued by a subsequent call. User must keep calling the `sbt_recover` until `true`
+    /// is returned.
     // #[payable]
     fn sbt_recover(&mut self, from: AccountId, to: AccountId) -> (u32, bool);
 
@@ -145,6 +147,11 @@ pub trait SBTRegistry {
 #[ext_contract(ext_registry)]
 trait ExtRegistry {
     fn sbt_mint(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>;
+    fn sbt_mint_iah(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>;
     fn sbt_renew(&mut self, tokens: Vec<TokenId>, expires_at: u64);
     fn sbt_revoke(&mut self, tokens: Vec<TokenId>, burn: bool);
+
+    // queries
+
+    fn is_human(&self, account: AccountId) -> Vec<(AccountId, Vec<TokenId>)>;
 }

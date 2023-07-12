@@ -3,12 +3,18 @@ use near_sdk::json_types::Base64VecU8;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{require, AccountId};
 
+#[allow(unused_imports)]
+use near_sdk::NearSchema;
+
 use crate::*;
 
 /// ContractMetadata defines contract wide attributes, which describes the whole contract.
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    derive(Debug, PartialEq, Clone, NearSchema)
+)]
 pub struct ContractMetadata {
     pub spec: String,              // required, essentially a version like "sbt-1.0.0"
     pub name: String,              // required, ex. "Mosaics"
@@ -30,7 +36,10 @@ pub enum VerTokenMetadata {
 /// TokenMetadata defines attributes for each SBT token.
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    derive(Debug, PartialEq, Clone, NearSchema)
+)]
 pub struct TokenMetadata {
     pub class: ClassId,                      // token class
     pub issued_at: Option<u64>, // When token was issued or minted, Unix epoch in milliseconds
@@ -87,7 +96,10 @@ impl TokenData {
 /// token data for sbt_tokens_by_owner response
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    derive(Debug, PartialEq, Clone, NearSchema)
+)]
 pub struct OwnedToken {
     pub token: TokenId,
     pub metadata: TokenMetadata,
@@ -96,7 +108,10 @@ pub struct OwnedToken {
 /// Full information about the token
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    derive(Debug, PartialEq, Clone, NearSchema)
+)]
 pub struct Token {
     pub token: TokenId,
     pub owner: AccountId,
