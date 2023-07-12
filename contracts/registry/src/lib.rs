@@ -129,6 +129,23 @@ impl Contract {
     // Transactions
     //
 
+    /// sbt_mint_iah is a wrapper around `sbt_mint` and `is_human`. It mints SBTs only when
+    /// all recipients are humans. Panics if one of the recipients is not a human.
+    #[payable]
+    pub fn sbt_mint_iah(
+        &mut self,
+        token_spec: Vec<(AccountId, Vec<TokenMetadata>)>,
+    ) -> Vec<TokenId> {
+        let issuer = &env::predecessor_account_id();
+        for ts in &token_spec {
+            require!(
+                !self.is_human(ts.0.clone()).is_empty(),
+                format!("{} is not a human", ts.0.clone())
+            );
+        }
+        self._sbt_mint(issuer, token_spec)
+    }
+
     /// Transfers atomically all SBT tokens from one account to another account.
     /// The caller must be an SBT holder and the `recipient` must not be a banned account.
     /// Returns the amount of tokens transferred and a boolean: `true` if the whole
