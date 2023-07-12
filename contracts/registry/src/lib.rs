@@ -1102,6 +1102,25 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "bob.near is not a human")]
+    fn mint_iah() {
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+        // issue IAH SBTs for alice
+        let m1_1 = mk_metadata(1, Some(START)); // class=1 is IAH
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+
+        ctx.predecessor_account_id = issuer1();
+        testing_env!(ctx.clone());
+
+        // alice is IAH verified, so mint_iah by issuer1 should work
+        let sbts = ctr.sbt_mint_iah(vec![(alice(), vec![m1_1.clone()])]);
+        assert!(!sbts.is_empty());
+
+        // bob doesn't have IAH SBTs -> the mint below panics.
+        ctr.sbt_mint_iah(vec![(bob(), vec![m1_1])]);
+    }
+
+    #[test]
     fn soul_transfer1() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
 
