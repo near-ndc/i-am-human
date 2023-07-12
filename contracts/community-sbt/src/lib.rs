@@ -173,6 +173,7 @@ impl Contract {
      **********/
 
     /// Enables a new, unused class and authorizes minter to issue SBTs of that class.
+    /// Returns the new class ID.
     pub fn enable_next_class(
         &mut self,
         requires_iah: bool,
