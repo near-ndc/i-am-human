@@ -31,7 +31,7 @@ near call CTR_ADDRESS enable_next_class \
 
 #### Minting
 
-The mint function requires a deposit which is computed by the (`required_sbt_mint_deposit`)[https://github.com/alpha-fi/i-am-human/blob/master/contracts/community-sbt/src/lib.rs#L158] function. The whole deposit is passed to the registry to cover the storage costs.
+The mint function requires a deposit which is computed by the [`required_sbt_mint_deposit`](https://github.com/alpha-fi/i-am-human/blob/master/contracts/community-sbt/src/lib.rs#L158) function. The whole deposit is passed to the registry to cover the storage costs.
 Metadata attributes:
 
 - `expires_at` is be overwritten to `now + ttl`.
