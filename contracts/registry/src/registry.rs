@@ -214,13 +214,13 @@ impl SBTRegistry for Contract {
     }
 
     /// sbt_recover reassigns all tokens issued by the caller, from the old owner to a new owner.
-    /// + Must be called by a valid SBT issuer.
-    /// + Must emit `Recover` event once all the tokens have been recovered.
-    /// + Requires attaching enough tokens to cover the storage growth.
-    /// + Returns the amount of tokens recovered and a boolean: `true` if the whole
-    ///   process has finished, `false` when the process has not finished and should be
-    ///   continued by a subsequent call.
-    /// + User must keep calling the `sbt_recover` until `true` is returned.
+    /// Must be called by a valid SBT issuer.
+    /// Must emit `Recover` event once all the tokens have been recovered.
+    /// Requires attaching enough tokens to cover the storage growth.
+    /// Returns the amount of tokens recovered and a boolean: `true` if the whole
+    /// process has finished, `false` when the process has not finished and should be
+    /// continued by a subsequent call. User must keep calling the `sbt_recover` until `true`
+    /// is returned.
     #[payable]
     fn sbt_recover(&mut self, from: AccountId, to: AccountId) -> (u32, bool) {
         self._sbt_recover(from, to, 20)

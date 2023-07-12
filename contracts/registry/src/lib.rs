@@ -132,15 +132,16 @@ impl Contract {
     //
 
     /// Transfers atomically all SBT tokens from one account to another account.
-    /// + The caller must be an SBT holder and the `to` must not be a banned account.
-    /// + Returns the amount of tokens transferred and a boolean: `true` if the whole
-    ///   process has finished, `false` when the process has not finished and should be
-    ///   continued by a subsequent call.
+    /// The caller must be an SBT holder and the `recipient` must not be a banned account.
+    /// Returns the amount of tokens transferred and a boolean: `true` if the whole
+    /// process has finished, `false` when the process has not finished and should be
+    /// continued by a subsequent call.
+    /// Emits `Ban` event for the caller at the beginning of the process.
+    /// Emits `SoulTransfer` event only once all the tokens from the caller were transferred
+    /// and at least one token was trasnfered (caller had at least 1 sbt).
     /// + User must keep calling the `sbt_soul_transfer` until `true` is returned.
-    /// + Emits `SoulTransfer` event only once all the tokens that user was in possesion
-    ///   of were transfered and at least one token was trasnfered (caller had at least 1 sbt)
     /// + If caller does not have any tokens, nothing will be transfered, the caller
-    ///    will be banned and Ban even will be emitted
+    ///   will be banned and `Ban` event will be emitted.
     #[payable]
     pub fn sbt_soul_transfer(
         &mut self,

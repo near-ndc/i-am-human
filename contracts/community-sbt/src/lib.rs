@@ -199,6 +199,11 @@ impl Contract {
         }
     }
 
+    pub fn change_admin(&mut self, new_admin: AccountId) {
+        self.assert_admin();
+        self.admin = new_admin;
+    }
+
     /**********
      * INTERNAL
      **********/
