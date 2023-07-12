@@ -48,7 +48,6 @@ impl Contract {
             admin: old_state.admin,
             classes,
             next_class,
-
             registry: old_state.registry,
             metadata: old_state.metadata,
             ttl: old_state.ttl,

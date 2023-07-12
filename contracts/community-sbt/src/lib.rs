@@ -58,7 +58,7 @@ impl Contract {
      **********/
 
     /// Returns minting authorities by class.
-    /// If class is not enabled, returns None.
+    /// If class is enabled, returns class minter, otherwise returns None.
     pub fn class_minter(&self, class: ClassId) -> Option<ClassMinter> {
         self.classes.get(&class)
     }

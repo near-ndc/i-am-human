@@ -20,8 +20,8 @@ The constructor parameter is used to define max and default TTL when minting tok
 
 #### SBT classes
 
-SBT contract supports token classes: one issuer can mint tokens of many classes.
-The `community-sbt` contract requires an admin to enable class and set if minting of SBT tokens of that class require IAH humanity check. Moreover, admin must assign a minting authority (an address which is authorized to mint).
+SBT contract supports multiple token classes: one issuer can mint tokens of many classes.
+The `community-sbt` contract requires an admin to enable a token class and set if minting of SBT of that class requires IAH humanity check. Moreover, admin must assign a minting authority (an address which is authorized to mint).
 
 ```shell
 near call CTR_ADDRESS enable_next_class \
