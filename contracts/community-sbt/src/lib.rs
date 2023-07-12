@@ -1,6 +1,8 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
-use near_sdk::{env, near_bindgen, require, AccountId, Balance, PanicOnDefault, Promise};
+use near_sdk::{
+    env, ext_contract, near_bindgen, require, AccountId, Balance, PanicOnDefault, Promise,
+};
 
 use cost::{MILI_NEAR, MINT_COST, MINT_GAS};
 use sbt::*;
@@ -9,6 +11,7 @@ pub use crate::errors::*;
 pub use crate::storage::*;
 
 mod errors;
+mod migrate;
 mod storage;
 
 #[near_bindgen]
@@ -17,7 +20,8 @@ pub struct Contract {
     /// Account authorized to add new minting authority
     pub admin: AccountId,
     /// map of classId -> to set of accounts authorized to mint
-    pub minting_authorities: LookupMap<ClassId, Vec<AccountId>>,
+    pub classes: LookupMap<ClassId, ClassMinter>,
+    pub next_class: ClassId,
 
     /// SBT registry.
     pub registry: AccountId,
@@ -42,7 +46,8 @@ impl Contract {
         require!(ttl > 0, "`ttl` must be bigger than 0");
         Self {
             admin,
-            minting_authorities: LookupMap::new(StorageKey::MintingAuthority),
+            classes: LookupMap::new(StorageKey::MintingAuthority),
+            next_class: 1,
 
             registry,
             metadata: LazyOption::new(StorageKey::ContractMetadata, Some(&metadata)),
@@ -55,9 +60,9 @@ impl Contract {
      **********/
 
     /// Returns minting authorities by class.
-    /// If class is not supporte, returns empty list.
-    pub fn minting_authorities(&self, class: ClassId) -> Vec<AccountId> {
-        self.minting_authorities.get(&class).unwrap_or_default()
+    /// If class is not enabled, returns None.
+    pub fn class_minter(&self, class: ClassId) -> Option<ClassMinter> {
+        self.classes.get(&class)
     }
 
     /// Returns registry address
@@ -85,19 +90,21 @@ impl Contract {
         if attached_deposit < required_deposit {
             return Err(MintError::RequiredDeposit(required_deposit));
         }
-        self.assert_minter(metadata.class)?;
+        let requires_iah = self.assert_minter(metadata.class)?;
 
         let now_ms = env::block_timestamp_ms();
         metadata.expires_at = Some(now_ms + self.ttl);
         metadata.issued_at = Some(now_ms);
-        require!(
-            1 <= metadata.class && metadata.class <= 3,
-            "class ID must be 1, 2 or 3"
-        );
-
         if let Some(memo) = memo {
             env::log_str(&format!("SBT mint memo: {}", memo));
         }
+
+        ext_registry::ext(self.registry.clone()).is_human(receiver.clone())
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(GAS_UPVOTE)
+                    .on_upvote_verified(candidate, upvoter),
+            )
 
         Ok(ext_registry::ext(self.registry.clone())
             .with_attached_deposit(attached_deposit)
@@ -167,6 +174,26 @@ impl Contract {
      * Admin
      **********/
 
+    /// Enables a new, unused class and authorizes minter to issue SBTs of that class.
+    pub fn enable_next_class(
+        &mut self,
+        requires_iah: bool,
+        minter: AccountId,
+        #[allow(unused_variables)] memo: Option<String>,
+    ) -> ClassId {
+        self.assert_admin();
+        let cls = self.next_class;
+        self.next_class += 1;
+        self.classes.insert(
+            &cls,
+            &ClassMinter {
+                requires_iah,
+                minters: vec![minter],
+            },
+        );
+        cls
+    }
+
     /// admin: authorize `minter` to mint tokens of a `class`.
     /// Must be called by admin, panics otherwise.
     pub fn authorize(
@@ -176,10 +203,10 @@ impl Contract {
         #[allow(unused_variables)] memo: Option<String>,
     ) {
         self.assert_admin();
-        let mut ma = self.minting_authorities.get(&class).unwrap_or_default();
-        if !ma.contains(&minter) {
-            ma.push(minter);
-            self.minting_authorities.insert(&class, &ma);
+        let mut c = self.classes.get(&class).expect("class not found");
+        if !c.minters.contains(&minter) {
+            c.minters.push(minter);
+            self.classes.insert(&class, &c);
         }
     }
 
@@ -192,10 +219,10 @@ impl Contract {
         #[allow(unused_variables)] memo: Option<String>,
     ) {
         self.assert_admin();
-        let mut ma = self.minting_authorities.get(&class).unwrap_or_default();
-        if let Some(idx) = ma.iter().position(|x| x == &minter) {
-            ma.swap_remove(idx);
-            self.minting_authorities.insert(&class, &ma);
+        let mut c = self.classes.get(&class).expect("class not found");
+        if let Some(idx) = c.minters.iter().position(|x| x == &minter) {
+            c.minters.swap_remove(idx);
+            self.classes.insert(&class, &c);
         }
     }
 
@@ -212,14 +239,18 @@ impl Contract {
         require!(self.admin == env::predecessor_account_id(), "not an admin");
     }
 
-    fn assert_minter(&self, class: ClassId) -> Result<(), MintError> {
-        if !self
-            .minting_authorities(class)
-            .contains(&env::predecessor_account_id())
-        {
-            return Err(MintError::NotMinter);
+    // returns requires_iah
+    fn assert_minter(&self, class: ClassId) -> Result<bool, MintError> {
+        match self.class_minter(class) {
+            None => Err(MintError::ClassNotEnabled),
+            Some(cm) => {
+                if cm.minters.contains(&env::predecessor_account_id()) {
+                    Err(MintError::NotMinter)
+                } else {
+                    Ok(cm.requires_iah)
+                }
+            }
         }
-        return Ok(());
     }
 }
 
@@ -281,7 +312,7 @@ mod tests {
         ctx.attached_deposit = deposit.unwrap_or(required_sbt_mint_deposit(1));
         testing_env!(ctx.clone());
         let mut ctr = Contract::new(registry(), admin(), contract_metadata(), START);
-        ctr.authorize(1, authority(1), None);
+        ctr.enable_next_class(false, authority(1), None);
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
@@ -337,9 +368,9 @@ mod tests {
         ctr.authorize(1, authority(2), None);
         ctr.authorize(2, authority(2), None);
 
-        assert_eq!(ctr.minting_authorities(1), vec![authority(1), authority(2)]);
-        assert_eq!(ctr.minting_authorities(2), vec![authority(2)]);
-        assert_eq!(ctr.minting_authorities(3), vec![]);
+        assert_eq!(ctr.class_minter(1), vec![authority(1), authority(2)]);
+        assert_eq!(ctr.class_minter(2), vec![authority(2)]);
+        assert_eq!(ctr.class_minter(3), vec![]);
     }
 
     #[test]
@@ -360,10 +391,10 @@ mod tests {
         ctr.unauthorize(1, authority(2), None);
 
         assert_eq!(
-            ctr.minting_authorities(1),
+            ctr.class_minter(1),
             vec![authority(1), authority(4), authority(3)]
         );
-        assert_eq!(ctr.minting_authorities(2), vec![authority(2)]);
+        assert_eq!(ctr.class_minter(2), vec![authority(2)]);
     }
 
     fn mk_meteadata(class: ClassId) -> TokenMetadata {
@@ -389,4 +420,9 @@ mod tests {
 
         Ok(())
     }
+}
+
+#[ext_contract(ext_self)]
+pub trait ExtSelf {
+    fn mint_on_iah_verified(&mut self, prop_id: u32, user: AccountId, vote: Vote);
 }
