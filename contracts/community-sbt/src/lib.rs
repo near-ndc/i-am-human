@@ -244,9 +244,9 @@ impl Contract {
             None => Err(MintError::ClassNotEnabled),
             Some(cm) => {
                 if cm.minters.contains(&env::predecessor_account_id()) {
-                    Err(MintError::NotMinter)
-                } else {
                     Ok(cm.requires_iah)
+                } else {
+                    Err(MintError::NotMinter)
                 }
             }
         }
@@ -336,8 +336,10 @@ mod tests {
         // admin is not a minter
         expect_not_authorized(1, &ctr);
 
-        let new_cls = 12;
-        ctr.authorize(new_cls, authority(2), None);
+        let new_cls = ctr.enable_next_class(true, authority(2), None);
+        let other_cls = ctr.enable_next_class(true, authority(10), None);
+        ctr.authorize(new_cls, authority(3), None);
+
         match ctr.assert_minter(new_cls) {
             Err(MintError::NotMinter) => (),
             x => panic!("admin should not be a minter of the new class, {:?}", x),
@@ -347,15 +349,19 @@ mod tests {
         ctx.predecessor_account_id = authority(1);
         testing_env!(ctx.clone());
         ctr.assert_minter(1)?;
-        expect_not_authorized(2, &ctr);
         expect_not_authorized(new_cls, &ctr);
+        expect_not_authorized(other_cls, &ctr);
+        match ctr.assert_minter(1122) {
+            Err(MintError::ClassNotEnabled) => (),
+            x => panic!("expected ClassNotEnabled, got: {:?}", x),
+        };
 
         // check authority(2)
         ctx.predecessor_account_id = authority(2);
         testing_env!(ctx.clone());
-        ctr.assert_minter(new_cls)?;
         expect_not_authorized(1, &ctr);
-        expect_not_authorized(2, &ctr);
+        ctr.assert_minter(new_cls)?;
+        expect_not_authorized(other_cls, &ctr);
 
         Ok(())
     }
@@ -432,7 +438,7 @@ mod tests {
         assert_eq!(
             ctr.class_minter(1),
             Some(class_minter(
-                false,
+                true,
                 vec![authority(1), authority(4), authority(3)]
             ))
         );
@@ -454,12 +460,23 @@ mod tests {
 
     #[test]
     fn mint() -> Result<(), MintError> {
-        let (_, mut ctr) = setup(&authority(1), None);
+        let (mut ctx, mut ctr) = setup(&admin(), None);
+
+        let cls2 = ctr.enable_next_class(true, authority(2), None);
+
+        ctx.predecessor_account_id = authority(1);
+        testing_env!(ctx.clone());
 
         ctr.sbt_mint(alice(), mk_meteadata(1), None)?;
-        match ctr.sbt_mint(alice(), mk_meteadata(2), None) {
+        match ctr.sbt_mint(alice(), mk_meteadata(cls2), None) {
             Err(MintError::NotMinter) => (),
             Ok(_) => panic!("expected NotAuthorized, got: Promise"),
+            Err(x) => panic!("expected NotAuthorized, got: {:?}", x),
+        };
+
+        match ctr.sbt_mint(alice(), mk_meteadata(1122), None) {
+            Err(MintError::ClassNotEnabled) => (),
+            Ok(_) => panic!("expected ClassNotEnabled, got: Ok"),
             Err(x) => panic!("expected NotAuthorized, got: {:?}", x),
         };
 
