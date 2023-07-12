@@ -95,7 +95,7 @@ async fn init(worker: &Worker<Sandbox>) -> anyhow::Result<(Account, Account, Con
     let res = authority_acc
         .call(community_mainnet.id(), "sbt_mint")
         .args_json(json!({"receiver": alice_acc.id(), "metadata": token_metadata, "memo": "test"}))
-        .deposit(parse_near!("1 N"))
+        .deposit(parse_near!("0.01 N"))
         .max_gas()
         .transact()
         .await?;
