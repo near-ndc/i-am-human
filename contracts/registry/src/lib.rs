@@ -61,7 +61,7 @@ impl Contract {
             iah_classes.len() > 0,
             "iah_classes must be a non empty list"
         );
-        Self {
+        let mut contract = Self {
             authority,
             sbt_issuers: UnorderedMap::new(StorageKey::SbtIssuers),
             issuer_id_map: LookupMap::new(StorageKey::SbtIssuersRev),
@@ -74,8 +74,10 @@ impl Contract {
             next_token_ids: LookupMap::new(StorageKey::NextTokenId),
             next_issuer_id: 1,
             ongoing_soul_tx: LookupMap::new(StorageKey::OngoingSoultTx),
-            iah_sbts: (iah_issuer, iah_classes),
-        }
+            iah_sbts: (iah_issuer.clone(), iah_classes),
+        };
+        contract._add_sbt_issuer(&iah_issuer);
+        contract
     }
 
     //
@@ -773,10 +775,16 @@ mod tests {
         ctr.admin_add_sbt_issuer(issuer1());
         ctr.admin_add_sbt_issuer(issuer2());
         ctr.admin_add_sbt_issuer(issuer3());
-        ctr.admin_add_sbt_issuer(fractal_mainnet());
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
+    }
+
+    #[test]
+    fn init_method() {
+        let ctr = Contract::new(admin(), fractal_mainnet(), vec![1]);
+        // make sure the iah_issuer has been set as an issuer
+        assert_eq!(1, ctr.assert_issuer(&fractal_mainnet()));
     }
 
     #[test]
@@ -790,15 +798,15 @@ mod tests {
         let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
         // in setup we add 4 issuers, so the next id will be 5.
         assert_eq!(5, ctr.next_issuer_id);
-        assert_eq!(1, ctr.assert_issuer(&issuer1()));
-        assert_eq!(2, ctr.assert_issuer(&issuer2()));
-        assert_eq!(3, ctr.assert_issuer(&issuer3()));
-        assert_eq!(4, ctr.assert_issuer(&fractal_mainnet()));
+        assert_eq!(1, ctr.assert_issuer(&fractal_mainnet()));
+        assert_eq!(2, ctr.assert_issuer(&issuer1()));
+        assert_eq!(3, ctr.assert_issuer(&issuer2()));
+        assert_eq!(4, ctr.assert_issuer(&issuer3()));
 
-        assert_eq!(issuer1(), ctr.issuer_by_id(1));
-        assert_eq!(issuer2(), ctr.issuer_by_id(2));
-        assert_eq!(issuer3(), ctr.issuer_by_id(3));
-        assert_eq!(fractal_mainnet(), ctr.issuer_by_id(4));
+        assert_eq!(fractal_mainnet(), ctr.issuer_by_id(1));
+        assert_eq!(issuer1(), ctr.issuer_by_id(2));
+        assert_eq!(issuer2(), ctr.issuer_by_id(3));
+        assert_eq!(issuer3(), ctr.issuer_by_id(4));
 
         ctx.predecessor_account_id = admin();
         testing_env!(ctx.clone());
@@ -809,7 +817,7 @@ mod tests {
         );
         assert_eq!(5, ctr.next_issuer_id, "next_issuer_id should not change");
         assert_eq!(
-            1,
+            2,
             ctr.assert_issuer(&issuer1()),
             "issuer1 id should not change"
         );
