@@ -1,10 +1,8 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
-use near_sdk::{
-    env, ext_contract, near_bindgen, require, AccountId, Balance, PanicOnDefault, Promise,
-};
+use near_sdk::{env, near_bindgen, require, AccountId, Balance, PanicOnDefault, Promise};
 
-use cost::{MILI_NEAR, MINT_COST, MINT_GAS};
+use cost::{IS_HUMAN_GAS, MILI_NEAR, MINT_COST, MINT_GAS};
 use sbt::*;
 
 pub use crate::errors::*;
@@ -99,17 +97,17 @@ impl Contract {
             env::log_str(&format!("SBT mint memo: {}", memo));
         }
 
-        ext_registry::ext(self.registry.clone()).is_human(receiver.clone())
-            .then(
-                Self::ext(env::current_account_id())
-                    .with_static_gas(GAS_UPVOTE)
-                    .on_upvote_verified(candidate, upvoter),
-            )
-
-        Ok(ext_registry::ext(self.registry.clone())
-            .with_attached_deposit(attached_deposit)
-            .with_static_gas(MINT_GAS)
-            .sbt_mint(vec![(receiver, vec![metadata])]))
+        let token_spec = vec![(receiver, vec![metadata])];
+        let sbt_reg =
+            ext_registry::ext(self.registry.clone()).with_attached_deposit(attached_deposit);
+        let p = if requires_iah {
+            sbt_reg
+                .with_static_gas(MINT_GAS + IS_HUMAN_GAS)
+                .sbt_mint(token_spec)
+        } else {
+            sbt_reg.with_static_gas(MINT_GAS).sbt_mint_iah(token_spec)
+        };
+        Ok(p)
     }
 
     /// sbt_renew will update the expire time of provided tokens.
@@ -420,9 +418,4 @@ mod tests {
 
         Ok(())
     }
-}
-
-#[ext_contract(ext_self)]
-pub trait ExtSelf {
-    fn mint_on_iah_verified(&mut self, prop_id: u32, user: AccountId, vote: Vote);
 }
