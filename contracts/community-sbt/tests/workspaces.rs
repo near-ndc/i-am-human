@@ -137,6 +137,14 @@ async fn migration_mainnet() -> anyhow::Result<()> {
         .await?;
     assert!(res.is_success());
 
+    // call the migration again should fail
+    let res = new_community_contract
+        .call("migrate")
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_failure());
+
     // call the contract after the migration
     let res: AccountId = new_community_contract
         .call("registry")
