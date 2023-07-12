@@ -17,3 +17,13 @@ serde_json.workspace = true
 
 cost = { path = "../cost" }
 sbt = { path = "../sbt" }
+
+[dev-dependencies]
+pretty_assertions = "^1.3"
+# assertables = "^7"
+anyhow = "1.0.71"
+tokio = { version = "1.28.2", features = ["full"] }
+workspaces = { version = "0.7.0", features = ["unstable"] }
+near-primitives = "0.17.0"
+near-units = "0.2.0"
+tracing = "0.1"
