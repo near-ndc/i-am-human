@@ -24,7 +24,9 @@ SBT contract supports token classes: one issuer can mint tokens of many classes.
 The `community-sbt` contract requires an admin to enable class and set if minting of SBT tokens of that class require IAH humanity check. Moreover, admin must assign a minting authority (an address which is authorized to mint).
 
 ```shell
-near call CTR_ADDRESS enable_next_class '{"requires_iah": true, "minter": MINTER_ADDRESS}' --accountId ADMIN
+near call CTR_ADDRESS enable_next_class \
+  '{"requires_iah": true, "minter": MINTER_ADDRESS}' \
+  --accountId ADMIN
 ```
 
 #### Minting
@@ -37,11 +39,14 @@ Metadata attributes:
 - `reference` and `reference_hash` are optional.
 
 ```shell
-near call CTR_ADDRESS sbt_mint '{"receiver": "receipient.near", "metadata": {"class": 1, "reference": "near-social-post-link"}}'  --deposit 0.008 --accountId ADMIN
+near call CTR_ADDRESS sbt_mint \
+  '{"receiver": "receipient.near", "metadata": {"class": 1, "reference": "near-social-post-link"}}'  \
+  --deposit 0.008 --accountId ADMIN
 ```
 
 To query minting authorities of a given class call:
 
 ```shell
-near view CTR_ADDRESS minting_authorities '{"class": CLASS_ID}'
+near view CTR_ADDRESS minting_authorities \
+  '{"class": CLASS_ID}'
 ```
