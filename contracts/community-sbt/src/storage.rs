@@ -14,7 +14,7 @@ pub enum StorageKey {
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 #[serde(crate = "near_sdk::serde")]
-pub struct ClassMinter {
+pub struct ClassMinters {
     pub requires_iah: bool,
     pub minters: Vec<AccountId>,
 }

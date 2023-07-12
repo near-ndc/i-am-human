@@ -18,7 +18,7 @@ pub struct Contract {
     /// Account authorized to add new minting authority
     pub admin: AccountId,
     /// map of classId -> to set of accounts authorized to mint
-    pub classes: LookupMap<ClassId, ClassMinter>,
+    pub classes: LookupMap<ClassId, ClassMinters>,
     pub next_class: ClassId,
 
     /// SBT registry.
@@ -59,7 +59,7 @@ impl Contract {
 
     /// Returns minting authorities by class.
     /// If the `class` is enabled, returns class minter, otherwise returns None.
-    pub fn class_minter(&self, class: ClassId) -> Option<ClassMinter> {
+    pub fn class_minter(&self, class: ClassId) -> Option<ClassMinters> {
         self.classes.get(&class)
     }
 
@@ -185,7 +185,7 @@ impl Contract {
         self.next_class += 1;
         self.classes.insert(
             &cls,
-            &ClassMinter {
+            &ClassMinters {
                 requires_iah,
                 minters: vec![minter],
             },
@@ -270,7 +270,7 @@ mod tests {
     use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId, Balance, VMContext};
     use sbt::{ClassId, ContractMetadata, TokenMetadata};
 
-    use crate::{required_sbt_mint_deposit, ClassMinter, Contract, MintError};
+    use crate::{required_sbt_mint_deposit, ClassMinters, Contract, MintError};
 
     const START: u64 = 10;
 
@@ -302,8 +302,8 @@ mod tests {
         };
     }
 
-    fn class_minter(requires_iah: bool, minters: Vec<AccountId>) -> ClassMinter {
-        ClassMinter {
+    fn class_minter(requires_iah: bool, minters: Vec<AccountId>) -> ClassMinters {
+        ClassMinters {
             requires_iah,
             minters,
         }

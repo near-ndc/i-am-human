@@ -21,14 +21,14 @@ impl Contract {
         // changed fields:
         // next_class -- new field
         // minting_authorities: LookupMap<ClassId, Vec<AccountId>>
-        //   -> LookupMap<ClassId, ClassMinter>,
+        //   -> LookupMap<ClassId, ClassMinters>,
 
-        let mut new_minters: Vec<ClassMinter> = Vec::new();
+        let mut new_minters: Vec<ClassMinters> = Vec::new();
         let mut next_class = 1;
         for i in 1..=3 {
             if let Some(minters) = old_state.minting_authorities.remove(&i) {
                 next_class = i;
-                new_minters.push(ClassMinter {
+                new_minters.push(ClassMinters {
                     requires_iah: true,
                     minters,
                 });
