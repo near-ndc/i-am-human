@@ -1,6 +1,6 @@
 [package]
 name = "community-sbt"
-version = "3.0.1"
+version = "4.0.0"
 authors = ["Robert Zaremba 'https://zaremba.ch/'"]
 edition = { workspace = true }
 repository = { workspace = true }
