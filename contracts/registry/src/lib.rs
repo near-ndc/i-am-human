@@ -726,7 +726,7 @@ impl Contract {
 
             // update total supply by issuer
             let mut supply = self.supply_by_issuer.get(&issuer_id).unwrap();
-            supply -= tokens_burned_per_issuer as u64;
+            supply -= tokens_burned_per_issuer;
             self.supply_by_issuer.insert(&issuer_id, &supply);
 
             SbtTokensEvent {
