@@ -673,7 +673,7 @@ impl Contract {
         ret_token_ids
     }
 
-    /// Method to burn all the tokens from all the issuers that have been issued to the caller.
+    /// Method to burn all caller tokens (from all issuers).
     /// The revoke and burn event are emitted for all the tokens burned.
     /// The method can only burn a given number of tokens due to the gas limitations.
     /// If not all the tokens have been burned false is returned.
