@@ -695,7 +695,7 @@ impl Contract {
         for (issuer, tokens) in issuer_token_pair_vec.iter() {
             let mut token_ids = Vec::new();
             let issuer_id = self.assert_issuer(issuer);
-            let mut tokens_burned_per_issuer: u32 = 0;
+            let mut tokens_burned_per_issuer: u64 = 0;
             for t in tokens.iter() {
                 token_ids.push(t.token);
                 self.issuer_tokens.remove(&IssuerTokenId {
