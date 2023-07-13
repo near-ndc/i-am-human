@@ -721,7 +721,7 @@ impl Contract {
             // update supply by owner
             let key = (owner.clone(), issuer_id);
             let mut supply = self.supply_by_owner.get(&key).unwrap();
-            supply -= tokens_burned_per_issuer as u64;
+            supply -= tokens_burned_per_issuer;
             self.supply_by_owner.insert(&key, &supply);
 
             // update total supply by issuer
