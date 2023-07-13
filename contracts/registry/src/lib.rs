@@ -675,10 +675,8 @@ impl Contract {
 
     /// Method to burn all caller tokens (from all issuers).
     /// The revoke and burn event are emitted for all the tokens burned.
-    /// The method can only burn a given number of tokens due to the gas limitations.
-    /// If not all the tokens have been burned false is returned.
-    /// The method must be repeatedly called until true is returned.
-    /// It meeans all the tokens from the caller have been burned.
+    /// The method must be called repeatedly until true is returned. Not all tokens may be burned in a single 
+    // call due to the gas limitation - in that case `false` is returned.
     pub fn sbt_burn_all(&mut self) -> bool {
         self._sbt_burn_all(20)
     }
