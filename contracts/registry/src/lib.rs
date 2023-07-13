@@ -679,7 +679,7 @@ impl Contract {
     /// Not all tokens may be burned in a single
     /// call due to the gas limitation - in that case `false` is returned.
     pub fn sbt_burn_all(&mut self) -> bool {
-        self._sbt_burn_all(20)
+        self._sbt_burn_all(25)
     }
 
     /// Method to help parametrize the sbt_burn_all.
@@ -2482,11 +2482,10 @@ mod tests {
         // alice burn all her tokens from all the issuers
         ctx.predecessor_account_id = alice();
         testing_env!(ctx.clone());
-        loop {
-            if ctr._sbt_burn_all(20) {
-                break;
-            }
-        }
+        let res = ctr._sbt_burn_all(20);
+        assert!(!res);
+        let res = ctr._sbt_burn_all(20);
+        assert!(res); // make sure that after the second call true is returned (all tokens have been burned)
 
         // make sure the balances are updated correctly
         let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
