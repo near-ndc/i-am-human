@@ -9,7 +9,6 @@ pub use crate::errors::*;
 pub use crate::storage::*;
 
 mod errors;
-mod migrate;
 mod storage;
 
 #[near_bindgen]
