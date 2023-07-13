@@ -685,7 +685,7 @@ impl Contract {
 
     /// Method to help parametrize the sbt_burn_all.
     /// limit indicates the number of tokens that will be burned in one call
-    pub fn _sbt_burn_all(&mut self, limit: u32) -> bool {
+    pub(crate) fn _sbt_burn_all(&mut self, limit: u32) -> bool {
         let owner = env::predecessor_account_id();
         require!(
             !self.ongoing_soul_tx.contains_key(&owner),
