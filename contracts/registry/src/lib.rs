@@ -674,9 +674,10 @@ impl Contract {
     }
 
     /// Method to burn all caller tokens (from all issuers).
-    /// The revoke and burn event are emitted for all the tokens burned.
-    /// The method must be called repeatedly until true is returned. Not all tokens may be burned in a single 
-    // call due to the gas limitation - in that case `false` is returned.
+    /// The burn event is emitted for all the tokens burned.
+    /// The method must be called repeatedly until true is returned.
+    /// Not all tokens may be burned in a single
+    /// call due to the gas limitation - in that case `false` is returned.
     pub fn sbt_burn_all(&mut self) -> bool {
         self._sbt_burn_all(20)
     }
@@ -691,7 +692,8 @@ impl Contract {
         );
         let mut tokens_burned: u32 = 0;
 
-        let issuer_token_pair_vec = self.sbt_tokens_by_owner(owner.clone(), None, None, Some(limit), Some(true));
+        let issuer_token_pair_vec =
+            self.sbt_tokens_by_owner(owner.clone(), None, None, Some(limit), Some(true));
         for (issuer, tokens) in issuer_token_pair_vec.iter() {
             let mut token_ids = Vec::new();
             let issuer_id = self.assert_issuer(issuer);
@@ -728,12 +730,6 @@ impl Contract {
             let mut supply = self.supply_by_issuer.get(&issuer_id).unwrap();
             supply -= tokens_burned_per_issuer;
             self.supply_by_issuer.insert(&issuer_id, &supply);
-
-            SbtTokensEvent {
-                issuer: issuer.to_owned(),
-                tokens: token_ids.clone(),
-            }
-            .emit_revoke();
 
             SbtTokensEvent {
                 issuer: issuer.to_owned(),
@@ -2534,31 +2530,7 @@ mod tests {
         }
 
         // check if the logs are correct
-        assert_eq!(test_utils::get_logs().len(), 6);
-
-        let log_revoke_issuer_1 = mk_log_str(
-            "revoke",
-            &format!(
-                r#"{{"issuer":"{}","tokens":[1,2,3,4,5,6,7,8,9,10]}}"#,
-                issuer1()
-            ),
-        );
-
-        let log_revoke_issuer_2 = mk_log_str(
-            "revoke",
-            &format!(
-                r#"{{"issuer":"{}","tokens":[1,2,3,4,5,6,7,8,9,10]}}"#,
-                issuer2()
-            ),
-        );
-
-        let log_revoke_issuer_3 = mk_log_str(
-            "revoke",
-            &format!(
-                r#"{{"issuer":"{}","tokens":[1,2,3,4,5,6,7,8,9,10]}}"#,
-                issuer3()
-            ),
-        );
+        assert_eq!(test_utils::get_logs().len(), 3);
 
         let log_burn_issuer_1 = mk_log_str(
             "burn",
@@ -2584,12 +2556,9 @@ mod tests {
             ),
         );
 
-        assert_eq!(test_utils::get_logs()[0], log_revoke_issuer_1[0]);
-        assert_eq!(test_utils::get_logs()[1], log_burn_issuer_1[0]);
-        assert_eq!(test_utils::get_logs()[2], log_revoke_issuer_2[0]);
-        assert_eq!(test_utils::get_logs()[3], log_burn_issuer_2[0]);
-        assert_eq!(test_utils::get_logs()[4], log_revoke_issuer_3[0]);
-        assert_eq!(test_utils::get_logs()[5], log_burn_issuer_3[0]);
+        assert_eq!(test_utils::get_logs()[0], log_burn_issuer_1[0]);
+        assert_eq!(test_utils::get_logs()[1], log_burn_issuer_2[0]);
+        assert_eq!(test_utils::get_logs()[2], log_burn_issuer_3[0]);
 
         // make sure the balances are updated correctly
         let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
@@ -2639,7 +2608,8 @@ mod tests {
         loop {
             ctx.prepaid_gas = max_gas();
             testing_env!(ctx.clone());
-            if ctr._sbt_burn_all(30) {
+            if ctr._sbt_burn_all(41) {
+                //anything above 41 fails due to MaxGasLimitExceeded error
                 break;
             }
         }
