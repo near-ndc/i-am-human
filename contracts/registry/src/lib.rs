@@ -697,7 +697,7 @@ impl Contract {
             let issuer_id = self.assert_issuer(issuer);
             let mut tokens_burned_per_issuer: u32 = 0;
             for t in tokens.iter() {
-                token_ids.push(t.token.clone());
+                token_ids.push(t.token);
                 self.issuer_tokens.remove(&IssuerTokenId {
                     issuer_id,
                     token: t.token,
