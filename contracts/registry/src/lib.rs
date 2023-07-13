@@ -691,7 +691,7 @@ impl Contract {
         );
         let mut tokens_burned: u32 = 0;
 
-        let issuer_token_pair_vec = self.sbt_tokens_by_owner(owner.clone(), None, None, None, None);
+        let issuer_token_pair_vec = self.sbt_tokens_by_owner(owner.clone(), None, None, Some(limit), Some(true));
         for (issuer, tokens) in issuer_token_pair_vec.iter() {
             let mut token_ids = Vec::new();
             let issuer_id = self.assert_issuer(issuer);
