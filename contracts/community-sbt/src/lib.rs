@@ -229,6 +229,13 @@ impl Contract {
         self.admin = new_admin;
     }
 
+    /// admin: authorize `minter` to mint tokens of a `class`.
+    /// Must be called by admin, panics otherwise.
+    pub fn update_metadata(&mut self, metadata: ContractMetadata) {
+        self.assert_admin();
+        self.metadata.replace(&metadata);
+    }
+
     /**********
      * INTERNAL
      **********/
