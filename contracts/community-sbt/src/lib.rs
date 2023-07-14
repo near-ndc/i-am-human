@@ -171,6 +171,17 @@ impl Contract {
      * Admin
      **********/
 
+    /// allows admin to change if the specific class requires IAH verification.
+    /// Panics if class is not found.
+    pub fn change_requires_iah(&mut self, class: ClassId, requires_iah: bool) {
+        self.assert_admin();
+        let mut c = self.classes.get(&class).expect("class not found");
+        if c.requires_iah != requires_iah {
+            c.requires_iah = requires_iah;
+            self.classes.insert(&class, &c);
+        }
+    }
+
     /// Enables a new, unused class and authorizes minter to issue SBTs of that class.
     /// Returns the new class ID.
     pub fn enable_next_class(
