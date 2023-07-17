@@ -146,7 +146,7 @@ impl Contract {
             for token in &tokens {
                 ext_registry::ext(self.registry.clone())
                     .sbt(env::current_account_id(), token.clone())
-                    .then(Self::ext(env::current_account_id()).on_minter_callback(&caller));
+                    .then(Self::ext(env::current_account_id()).on_sbt_token_callback(&caller));
             }
         }
         if let Some(memo) = memo {
@@ -154,14 +154,15 @@ impl Contract {
         }
         ext_registry::ext(self.registry.clone()).sbt_revoke(tokens, burn)
     }
+
     #[private]
-    pub fn on_minter_callback(
+    pub fn on_sbt_token_callback(
         &self,
         caller: &AccountId,
-        #[callback_result] token_data: Option<Token>,
+        #[callback_result] token_data: Result<Option<Token>, near_sdk::PromiseError>,
     ) {
         let token = token_data.expect("token not found");
-        let class_id = token.metadata.class;
+        let class_id = token.unwrap().metadata.class;
         let minters = self.class_minter(class_id).expect("class not found");
         require!(
             minters.minters.contains(caller),
