@@ -57,6 +57,8 @@ Production:
 - **Community SBTs**: `community.i-am-human.near` @ community-sbt/v4.0.0
   classes: OG=1, Vibes=2
   Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
+- **Regens SBTs**: `issuer.regens.near` @ community-sbt/v4.0.0
+  classes: ProofOfRegen=1
 
 Mainnet Testing:
 
