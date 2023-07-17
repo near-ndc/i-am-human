@@ -1,11 +1,13 @@
 use ed25519_dalek::{PublicKey, Signature, Verifier, PUBLIC_KEY_LENGTH};
-use near_sdk::__private::schemars;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, UnorderedSet};
 use near_sdk::serde::Serialize;
 use near_sdk::{
     env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
 };
+
+#[allow(unused_imports)]
+use near_sdk::__private::schemars;
 
 use cost::*;
 use sbt::*;

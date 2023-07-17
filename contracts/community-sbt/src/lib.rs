@@ -9,7 +9,6 @@ pub use crate::errors::*;
 pub use crate::storage::*;
 
 mod errors;
-mod migrate;
 mod storage;
 
 #[near_bindgen]
@@ -228,6 +227,13 @@ impl Contract {
     pub fn change_admin(&mut self, new_admin: AccountId) {
         self.assert_admin();
         self.admin = new_admin;
+    }
+
+    /// admin: authorize `minter` to mint tokens of a `class`.
+    /// Must be called by admin, panics otherwise.
+    pub fn update_metadata(&mut self, metadata: ContractMetadata) {
+        self.assert_admin();
+        self.metadata.replace(&metadata);
     }
 
     /**********

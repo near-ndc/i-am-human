@@ -708,6 +708,75 @@ impl Contract {
         self.assert_testnet();
         self._sbt_renew(issuer, tokens, expires_at)
     }
+    /// Method to burn all caller tokens (from all issuers).
+    /// The burn event is emitted for all the tokens burned.
+    /// The method must be called repeatedly until true is returned.
+    /// Not all tokens may be burned in a single
+    /// call due to the gas limitation - in that case `false` is returned.
+    pub fn sbt_burn_all(&mut self) -> bool {
+        self._sbt_burn_all(25)
+    }
+
+    /// Method to help parametrize the sbt_burn_all.
+    /// limit indicates the number of tokens that will be burned in one call
+    pub(crate) fn _sbt_burn_all(&mut self, limit: u32) -> bool {
+        let owner = env::predecessor_account_id();
+        require!(
+            !self.ongoing_soul_tx.contains_key(&owner),
+            "can't burn tokens while in soul_transfer"
+        );
+        let mut tokens_burned: u32 = 0;
+
+        let issuer_token_pair_vec =
+            self.sbt_tokens_by_owner(owner.clone(), None, None, Some(limit), Some(true));
+        for (issuer, tokens) in issuer_token_pair_vec.iter() {
+            let mut token_ids = Vec::new();
+            let issuer_id = self.assert_issuer(issuer);
+            let mut tokens_burned_per_issuer: u64 = 0;
+            for t in tokens.iter() {
+                token_ids.push(t.token);
+                self.issuer_tokens.remove(&IssuerTokenId {
+                    issuer_id,
+                    token: t.token,
+                });
+                let class_id = t.metadata.class;
+                self.balances
+                    .remove(&balance_key(owner.clone(), issuer_id, class_id));
+
+                // update supply by class
+                let key = (issuer_id, class_id);
+                let mut supply = self.supply_by_class.get(&key).unwrap();
+                supply -= 1;
+                self.supply_by_class.insert(&key, &supply);
+                tokens_burned_per_issuer += 1;
+                tokens_burned += 1;
+                if tokens_burned >= limit {
+                    break;
+                }
+            }
+
+            // update supply by owner
+            let key = (owner.clone(), issuer_id);
+            let mut supply = self.supply_by_owner.get(&key).unwrap();
+            supply -= tokens_burned_per_issuer;
+            self.supply_by_owner.insert(&key, &supply);
+
+            // update total supply by issuer
+            let mut supply = self.supply_by_issuer.get(&issuer_id).unwrap();
+            supply -= tokens_burned_per_issuer;
+            self.supply_by_issuer.insert(&issuer_id, &supply);
+
+            SbtTokensEvent {
+                issuer: issuer.to_owned(),
+                tokens: token_ids.clone(),
+            }
+            .emit_burn();
+            if tokens_burned >= limit {
+                return false;
+            }
+        }
+        true
+    }
 }
 
 #[cfg(test)]
@@ -2408,5 +2477,188 @@ mod tests {
         assert_eq!(test_utils::get_logs().len(), 2); // -> only 1 event is emmited
         assert_eq!(test_utils::get_logs(), vec![log_burn, log_revoke].concat());
         // -> missing revoke event
+    }
+
+    #[test]
+    fn sbt_burn_all_more_users() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 20 * MINT_DEPOSIT);
+
+        // mint tokens to alice and bob from issuer1
+        let batch_metadata = mk_batch_metadata(20);
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata[10..].to_vec())]);
+
+        // mint tokens to alice and bob from issuer2
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata[11..].to_vec())]);
+
+        // mint tokens to alice and bob from issuer3
+        ctx.predecessor_account_id = issuer3();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata[10..].to_vec())]);
+
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 10);
+        assert_eq!(res[1].1.len(), 10);
+        assert_eq!(res[2].1.len(), 10);
+
+        let res = ctr.sbt_tokens_by_owner(bob(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 10);
+        assert_eq!(res[1].1.len(), 9);
+        assert_eq!(res[2].1.len(), 10);
+
+        assert_eq!(ctr.sbt_supply(issuer1()), 20);
+        assert_eq!(ctr.sbt_supply(issuer2()), 19);
+        assert_eq!(ctr.sbt_supply(issuer3()), 20);
+
+        // alice burn all her tokens from all the issuers
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        let res = ctr._sbt_burn_all(20);
+        assert!(!res);
+        let res = ctr._sbt_burn_all(20);
+        assert!(res); // make sure that after the second call true is returned (all tokens have been burned)
+
+        // make sure the balances are updated correctly
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert!(res.is_empty());
+
+        let res = ctr.sbt_tokens_by_owner(bob(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 10);
+        assert_eq!(res[1].1.len(), 9);
+        assert_eq!(res[2].1.len(), 10);
+
+        assert_eq!(ctr.sbt_supply(issuer1()), 10);
+        assert_eq!(ctr.sbt_supply(issuer2()), 9);
+        assert_eq!(ctr.sbt_supply(issuer3()), 10);
+    }
+
+    #[test]
+    fn sbt_burn_all_basics() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 20 * MINT_DEPOSIT);
+
+        // mint tokens to alice and bob from issuer1
+        let batch_metadata = mk_batch_metadata(20);
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+
+        // mint tokens to alice and bob from issuer2
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+
+        // mint tokens to alice and bob from issuer3
+        ctx.predecessor_account_id = issuer3();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+
+        // alice burn all her tokens from all the issuers
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        loop {
+            if ctr._sbt_burn_all(10) {
+                break;
+            }
+        }
+
+        // check if the logs are correct
+        assert_eq!(test_utils::get_logs().len(), 3);
+
+        let log_burn_issuer_1 = mk_log_str(
+            "burn",
+            &format!(
+                r#"{{"issuer":"{}","tokens":[1,2,3,4,5,6,7,8,9,10]}}"#,
+                issuer1()
+            ),
+        );
+
+        let log_burn_issuer_2 = mk_log_str(
+            "burn",
+            &format!(
+                r#"{{"issuer":"{}","tokens":[1,2,3,4,5,6,7,8,9,10]}}"#,
+                issuer2()
+            ),
+        );
+
+        let log_burn_issuer_3 = mk_log_str(
+            "burn",
+            &format!(
+                r#"{{"issuer":"{}","tokens":[1,2,3,4,5,6,7,8,9,10]}}"#,
+                issuer3()
+            ),
+        );
+
+        assert_eq!(test_utils::get_logs()[0], log_burn_issuer_1[0]);
+        assert_eq!(test_utils::get_logs()[1], log_burn_issuer_2[0]);
+        assert_eq!(test_utils::get_logs()[2], log_burn_issuer_3[0]);
+
+        // make sure the balances are updated correctly
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert!(res.is_empty());
+
+        assert_eq!(ctr.sbt_supply(issuer1()), 0);
+        assert_eq!(ctr.sbt_supply(issuer2()), 0);
+        assert_eq!(ctr.sbt_supply(issuer3()), 0);
+        for i in 1..=10 {
+            print!("{}", i);
+            assert_eq!(ctr.sbt_supply_by_class(issuer1(), i), 0);
+        }
+        for i in 1..=10 {
+            assert_eq!(ctr.sbt_supply_by_class(issuer2(), i), 0);
+        }
+        for i in 1..=10 {
+            assert_eq!(ctr.sbt_supply_by_class(issuer3(), i), 0);
+        }
+    }
+    #[test]
+    fn sbt_burn_all_limit() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 60 * MINT_DEPOSIT);
+
+        // mint tokens to alice and bob from issuer1
+        let batch_metadata = mk_batch_metadata(40);
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..20].to_vec())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata[20..].to_vec())]);
+
+        // mint tokens to alice and bob from issuer2
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..20].to_vec())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata[20..].to_vec())]);
+
+        // mint tokens to alice and bob from issuer3
+        ctx.predecessor_account_id = issuer3();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..20].to_vec())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata[20..].to_vec())]);
+
+        assert_eq!(ctr.sbt_supply(issuer1()), 40);
+        assert_eq!(ctr.sbt_supply(issuer2()), 40);
+        assert_eq!(ctr.sbt_supply(issuer3()), 40);
+
+        // alice burn all her tokens from all the issuers
+        ctx.predecessor_account_id = alice();
+        loop {
+            ctx.prepaid_gas = max_gas();
+            testing_env!(ctx.clone());
+            if ctr._sbt_burn_all(41) {
+                //anything above 41 fails due to MaxGasLimitExceeded error
+                break;
+            }
+        }
+
+        // make sure the balances are updated correctly
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert!(res.is_empty());
+
+        let res = ctr.sbt_tokens_by_owner(bob(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 20);
+        assert_eq!(res[1].1.len(), 20);
+        assert_eq!(res[2].1.len(), 20);
+
+        assert_eq!(ctr.sbt_supply(issuer1()), 20);
+        assert_eq!(ctr.sbt_supply(issuer2()), 20);
+        assert_eq!(ctr.sbt_supply(issuer3()), 20);
     }
 }

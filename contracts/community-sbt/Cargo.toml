@@ -1,6 +1,6 @@
 [package]
 name = "community-sbt"
-version = "3.0.1"
+version = "4.0.0"
 authors = ["Robert Zaremba 'https://zaremba.ch/'"]
 edition = { workspace = true }
 repository = { workspace = true }
@@ -17,3 +17,12 @@ serde_json.workspace = true
 
 cost = { path = "../cost" }
 sbt = { path = "../sbt" }
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+workspaces.workspace = true
+near-primitives.workspace = true
+near-units.workspace = true
+tracing.workspace = true
