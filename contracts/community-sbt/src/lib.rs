@@ -156,7 +156,7 @@ impl Contract {
     ) {
         self.assert_admin();
         require!(!accounts.is_empty(), "accounts must be a non empty list");
-        panic!("not implemented");
+        env::panic_str("not implemented");
         // todo: requires registry update.
         // let mut tokens = Vec::with_capacity(accounts.len());
         // for a in accounts {
