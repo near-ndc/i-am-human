@@ -140,11 +140,33 @@ impl Contract {
         burn: bool,
         memo: Option<String>,
     ) -> Promise {
-        self.assert_admin();
+        // assert is either admin or a token minter
+        let caller = env::predecessor_account_id();
+        if self.admin != caller {
+            for token in &tokens {
+                ext_registry::ext(self.registry.clone())
+                    .sbt(env::current_account_id(), token.clone())
+                    .then(Self::ext(env::current_account_id()).on_minter_callback(&caller));
+            }
+        }
         if let Some(memo) = memo {
             env::log_str(&format!("SBT revoke memo: {}", memo));
         }
         ext_registry::ext(self.registry.clone()).sbt_revoke(tokens, burn)
+    }
+    #[private]
+    pub fn on_minter_callback(
+        &self,
+        caller: &AccountId,
+        #[callback_result] token_data: Option<Token>,
+    ) {
+        let token = token_data.expect("token not found");
+        let class_id = token.metadata.class;
+        let minters = self.class_minter(class_id).expect("class not found");
+        require!(
+            minters.minters.contains(caller),
+            "caller must be and admin or a minter"
+        );
     }
 
     /// admin: remove SBT from the given accounts.
