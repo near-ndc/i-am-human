@@ -55,10 +55,14 @@ Production:
 - **Fractal**: `fractal.i-am-human.near` @ oracle/v1.0.0
   - verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
 - **Community SBTs**: `community.i-am-human.near` @ community-sbt/v4.0.0
-  classes: OG=1, Vibes=2
+  classes: OG=1
   Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
 - **Regens SBTs**: `issuer.regens.near` @ community-sbt/v4.0.0
   classes: ProofOfRegen=1
+  Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
+- **Proof of Vibes**: `CTR=issuer.proofofvibes.near` @ community-sbt/v4.0.0
+  classes: Vibes=1
+  Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
 
 Mainnet Testing:
 
