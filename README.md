@@ -51,7 +51,7 @@ The IAH Registry supports the following extra queries, which are not part of the
 
 Production:
 
-- **SBT registry**: `registry.i-am-human.near` @ registry/v1.2.0
+- **SBT registry**: `registry.i-am-human.near` @ registry/v1.3.0
 - **Fractal**: `fractal.i-am-human.near` @ oracle/v1.0.0
   - verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
 - **Community SBTs**: `community.i-am-human.near` @ community-sbt/v4.1.0
@@ -66,7 +66,7 @@ Production:
 
 Mainnet Testing:
 
-- `registry-v1.gwg-testing.near` @ registry/v1.2.0
+- `registry-v1.gwg-testing.near` @ registry/v1.3.0
   IAH issuer: `(fractal.i-am-human.near, [1])`
 - `community-testing.i-am-human.near` @ community-sbt/v4.1.0
   classes: OG=1, Vibes=2
@@ -82,7 +82,7 @@ Deprecated:
 - **SBT registry**:
   Testnet registry is used to test the issuer behavior. For testing other integrations (eg polling, elections) use the testing-unstable version. Consult issuer contracts to validate which issuer is linked to which registry. We may consider adding migration to `registry-1` to make it compatible with the latest version.
   - `registry-1.i-am-human.testnet` @ release/v0.2
-  - `registry-2.i-am-human.testnet` @ registry/v1.2.0 (same as the prod version)
+  - `registry-2.i-am-human.testnet` @ registry/v1.3.0 (same as the prod version)
   - `registry-unstable.i-am-human.testnet` @ registry/v1.2.0
 - **Demo SBT Issuer**: `sbt1.i-am-human.testnet` (the `demo_issuer` contract)
 - **Fractal Issuer**: `i-am-human-staging.testnet` (the `oracle` contract).
