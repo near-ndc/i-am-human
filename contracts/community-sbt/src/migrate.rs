@@ -2,11 +2,14 @@ use crate::*;
 
 #[derive(BorshDeserialize)]
 pub struct OldContract {
+    /// Account authorized to add new minting authority
     pub admin: AccountId,
     /// map of classId -> to set of accounts authorized to mint
-    pub minting_authorities: LookupMap<ClassId, Vec<AccountId>>,
-
+    pub classes: LookupMap<ClassId, ClassMinters>,
+    pub next_class: ClassId,
+    /// SBT registry.
     pub registry: AccountId,
+    /// contract metadata
     pub metadata: LazyOption<ContractMetadata>,
     pub ttl: u64,
 }
@@ -19,24 +22,23 @@ impl Contract {
         let mut old_state: OldContract = env::state_read().expect("failed");
 
         // changed fields:
-        // next_class -- new field
-        // minting_authorities: LookupMap<ClassId, Vec<AccountId>>
-        //   -> LookupMap<ClassId, ClassMinters>,
+        // ttl -- removed
+        // classes: LookupMap<ClassId, ClassMinters>,
+        //   -> LookupMap<ClassId, ClassMinters>, where ClassMinters has a new field: ttl:u64,
 
         let mut new_minters: Vec<ClassMinters> = Vec::new();
         let mut next_class = 1;
         for i in 1..=3 {
-            if let Some(minters) = old_state.minting_authorities.remove(&i) {
+            if let Some(minters) = old_state.classes.remove(&i) {
                 next_class = i;
                 new_minters.push(ClassMinters {
-                    requires_iah: true,
-                    minters,
+                    requires_iah: minters.requires_iah,
+                    /// accounts allowed to mint the SBT
+                    minters: minters.minters,
+                    /// time to live in ms. Overwrites metadata.expire_at.
+                    ttl: old_state.ttl,
                 });
             }
-        }
-        // all classes, except the first one require IAH
-        if !new_minters.is_empty() {
-            new_minters[0].requires_iah = false;
         }
 
         let mut classes = LookupMap::new(StorageKey::MintingAuthority);
@@ -50,7 +52,6 @@ impl Contract {
             next_class,
             registry: old_state.registry,
             metadata: old_state.metadata,
-            ttl: old_state.ttl,
         }
     }
 }

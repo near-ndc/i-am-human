@@ -106,7 +106,7 @@ pub struct OwnedToken {
 }
 
 /// Full information about the token
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(
     not(target_arch = "wasm32"),

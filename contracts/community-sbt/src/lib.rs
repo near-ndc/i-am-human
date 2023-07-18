@@ -1,3 +1,5 @@
+use core::panic;
+
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::{env, near_bindgen, require, AccountId, Balance, PanicOnDefault, Promise};
@@ -11,6 +13,8 @@ pub use crate::storage::*;
 mod errors;
 mod storage;
 
+const MIN_TTL: u64 = 3_600_000; // 1 hour in miliseconds
+
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
@@ -19,13 +23,10 @@ pub struct Contract {
     /// map of classId -> to set of accounts authorized to mint
     pub classes: LookupMap<ClassId, ClassMinters>,
     pub next_class: ClassId,
-
     /// SBT registry.
     pub registry: AccountId,
     /// contract metadata
     pub metadata: LazyOption<ContractMetadata>,
-    /// time to live in ms. Overwrites metadata.expire_at.
-    pub ttl: u64,
 }
 
 // Implement the contract structure
@@ -34,21 +35,13 @@ impl Contract {
     /// @admin: account authorized to add new minting authority
     /// @ttl: time to live for SBT expire. Must be number in miliseconds.
     #[init]
-    pub fn new(
-        registry: AccountId,
-        admin: AccountId,
-        metadata: ContractMetadata,
-        ttl: u64,
-    ) -> Self {
-        require!(ttl > 0, "`ttl` must be bigger than 0");
+    pub fn new(registry: AccountId, admin: AccountId, metadata: ContractMetadata) -> Self {
         Self {
             admin,
             classes: LookupMap::new(StorageKey::MintingAuthority),
             next_class: 1,
-
             registry,
             metadata: LazyOption::new(StorageKey::ContractMetadata, Some(&metadata)),
-            ttl,
         }
     }
 
@@ -88,9 +81,10 @@ impl Contract {
             return Err(MintError::RequiredDeposit(required_deposit));
         }
         let requires_iah = self.assert_minter(metadata.class)?;
+        let ttl = self.get_ttl(metadata.class);
 
         let now_ms = env::block_timestamp_ms();
-        metadata.expires_at = Some(now_ms + self.ttl);
+        metadata.expires_at = Some(now_ms + ttl);
         metadata.issued_at = Some(now_ms);
         if let Some(memo) = memo {
             env::log_str(&format!("SBT mint memo: {}", memo));
@@ -102,26 +96,22 @@ impl Contract {
         let promise = if requires_iah {
             sbt_reg
                 .with_static_gas(MINT_GAS + IS_HUMAN_GAS)
-                .sbt_mint(token_spec)
+                .sbt_mint_iah(token_spec)
         } else {
-            sbt_reg.with_static_gas(MINT_GAS).sbt_mint_iah(token_spec)
+            sbt_reg.with_static_gas(MINT_GAS).sbt_mint(token_spec)
         };
         Ok(promise)
     }
 
     /// sbt_renew will update the expire time of provided tokens.
     /// `ttl` is duration in milliseconds to set expire time: `now+ttl`.
-    /// Panics if ttl > self.ttl or ttl < 1h (3'600'000ms) or `tokens` is an empty list.
+    /// Panics if ttl > self.minters.ttl or ttl < 1h (3'600'000ms) or `tokens` is an empty list.
     pub fn sbt_renew(&mut self, tokens: Vec<TokenId>, ttl: u64, memo: Option<String>) -> Promise {
-        self.assert_admin();
-        require!(
-            3_600_000 <= ttl && ttl <= self.ttl,
-            format!(
-                "ttl must be bigger than 3'600'000ms smaller or equal than {}ms",
-                self.ttl
-            )
-        );
-
+        for token in &tokens {
+            ext_registry::ext(self.registry.clone())
+                .sbt(env::current_account_id(), token.clone())
+                .then(Self::ext(env::current_account_id()).on_sbt_renew_callback(ttl));
+        }
         require!(!tokens.is_empty(), "tokens must be a non empty list");
         if let Some(memo) = memo {
             env::log_str(&format!("SBT renew memo: {}", memo));
@@ -129,6 +119,24 @@ impl Contract {
 
         let expires_at_ms = env::block_timestamp_ms() + ttl;
         ext_registry::ext(self.registry.clone()).sbt_renew(tokens, expires_at_ms)
+    }
+
+    #[private]
+    pub fn on_sbt_renew_callback(
+        &self,
+        ttl: u64,
+        #[callback_result] token_data: Result<Option<Token>, near_sdk::PromiseError>,
+    ) {
+        let token = token_data.expect("token not found");
+        let class_id = token.unwrap().metadata.class;
+        let minters_ttl = self.get_ttl(class_id);
+        require!(
+            MIN_TTL <= ttl && ttl <= minters_ttl,
+            format!(
+                "ttl must be bigger than {}ms and smaller or equal than {}ms",
+                MIN_TTL, minters_ttl
+            )
+        );
     }
 
     /// Revokes list of tokens. If `burn==true`, the tokens are burned (removed). Otherwise,
@@ -188,6 +196,7 @@ impl Contract {
         &mut self,
         requires_iah: bool,
         minter: AccountId,
+        ttl: u64,
         #[allow(unused_variables)] memo: Option<String>,
     ) -> ClassId {
         self.assert_admin();
@@ -198,6 +207,7 @@ impl Contract {
             &ClassMinters {
                 requires_iah,
                 minters: vec![minter],
+                ttl,
             },
         );
         cls
@@ -255,7 +265,7 @@ impl Contract {
         require!(self.admin == env::predecessor_account_id(), "not an admin");
     }
 
-    // returns requires_iah
+    /// returns requires_iah
     fn assert_minter(&self, class: ClassId) -> Result<bool, MintError> {
         match self.class_minter(class) {
             None => Err(MintError::ClassNotEnabled),
@@ -266,6 +276,14 @@ impl Contract {
                     Err(MintError::NotMinter)
                 }
             }
+        }
+    }
+
+    /// returns ttl for a given token class
+    fn get_ttl(&self, class: ClassId) -> u64 {
+        match self.class_minter(class) {
+            None => panic!("class not found"),
+            Some(cm) => cm.ttl,
         }
     }
 }
@@ -319,10 +337,11 @@ mod tests {
         };
     }
 
-    fn class_minter(requires_iah: bool, minters: Vec<AccountId>) -> ClassMinters {
+    fn class_minter(requires_iah: bool, minters: Vec<AccountId>, ttl: u64) -> ClassMinters {
         ClassMinters {
             requires_iah,
             minters,
+            ttl,
         }
     }
 
@@ -334,8 +353,8 @@ mod tests {
             .build();
         ctx.attached_deposit = deposit.unwrap_or(required_sbt_mint_deposit(1));
         testing_env!(ctx.clone());
-        let mut ctr = Contract::new(registry(), admin(), contract_metadata(), START);
-        ctr.enable_next_class(true, authority(1), None);
+        let mut ctr = Contract::new(registry(), admin(), contract_metadata());
+        ctr.enable_next_class(true, authority(1), START, None);
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
@@ -353,8 +372,8 @@ mod tests {
         // admin is not a minter
         expect_not_authorized(1, &ctr);
 
-        let new_cls = ctr.enable_next_class(true, authority(2), None);
-        let other_cls = ctr.enable_next_class(true, authority(10), None);
+        let new_cls = ctr.enable_next_class(true, authority(2), START, None);
+        let other_cls = ctr.enable_next_class(true, authority(10), START, None);
         ctr.authorize(new_cls, authority(3), None);
 
         match ctr.assert_minter(new_cls) {
@@ -400,10 +419,10 @@ mod tests {
     #[test]
     fn authorize() {
         let (_, mut ctr) = setup(&admin(), None);
-        let cls = ctr.enable_next_class(false, authority(4), None);
+        let cls = ctr.enable_next_class(false, authority(4), START, None);
         assert_eq!(cls, 2);
         assert_eq!(ctr.next_class, cls + 1);
-        let cls = ctr.enable_next_class(false, authority(4), None);
+        let cls = ctr.enable_next_class(false, authority(4), START, None);
         assert_eq!(cls, 3);
         assert_eq!(ctr.next_class, 4);
 
@@ -413,15 +432,15 @@ mod tests {
 
         assert_eq!(
             ctr.class_minter(1),
-            Some(class_minter(true, vec![authority(1), authority(2)]))
+            Some(class_minter(true, vec![authority(1), authority(2)], START))
         );
         assert_eq!(
             ctr.class_minter(2),
-            Some(class_minter(false, vec![authority(4), authority(2)]))
+            Some(class_minter(false, vec![authority(4), authority(2)], START))
         );
         assert_eq!(
             ctr.class_minter(3),
-            Some(class_minter(false, vec![authority(4)]))
+            Some(class_minter(false, vec![authority(4)], START))
         );
         assert_eq!(ctr.class_minter(4), None);
     }
@@ -443,7 +462,7 @@ mod tests {
     #[test]
     fn unauthorize() {
         let (_, mut ctr) = setup(&admin(), None);
-        ctr.enable_next_class(false, authority(3), None);
+        ctr.enable_next_class(false, authority(3), START, None);
 
         ctr.authorize(1, authority(2), None);
         ctr.authorize(1, authority(3), None);
@@ -456,12 +475,13 @@ mod tests {
             ctr.class_minter(1),
             Some(class_minter(
                 true,
-                vec![authority(1), authority(4), authority(3)]
+                vec![authority(1), authority(4), authority(3)],
+                START
             ))
         );
         assert_eq!(
             ctr.class_minter(2),
-            Some(class_minter(false, vec![authority(3), authority(2)]))
+            Some(class_minter(false, vec![authority(3), authority(2)], START))
         );
     }
 
@@ -479,7 +499,7 @@ mod tests {
     fn mint() -> Result<(), MintError> {
         let (mut ctx, mut ctr) = setup(&admin(), None);
 
-        let cls2 = ctr.enable_next_class(true, authority(2), None);
+        let cls2 = ctr.enable_next_class(true, authority(2), START, None);
 
         ctx.predecessor_account_id = authority(1);
         testing_env!(ctx.clone());

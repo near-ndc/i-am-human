@@ -76,8 +76,8 @@ async fn init(worker: &Worker<Sandbox>) -> anyhow::Result<(Account, Account, Con
 
     // authorize authority to mint tokens
     let res = authority_acc
-        .call(community_mainnet.id(), "authorize")
-        .args_json(json!({"class": 1, "minter": authority_acc.id(), "memo": "test"}))
+        .call(community_mainnet.id(), "enable_next_class")
+        .args_json(json!({"requires_iah": true, "minter": authority_acc.id(), "memo": "test"}))
         .max_gas()
         .transact()
         .await?;
@@ -85,7 +85,7 @@ async fn init(worker: &Worker<Sandbox>) -> anyhow::Result<(Account, Account, Con
 
     // mint mocked community tokens
     let token_metadata = TokenMetadata {
-        class: 1,
+        class: res.json()?,
         issued_at: Some(0),
         expires_at: None,
         reference: None,
@@ -118,7 +118,6 @@ async fn init(worker: &Worker<Sandbox>) -> anyhow::Result<(Account, Account, Con
     ));
 }
 
-#[ignore = "this test is not valid after the migration"]
 #[tokio::test]
 async fn migration_mainnet() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
