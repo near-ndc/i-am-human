@@ -173,13 +173,19 @@ impl Contract {
 
     /// allows admin to change if the specific class requires IAH verification.
     /// Panics if class is not found.
-    pub fn change_requires_iah(&mut self, class: ClassId, requires_iah: bool) {
+    pub fn set_requires_iah(&mut self, class: ClassId, requires_iah: bool) {
         self.assert_admin();
         let mut c = self.classes.get(&class).expect("class not found");
         if c.requires_iah != requires_iah {
             c.requires_iah = requires_iah;
             self.classes.insert(&class, &c);
         }
+    }
+
+    /// allows admin to change TTL, expected time duration in miliseconds.
+    pub fn set_ttl(&mut self, ttl: u64) {
+        self.assert_admin();
+        self.ttl = ttl;
     }
 
     /// Enables a new, unused class and authorizes minter to issue SBTs of that class.
