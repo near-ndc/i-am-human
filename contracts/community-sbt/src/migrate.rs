@@ -1,7 +1,7 @@
 use crate::*;
 
 /// Helper structure for keys of the persistent collections.
-#[derive(BorshDeserialize)]
+#[derive(BorshDeserialize, BorshSerialize)]
 pub struct OldClassMinters {
     /// if true only iah verifed accounts can obrain the SBT
     pub requires_iah: bool,

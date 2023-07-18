@@ -132,11 +132,8 @@ impl Contract {
         let class_id = token.unwrap().metadata.class;
         let minters_ttl = self.get_ttl(class_id);
         require!(
-            MIN_TTL <= ttl && ttl <= minters_ttl,
-            format!(
-                "ttl must be bigger than {}ms and smaller or equal than {}ms",
-                MIN_TTL, minters_ttl
-            )
+            ttl <= minters_ttl,
+            format!("ttl must be smaller or equal than {}ms", minters_ttl)
         );
     }
 
@@ -201,6 +198,10 @@ impl Contract {
         #[allow(unused_variables)] memo: Option<String>,
     ) -> ClassId {
         self.assert_admin();
+        require!(
+            MIN_TTL <= ttl,
+            format!("ttl must be at least {}ms", MIN_TTL)
+        );
         let cls = self.next_class;
         self.next_class += 1;
         self.classes.insert(
