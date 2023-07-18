@@ -5,7 +5,7 @@ use serde_json::json;
 use workspaces::{network::Sandbox, Account, AccountId, Contract, Worker};
 
 const MAINNET_REGISTRY_ID: &str = "registry-v1.gwg-testing.near";
-const MAINNET_COMMUNITY_SBT_ID: &str = "community-testing.i-am-human.near";
+const MAINNET_COMMUNITY_SBT_ID: &str = "community.i-am-human.near";
 
 async fn init(worker: &Worker<Sandbox>) -> anyhow::Result<(Account, Account, Contract, Account)> {
     // import the registry contract from mainnet
@@ -77,7 +77,7 @@ async fn init(worker: &Worker<Sandbox>) -> anyhow::Result<(Account, Account, Con
     // authorize authority to mint tokens
     let res = authority_acc
         .call(community_mainnet.id(), "enable_next_class")
-        .args_json(json!({"requires_iah": true, "minter": authority_acc.id(), "memo": "test"}))
+        .args_json(json!({"requires_iah": false, "minter": authority_acc.id(), "memo": "test"}))
         .max_gas()
         .transact()
         .await?;
@@ -130,15 +130,12 @@ async fn migration_mainnet() -> anyhow::Result<()> {
         .into_result()?;
 
     // call the migrate method
-    let res: String = new_community_contract
+    let res = new_community_contract
         .call("migrate")
         .max_gas()
         .transact()
-        .await?
-        .json()?;
-    print!("{}", res);
-    // fails here `method not found`
-    // assert!(res.is_success());
+        .await?;
+    assert!(res.is_success()); //fails here
 
     // call the migration again should fail
     let res = new_community_contract

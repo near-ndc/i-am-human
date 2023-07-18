@@ -11,6 +11,7 @@ pub use crate::errors::*;
 pub use crate::storage::*;
 
 mod errors;
+pub mod migrate;
 mod storage;
 
 const MIN_TTL: u64 = 3_600_000; // 1 hour in miliseconds
