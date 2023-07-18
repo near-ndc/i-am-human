@@ -102,9 +102,9 @@ impl Contract {
         let promise = if requires_iah {
             sbt_reg
                 .with_static_gas(MINT_GAS + IS_HUMAN_GAS)
-                .sbt_mint(token_spec)
+                .sbt_mint_iah(token_spec)
         } else {
-            sbt_reg.with_static_gas(MINT_GAS).sbt_mint_iah(token_spec)
+            sbt_reg.with_static_gas(MINT_GAS).sbt_mint(token_spec)
         };
         Ok(promise)
     }
