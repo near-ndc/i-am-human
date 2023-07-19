@@ -7,23 +7,37 @@ use workspaces::{network::Sandbox, Account, AccountId, Contract, Worker};
 const MAINNET_REGISTRY_ID: &str = "registry-v1.gwg-testing.near";
 const MAINNET_COMMUNITY_SBT_ID: &str = "community-testing.i-am-human.near";
 
-async fn init(worker: &Worker<Sandbox>) -> anyhow::Result<(Account, Account, Contract, Account)> {
-    // import the registry contract from mainnet
-    let worker_mainnet = workspaces::mainnet().await?;
-    let contract_id: AccountId = MAINNET_REGISTRY_ID.parse()?;
-    let registry_contract = worker
-        .import_contract(&contract_id, &worker_mainnet)
-        .initial_balance(parse_near!("10000000 N"))
-        .transact()
-        .await?;
+async fn init(
+    worker: &Worker<Sandbox>,
+    migration: bool,
+) -> anyhow::Result<(Account, Account, Contract, Account)> {
+    let registry_contract: Contract;
+    let community_contract: Contract;
+    if migration {
+        // import the registry contract from mainnet
+        let worker_mainnet = workspaces::mainnet().await?;
+        let contract_id: AccountId = MAINNET_REGISTRY_ID.parse()?;
+        registry_contract = worker
+            .import_contract(&contract_id, &worker_mainnet)
+            .initial_balance(parse_near!("10000000 N"))
+            .transact()
+            .await?;
 
-    // import the community-sbt contract from mainnet
-    let contract_id: AccountId = MAINNET_COMMUNITY_SBT_ID.parse()?;
-    let community_contract = worker
-        .import_contract(&contract_id, &worker_mainnet)
-        .initial_balance(parse_near!("10000000 N"))
-        .transact()
-        .await?;
+        // import the community-sbt contract from mainnet
+        let contract_id: AccountId = MAINNET_COMMUNITY_SBT_ID.parse()?;
+        community_contract = worker
+            .import_contract(&contract_id, &worker_mainnet)
+            .initial_balance(parse_near!("10000000 N"))
+            .transact()
+            .await?;
+    } else {
+        registry_contract = worker
+            .dev_deploy(include_bytes!("../../res/community_sbt.wasm"))
+            .await?;
+        community_contract = worker
+            .dev_deploy(include_bytes!("../../res/registry.wasm"))
+            .await?;
+    }
 
     let registry_mainnet = registry_contract.as_account();
     let community_mainnet = community_contract.as_account();
@@ -77,7 +91,7 @@ async fn init(worker: &Worker<Sandbox>) -> anyhow::Result<(Account, Account, Con
     // authorize authority to mint tokens
     let res = authority_acc
         .call(community_mainnet.id(), "enable_next_class")
-        .args_json(json!({"requires_iah": true, "minter": authority_acc.id(), "memo": "test"}))
+        .args_json(json!({"requires_iah": false, "minter": authority_acc.id(), "memo": "test"}))
         .max_gas()
         .transact()
         .await?;
@@ -121,7 +135,7 @@ async fn init(worker: &Worker<Sandbox>) -> anyhow::Result<(Account, Account, Con
 #[tokio::test]
 async fn migration_mainnet() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (_, community_sbt, _, admin) = init(&worker).await?;
+    let (_, community_sbt, _, admin) = init(&worker, true).await?;
 
     // deploy the new contract
     let new_community_contract = community_sbt

@@ -108,11 +108,9 @@ impl Contract {
     /// `ttl` is duration in milliseconds to set expire time: `now+ttl`.
     /// Panics if ttl > self.minters.ttl or ttl < 1h (3'600'000ms) or `tokens` is an empty list.
     pub fn sbt_renew(&mut self, tokens: Vec<TokenId>, ttl: u64, memo: Option<String>) -> Promise {
-        for token in &tokens {
-            ext_registry::ext(self.registry.clone())
-                .sbt(env::current_account_id(), token.clone())
-                .then(Self::ext(env::current_account_id()).on_sbt_renew_callback(ttl));
-        }
+        ext_registry::ext(self.registry.clone())
+            .sbts(env::current_account_id(), tokens.clone())
+            .then(Self::ext(env::current_account_id()).on_sbt_renew_callback(ttl));
         require!(!tokens.is_empty(), "tokens must be a non empty list");
         if let Some(memo) = memo {
             env::log_str(&format!("SBT renew memo: {}", memo));
@@ -126,15 +124,17 @@ impl Contract {
     pub fn on_sbt_renew_callback(
         &self,
         ttl: u64,
-        #[callback_result] token_data: Result<Option<Token>, near_sdk::PromiseError>,
+        #[callback_result] token_data: Result<Vec<Option<Token>>, near_sdk::PromiseError>,
     ) {
-        let token = token_data.expect("token not found");
-        let class_id = token.unwrap().metadata.class;
-        let minters_ttl = self.get_ttl(class_id);
-        require!(
-            ttl <= minters_ttl,
-            format!("ttl must be smaller or equal than {}ms", minters_ttl)
-        );
+        let ts = token_data.expect("error while retrieving tokens data from registry");
+        for token in ts {
+            let class_id = token.expect("token not found").metadata.class;
+            let minters_ttl = self.get_ttl(class_id);
+            require!(
+                ttl <= minters_ttl,
+                format!("ttl must be smaller or equal than {}ms", minters_ttl)
+            );
+        }
     }
 
     /// Revokes list of tokens. If `burn==true`, the tokens are burned (removed). Otherwise,
@@ -189,9 +189,11 @@ impl Contract {
     }
 
     /// allows admin to change TTL, expected time duration in miliseconds.
-    pub fn set_ttl(&mut self, ttl: u64) {
+    pub fn set_ttl(&mut self, class: ClassId, ttl: u64) {
         self.assert_admin();
-        self.ttl = ttl;
+        let mut cm = self.classes.get(&class).expect("class not found");
+        cm.ttl = ttl;
+        self.classes.insert(&class, &cm);
     }
 
     /// Enables a new, unused class and authorizes minter to issue SBTs of that class.
