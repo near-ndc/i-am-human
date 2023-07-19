@@ -20,6 +20,20 @@ impl SBTRegistry for Contract {
             .map(|td| td.to_token(token))
     }
 
+    /// Get the information about list of token IDs issued by the `issuer` SBT contract.
+    /// If token ID is not found `None` is set in the specific return index.
+    fn sbts(&self, issuer: AccountId, tokens: Vec<TokenId>) -> Vec<Option<Token>> {
+        let issuer_id = self.assert_issuer(&issuer);
+        tokens
+            .into_iter()
+            .map(|token| {
+                self.issuer_tokens
+                    .get(&IssuerTokenId { issuer_id, token })
+                    .map(|td| td.to_token(token))
+            })
+            .collect()
+    }
+
     /// returns total amount of tokens minted by the given issuer
     fn sbt_supply(&self, issuer: AccountId) -> u64 {
         let issuer_id = match self.sbt_issuers.get(&issuer) {

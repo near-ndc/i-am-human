@@ -924,11 +924,22 @@ mod tests {
         assert_eq!(0, ctr.sbt_supply(issuer2()));
 
         let sbt1_1 = ctr.sbt(issuer1(), 1).unwrap();
-        assert_eq!(sbt1_1, mk_token(1, alice(), m1_1.clone()));
+        let sbt1_1_e = mk_token(1, alice(), m1_1.clone());
+        let sbt1_2_e = mk_token(2, bob(), m1_1.clone());
+        assert_eq!(sbt1_1, sbt1_1_e);
         let sbt1_2 = ctr.sbt(issuer1(), 2).unwrap();
-        assert_eq!(sbt1_2, mk_token(2, bob(), m1_1.clone()));
+        assert_eq!(sbt1_2, sbt1_2_e);
         assert!(ctr.sbt(issuer2(), 1).is_none());
         assert!(ctr.sbt(issuer1(), 3).is_none());
+
+        let sbts = ctr.sbts(issuer1(), vec![1, 2]);
+        assert_eq!(sbts, vec![Some(sbt1_1_e.clone()), Some(sbt1_2_e.clone())]);
+
+        let sbts = ctr.sbts(issuer1(), vec![2, 10, 3, 1]);
+        assert_eq!(
+            sbts,
+            vec![Some(sbt1_2_e.clone()), None, None, Some(sbt1_1_e.clone())]
+        );
 
         assert_eq!(1, ctr.sbt_supply_by_owner(alice(), issuer1(), None));
         assert_eq!(1, ctr.sbt_supply_by_owner(alice(), issuer1(), Some(1)));
