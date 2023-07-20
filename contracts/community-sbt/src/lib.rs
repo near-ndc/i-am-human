@@ -120,6 +120,8 @@ impl Contract {
         ext_registry::ext(self.registry.clone()).sbt_renew(tokens, expires_at_ms)
     }
 
+    /// callback for sbt_renew. Checks the return value from `sbts` and if any of the tokens
+    /// does not exist or the ttl value is invalid panics.
     #[private]
     pub fn on_sbt_renew_callback(
         &self,

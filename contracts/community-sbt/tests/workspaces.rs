@@ -32,10 +32,10 @@ async fn init(
             .await?;
     } else {
         registry_contract = worker
-            .dev_deploy(include_bytes!("../../res/community_sbt.wasm"))
+            .dev_deploy(include_bytes!("../../res/registry.wasm"))
             .await?;
         community_contract = worker
-            .dev_deploy(include_bytes!("../../res/registry.wasm"))
+            .dev_deploy(include_bytes!("../../res/community_sbt.wasm"))
             .await?;
     }
 
@@ -88,18 +88,28 @@ async fn init(
         .await?;
     assert!(res.is_success());
 
-    // authorize authority to mint tokens
-    let res = authority_acc
-        .call(community_mainnet.id(), "enable_next_class")
-        .args_json(json!({"requires_iah": false, "minter": authority_acc.id(), "memo": "test"}))
-        .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_success());
+    if migration {
+        // authorize authority to mint tokens
+        let res = authority_acc
+            .call(community_mainnet.id(), "enable_next_class")
+            .args_json(json!({"requires_iah": false, "minter": authority_acc.id(), "memo": "test"}))
+            .max_gas()
+            .transact()
+            .await?;
+        assert!(res.is_success());
+    } else {
+        let res = authority_acc
+            .call(community_mainnet.id(), "enable_next_class")
+            .args_json(json!({"requires_iah": false, "minter": authority_acc.id(),"ttl": 2147483647, "memo": "test"}))
+            .max_gas()
+            .transact()
+            .await?;
+        assert!(res.is_success());
+    }
 
     // mint mocked community tokens
     let token_metadata = TokenMetadata {
-        class: res.json()?,
+        class: 1,
         issued_at: Some(0),
         expires_at: None,
         reference: None,
@@ -172,7 +182,9 @@ async fn migration_mainnet() -> anyhow::Result<()> {
     // authorize authority to mint tokens
     let res = admin
         .call(new_community_contract.id(), "enable_next_class")
-        .args_json(json!({"requires_iah": true, "minter": admin.id(), "memo": "test"}))
+        .args_json(
+            json!({"requires_iah": true, "minter": admin.id(),"ttl": 2147483647, "memo": "test"}),
+        )
         .max_gas()
         .transact()
         .await?;
@@ -191,6 +203,29 @@ async fn migration_mainnet() -> anyhow::Result<()> {
     let res = admin
         .call(new_community_contract.as_account().id(), "change_admin")
         .args_json(json!({"new_admin": "test.near"}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_failure());
+
+    Ok(())
+}
+#[tokio::test]
+async fn sbt_renew() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (_, community_sbt, _, admin) = init(&worker, false).await?;
+    let res = admin
+        .call(community_sbt.id(), "sbt_renew")
+        .args_json(json!({"tokens": [1,2], "ttl": 200000, "memo": "test"}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    // renew non existing tokens
+    let res = admin
+        .call(community_sbt.id(), "sbt_renew")
+        .args_json(json!({"tokens": [3,4], "ttl": 200000, "memo": "test"}))
         .max_gas()
         .transact()
         .await?;
