@@ -317,7 +317,7 @@ mod tests {
     use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId, Balance, VMContext};
     use sbt::{ClassId, ContractMetadata, TokenMetadata};
 
-    use crate::{required_sbt_mint_deposit, ClassMinters, Contract, MintError};
+    use crate::{required_sbt_mint_deposit, ClassMinters, Contract, MintError, MIN_TTL};
 
     const START: u64 = 10;
 
@@ -366,7 +366,7 @@ mod tests {
         ctx.attached_deposit = deposit.unwrap_or(required_sbt_mint_deposit(1));
         testing_env!(ctx.clone());
         let mut ctr = Contract::new(registry(), admin(), contract_metadata());
-        ctr.enable_next_class(true, authority(1), START, None);
+        ctr.enable_next_class(true, authority(1), MIN_TTL, None);
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
@@ -384,8 +384,8 @@ mod tests {
         // admin is not a minter
         expect_not_authorized(1, &ctr);
 
-        let new_cls = ctr.enable_next_class(true, authority(2), START, None);
-        let other_cls = ctr.enable_next_class(true, authority(10), START, None);
+        let new_cls = ctr.enable_next_class(true, authority(2), MIN_TTL, None);
+        let other_cls = ctr.enable_next_class(true, authority(10), MIN_TTL, None);
         ctr.authorize(new_cls, authority(3), None);
 
         match ctr.assert_minter(new_cls) {
@@ -431,10 +431,10 @@ mod tests {
     #[test]
     fn authorize() {
         let (_, mut ctr) = setup(&admin(), None);
-        let cls = ctr.enable_next_class(false, authority(4), START, None);
+        let cls = ctr.enable_next_class(false, authority(4), MIN_TTL, None);
         assert_eq!(cls, 2);
         assert_eq!(ctr.next_class, cls + 1);
-        let cls = ctr.enable_next_class(false, authority(4), START, None);
+        let cls = ctr.enable_next_class(false, authority(4), MIN_TTL, None);
         assert_eq!(cls, 3);
         assert_eq!(ctr.next_class, 4);
 
@@ -444,15 +444,23 @@ mod tests {
 
         assert_eq!(
             ctr.class_minter(1),
-            Some(class_minter(true, vec![authority(1), authority(2)], START))
+            Some(class_minter(
+                true,
+                vec![authority(1), authority(2)],
+                MIN_TTL
+            ))
         );
         assert_eq!(
             ctr.class_minter(2),
-            Some(class_minter(false, vec![authority(4), authority(2)], START))
+            Some(class_minter(
+                false,
+                vec![authority(4), authority(2)],
+                MIN_TTL
+            ))
         );
         assert_eq!(
             ctr.class_minter(3),
-            Some(class_minter(false, vec![authority(4)], START))
+            Some(class_minter(false, vec![authority(4)], MIN_TTL))
         );
         assert_eq!(ctr.class_minter(4), None);
     }
@@ -474,7 +482,7 @@ mod tests {
     #[test]
     fn unauthorize() {
         let (_, mut ctr) = setup(&admin(), None);
-        ctr.enable_next_class(false, authority(3), START, None);
+        ctr.enable_next_class(false, authority(3), MIN_TTL, None);
 
         ctr.authorize(1, authority(2), None);
         ctr.authorize(1, authority(3), None);
@@ -488,12 +496,16 @@ mod tests {
             Some(class_minter(
                 true,
                 vec![authority(1), authority(4), authority(3)],
-                START
+                MIN_TTL
             ))
         );
         assert_eq!(
             ctr.class_minter(2),
-            Some(class_minter(false, vec![authority(3), authority(2)], START))
+            Some(class_minter(
+                false,
+                vec![authority(3), authority(2)],
+                MIN_TTL
+            ))
         );
     }
 
@@ -511,7 +523,7 @@ mod tests {
     fn mint() -> Result<(), MintError> {
         let (mut ctx, mut ctr) = setup(&admin(), None);
 
-        let cls2 = ctr.enable_next_class(true, authority(2), START, None);
+        let cls2 = ctr.enable_next_class(true, authority(2), MIN_TTL, None);
 
         ctx.predecessor_account_id = authority(1);
         testing_env!(ctx.clone());
