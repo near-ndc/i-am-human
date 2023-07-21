@@ -1,7 +1,7 @@
 build:
 	@RUSTFLAGS='-C link-arg=-s' cargo build --target wasm32-unknown-unknown --release
 	@cp ../target/wasm32-unknown-unknown/release/*.wasm ../res/
-	@cargo near abi
+	# @cargo near abi
 
 build-quick:
 	@RUSTFLAGS='-C link-arg=-s' cargo build --target wasm32-unknown-unknown
