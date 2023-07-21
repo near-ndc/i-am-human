@@ -100,7 +100,7 @@ async fn init(
     } else {
         let res = authority_acc
             .call(community_mainnet.id(), "enable_next_class")
-            .args_json(json!({"requires_iah": false, "minter": authority_acc.id(),"ttl": 2147483647, "memo": "test"}))
+            .args_json(json!({"requires_iah": false, "minter": authority_acc.id(),"max_ttl": 2147483647, "memo": "test"}))
             .max_gas()
             .transact()
             .await?;
@@ -183,7 +183,7 @@ async fn migration_mainnet() -> anyhow::Result<()> {
     let res = admin
         .call(new_community_contract.id(), "enable_next_class")
         .args_json(
-            json!({"requires_iah": true, "minter": admin.id(),"ttl": 2147483647, "memo": "test"}),
+            json!({"requires_iah": true, "minter": admin.id(),"max_ttl": 2147483647, "memo": "test"}),
         )
         .max_gas()
         .transact()

@@ -38,7 +38,7 @@ impl Contract {
         //   -> LookupMap<ClassId, ClassMinters>, where ClassMinters has a new field: max_ttl:u64,
 
         let mut classes = LookupMap::new(StorageKey::MintingAuthority);
-        let ttl = old_state.ttl;
+        let max_ttl = old_state.ttl;
         for i in 1..=3 {
             if let Some(minters) = old_state.classes.remove(&i) {
                 classes.insert(
@@ -46,7 +46,7 @@ impl Contract {
                     &ClassMinters {
                         requires_iah: minters.requires_iah,
                         minters: minters.minters,
-                        ttl,
+                        max_ttl,
                     },
                 );
             }

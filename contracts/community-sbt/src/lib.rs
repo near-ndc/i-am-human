@@ -1,5 +1,3 @@
-use core::panic;
-
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::{env, near_bindgen, require, AccountId, Balance, PanicOnDefault, Promise};
@@ -14,7 +12,7 @@ mod errors;
 pub mod migrate;
 mod storage;
 
-const MIN_TTL: u64 = 3_600_000; // 1 hour in miliseconds
+const MIN_TTL: u64 = 86_400_000; // 24 hours in miliseconds
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -34,7 +32,6 @@ pub struct Contract {
 #[near_bindgen]
 impl Contract {
     /// @admin: account authorized to add new minting authority
-    /// @ttl: time to live for SBT expire. Must be number in miliseconds.
     #[init]
     pub fn new(registry: AccountId, admin: AccountId, metadata: ContractMetadata) -> Self {
         Self {
@@ -66,8 +63,8 @@ impl Contract {
      **********/
 
     /// Mints a new SBT for the given receiver.
-    /// If `metadata.expires_at` is None then we set it to max: ` now+self.ttl`.
-    /// Panics if `metadata.expires_at > now+self.ttl` or when ClassID is not set or not 1.
+    /// If `metadata.expires_at` is None then we set it to max: ` now+max_ttl`.
+    /// Panics if `metadata.expires_at > now+max_ttl` or when ClassID is not set or not 1.
     #[payable]
     #[handle_result]
     pub fn sbt_mint(
@@ -81,9 +78,7 @@ impl Contract {
         if attached_deposit < required_deposit {
             return Err(MintError::RequiredDeposit(required_deposit));
         }
-        let requires_iah = self.assert_minter(metadata.class)?;
-        let ttl = self.get_ttl(metadata.class);
-
+        let (requires_iah, ttl) = self.class_info(metadata.class)?;
         let now_ms = env::block_timestamp_ms();
         metadata.expires_at = Some(now_ms + ttl);
         metadata.issued_at = Some(now_ms);
@@ -129,13 +124,17 @@ impl Contract {
         #[callback_result] token_data: Result<Vec<Option<Token>>, near_sdk::PromiseError>,
     ) {
         let ts = token_data.expect("error while retrieving tokens data from registry");
+        let mut cached_ttl: Vec<u64> = Vec::new();
         for token in ts {
+            let max_ttl: u64;
             let class_id = token.expect("token not found").metadata.class;
-            let minters_ttl = self.get_ttl(class_id);
-            require!(
-                ttl <= minters_ttl,
-                format!("ttl must be smaller or equal than {}ms", minters_ttl)
-            );
+            if let Some(cached_ttl) = cached_ttl.get(class_id as usize) {
+                max_ttl = *cached_ttl;
+            } else {
+                max_ttl = self.get_ttl(class_id);
+                cached_ttl.insert(class_id as usize, max_ttl);
+            }
+            self.assert_ttl(ttl, max_ttl);
         }
     }
 
@@ -191,10 +190,10 @@ impl Contract {
     }
 
     /// allows admin to change TTL, expected time duration in miliseconds.
-    pub fn set_ttl(&mut self, class: ClassId, ttl: u64) {
+    pub fn set_ttl(&mut self, class: ClassId, max_ttl: u64) {
         self.assert_admin();
         let mut cm = self.classes.get(&class).expect("class not found");
-        cm.ttl = ttl;
+        cm.max_ttl = max_ttl;
         self.classes.insert(&class, &cm);
     }
 
@@ -209,7 +208,7 @@ impl Contract {
     ) -> ClassId {
         self.assert_admin();
         require!(
-            MIN_TTL <= ttl,
+            MIN_TTL <= max_ttl,
             format!("ttl must be at least {}ms", MIN_TTL)
         );
         let cls = self.next_class;
@@ -219,7 +218,7 @@ impl Contract {
             &ClassMinters {
                 requires_iah,
                 minters: vec![minter],
-                ttl,
+                max_ttl,
             },
         );
         cls
@@ -277,13 +276,13 @@ impl Contract {
         require!(self.admin == env::predecessor_account_id(), "not an admin");
     }
 
-    /// returns requires_iah
-    fn assert_minter(&self, class: ClassId) -> Result<bool, MintError> {
+    /// returns (requires_iah, max_ttl)
+    fn class_info(&self, class: ClassId) -> Result<(bool, u64), MintError> {
         match self.class_minter(class) {
             None => Err(MintError::ClassNotEnabled),
             Some(cm) => {
                 if cm.minters.contains(&env::predecessor_account_id()) {
-                    Ok(cm.requires_iah)
+                    Ok((cm.requires_iah, cm.max_ttl))
                 } else {
                     Err(MintError::NotMinter)
                 }
@@ -295,8 +294,15 @@ impl Contract {
     fn get_ttl(&self, class: ClassId) -> u64 {
         match self.class_minter(class) {
             None => panic!("class not found"),
-            Some(cm) => cm.ttl,
+            Some(cm) => cm.max_ttl,
         }
+    }
+
+    fn assert_ttl(&self, ttl: u64, max_ttl: u64) {
+        require!(
+            ttl <= max_ttl,
+            format!("ttl must be smaller or equal than {}ms", max_ttl)
+        );
     }
 }
 
@@ -349,11 +355,11 @@ mod tests {
         };
     }
 
-    fn class_minter(requires_iah: bool, minters: Vec<AccountId>, ttl: u64) -> ClassMinters {
+    fn class_minter(requires_iah: bool, minters: Vec<AccountId>, max_ttl: u64) -> ClassMinters {
         ClassMinters {
             requires_iah,
             minters,
-            ttl,
+            max_ttl,
         }
     }
 
@@ -373,10 +379,10 @@ mod tests {
     }
 
     #[test]
-    fn assert_minter() -> Result<(), MintError> {
+    fn class_info() -> Result<(), MintError> {
         let (mut ctx, mut ctr) = setup(&admin(), None);
 
-        let expect_not_authorized = |cls, ctr: &Contract| match ctr.assert_minter(cls) {
+        let expect_not_authorized = |cls, ctr: &Contract| match ctr.class_info(cls) {
             Err(MintError::NotMinter) => (),
             x => panic!("expected NotAuthorized, got: {:?}", x),
         };
@@ -388,7 +394,7 @@ mod tests {
         let other_cls = ctr.enable_next_class(true, authority(10), MIN_TTL, None);
         ctr.authorize(new_cls, authority(3), None);
 
-        match ctr.assert_minter(new_cls) {
+        match ctr.class_info(new_cls) {
             Err(MintError::NotMinter) => (),
             x => panic!("admin should not be a minter of the new class, {:?}", x),
         };
@@ -396,10 +402,10 @@ mod tests {
         // authority(1) is a default minter for class 1 in the test setup
         ctx.predecessor_account_id = authority(1);
         testing_env!(ctx.clone());
-        ctr.assert_minter(1)?;
+        ctr.class_info(1)?;
         expect_not_authorized(new_cls, &ctr);
         expect_not_authorized(other_cls, &ctr);
-        match ctr.assert_minter(1122) {
+        match ctr.class_info(1122) {
             Err(MintError::ClassNotEnabled) => (),
             x => panic!("expected ClassNotEnabled, got: {:?}", x),
         };
@@ -408,7 +414,7 @@ mod tests {
         ctx.predecessor_account_id = authority(2);
         testing_env!(ctx.clone());
         expect_not_authorized(1, &ctr);
-        ctr.assert_minter(new_cls)?;
+        ctr.class_info(new_cls)?;
         expect_not_authorized(other_cls, &ctr);
 
         Ok(())
@@ -542,5 +548,11 @@ mod tests {
         };
 
         Ok(())
+    }
+    #[test]
+    #[should_panic(expected = "ttl must be smaller or equal than 1ms")]
+    fn assert_ttl() {
+        let (_, ctr) = setup(&admin(), None);
+        ctr.assert_ttl(10, 1);
     }
 }

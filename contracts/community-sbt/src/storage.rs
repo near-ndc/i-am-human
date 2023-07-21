@@ -20,5 +20,5 @@ pub struct ClassMinters {
     /// accounts allowed to mint the SBT
     pub minters: Vec<AccountId>,
     /// time to live in ms. Overwrites metadata.expire_at.
-    pub ttl: u64,
+    pub max_ttl: u64,
 }
