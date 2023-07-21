@@ -35,7 +35,7 @@ impl Contract {
         // changed fields:
         // ttl -- removed
         // classes: LookupMap<ClassId, ClassMinters>,
-        //   -> LookupMap<ClassId, ClassMinters>, where ClassMinters has a new field: ttl:u64,
+        //   -> LookupMap<ClassId, ClassMinters>, where ClassMinters has a new field: max_ttl:u64,
 
         let mut classes = LookupMap::new(StorageKey::MintingAuthority);
         let ttl = old_state.ttl;
