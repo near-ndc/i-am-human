@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::{env, near_bindgen, require, AccountId, Balance, PanicOnDefault, Promise};
@@ -124,15 +126,15 @@ impl Contract {
         #[callback_result] token_data: Result<Vec<Option<Token>>, near_sdk::PromiseError>,
     ) {
         let ts = token_data.expect("error while retrieving tokens data from registry");
-        let mut cached_ttl: Vec<u64> = Vec::new();
+        let mut cached_ttl: HashMap<u64, u64> = HashMap::new();
         for token in ts {
             let max_ttl: u64;
-            let class_id = token.expect("token not found").metadata.class;
-            if let Some(cached_ttl) = cached_ttl.get(class_id as usize) {
+            let class_id: u64 = token.expect("token not found").metadata.class;
+            if let Some(cached_ttl) = cached_ttl.get(&class_id) {
                 max_ttl = *cached_ttl;
             } else {
                 max_ttl = self.get_ttl(class_id);
-                cached_ttl.insert(class_id as usize, max_ttl);
+                cached_ttl.insert(class_id, max_ttl);
             }
             self.assert_ttl(ttl, max_ttl);
         }
