@@ -101,7 +101,7 @@ impl Contract {
 
     /// sbt_renew will update the expire time of provided tokens.
     /// `ttl` is duration in milliseconds to set expire time: `now+ttl`.
-    /// Panics if ttl > self.minters[class].ttl or ttl < `MIN_TTL` or `tokens` is an empty list.
+    /// Panics if `ttl > self.minters[class].max_ttl` or ttl < `MIN_TTL` or `tokens` is an empty list.
     pub fn sbt_renew(&mut self, tokens: Vec<TokenId>, ttl: u64, memo: Option<String>) -> Promise {
         ext_registry::ext(self.registry.clone())
             .sbts(env::current_account_id(), tokens.clone())
