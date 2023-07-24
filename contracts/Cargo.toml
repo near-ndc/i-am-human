@@ -18,7 +18,6 @@ edition = "2021"
 license = "Mozilla Public License Version 2.0"
 repository = "https://github.com/near-ndc/i-am-human"
 
-# compilation profile for a release target
 [profile.release]
 codegen-units = 1
 # s = optimize for binary size ("z" would additionally turn off loop vectorization), z is recommended usually
