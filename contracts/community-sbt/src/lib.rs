@@ -191,7 +191,7 @@ impl Contract {
         }
     }
 
-    /// allows admin to change TTL, expected time duration in miliseconds.
+    /// allows admin to change Max TTL, expected time duration in miliseconds.
     pub fn set_max_ttl(&mut self, class: ClassId, max_ttl: u64) {
         self.assert_admin();
         let mut cm = self.classes.get(&class).expect("class not found");
