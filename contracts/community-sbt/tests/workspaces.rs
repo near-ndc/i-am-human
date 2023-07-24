@@ -210,6 +210,7 @@ async fn migration_mainnet() -> anyhow::Result<()> {
 
     Ok(())
 }
+
 #[tokio::test]
 async fn sbt_renew() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
