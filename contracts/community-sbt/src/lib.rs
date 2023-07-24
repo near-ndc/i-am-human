@@ -276,7 +276,8 @@ impl Contract {
         require!(self.admin == env::predecessor_account_id(), "not an admin");
     }
 
-    /// returns (requires_iah, max_ttl)
+    /// Returns (requires_iah, max_ttl).
+    /// Returns error if class is not found or called by not minter.
     fn class_info(&self, class: ClassId) -> Result<(bool, u64), MintError> {
         match self.class_minter(class) {
             None => Err(MintError::ClassNotEnabled),
