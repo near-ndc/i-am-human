@@ -7,13 +7,11 @@ use sbt::*;
 pub const MILI_NEAR: Balance = 1_000_000_000_000_000_000__000;
 pub const REG_HUMAN_DEPOSIT: Balance = 3 * MILI_NEAR;
 
-pub type HumanSBTs = Vec<(AccountId, Vec<TokenId>)>;
-
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
     /// Accounts authorized to issue new SBT
-    pub used_tokens: LookupMap<AccountId, HumanSBTs>,
+    pub used_tokens: LookupMap<AccountId, SBTs>,
     /// SBT registry.
     pub registry: AccountId,
 }
@@ -34,25 +32,39 @@ impl Contract {
     // TODO: once we find a way how to merge human tokens into the args (payload) for
     // `registry.is_human_call`, then we should add here `tokens: Vec<(AccountId, Vec<TokenId>)>`
     #[payable]
-    pub fn register_human_token(&mut self, user: AccountId, tokens: HumanSBTs) -> bool {
+    pub fn register_human_token(
+        &mut self,
+        original_caller: AccountId,
+        iah_proof: SBTs,
+        payload: Vec<u32>,
+    ) -> bool {
         require!(
             env::predecessor_account_id() == self.registry,
             "must be called by registry"
         );
-        require!(!tokens.is_empty(), "tokens must be a non empty list");
-        for ti in &tokens {
-            require!(!ti.1.is_empty(), "tokens must be a non empty list");
+        require!(!iah_proof.is_empty(), "not a human");
+        assert_eq!(payload, expected_vec_payload(), "wrong payload");
+
+        for (_, tokens) in &iah_proof {
+            require!(
+                !tokens.is_empty(),
+                "bad response, expected non empty token list"
+            );
         }
-        if self.used_tokens.contains_key(&user) {
+        if self.used_tokens.contains_key(&original_caller) {
             return false;
         }
-        self.used_tokens.insert(&user, &tokens);
+        self.used_tokens.insert(&original_caller, &iah_proof);
         true
     }
 
     pub fn recorded_sbts(&self, user: AccountId) -> bool {
         self.used_tokens.contains_key(&user)
     }
+}
+
+pub(crate) fn expected_vec_payload() -> Vec<u32> {
+    vec![2, 3, 5, 7, 11]
 }
 
 #[cfg(test)]
@@ -90,11 +102,12 @@ mod tests {
         let (_, mut ctr) = setup(registry(), REG_HUMAN_DEPOSIT);
 
         let tokens = vec![(issuer1(), vec![1, 4])];
-        assert!(ctr.register_human_token(alice(), tokens.clone()));
+        let payload = expected_vec_payload();
+        assert!(ctr.register_human_token(alice(), tokens.clone(), payload.clone()));
         assert_eq!(ctr.used_tokens.get(&alice()).unwrap(), tokens);
 
         assert!(
-            !ctr.register_human_token(alice(), vec![(issuer1(), vec![2])]),
+            !ctr.register_human_token(alice(), vec![(issuer1(), vec![2])], payload.clone()),
             "second call for the same user should return false"
         );
         assert_eq!(
@@ -110,6 +123,6 @@ mod tests {
         let (_, mut ctr) = setup(issuer1(), REG_HUMAN_DEPOSIT);
 
         let tokens = vec![(issuer1(), vec![1, 4])];
-        ctr.register_human_token(alice(), tokens);
+        ctr.register_human_token(alice(), tokens, expected_vec_payload());
     }
 }

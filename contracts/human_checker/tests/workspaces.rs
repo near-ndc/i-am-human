@@ -1,5 +1,4 @@
 use anyhow::Ok;
-use near_sdk::json_types::Base64VecU8;
 use near_units::parse_near;
 use sbt::TokenMetadata;
 use serde_json::json;
@@ -13,14 +12,10 @@ struct Suite {
 }
 
 impl Suite {
-    pub async fn is_human_call(
-        &self,
-        user: &Account,
-        args_base64: &Base64VecU8,
-    ) -> anyhow::Result<bool> {
+    pub async fn is_human_call(&self, user: &Account, payload: &String) -> anyhow::Result<bool> {
         let res: bool = self.registry
         .call("is_human_call")
-        .args_json(json!({"account": user.id(), "ctr": self.human_checker.id(), "function": REGISTER_HUMAN_TOKEN, "args": args_base64}))
+        .args_json(json!({"account": user.id(), "ctr": self.human_checker.id(), "function": REGISTER_HUMAN_TOKEN, "payload": payload}))
         .max_gas()
         .transact()
         .await?
@@ -131,30 +126,29 @@ async fn is_human_call() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
     let (registry, human_checker, alice, bob, john, iah_issuer) = init(&worker).await?;
 
-    let tokens = vec![(iah_issuer.id(), vec![1])];
-    let args = serde_json::to_vec(&json!({"user": alice.id(), "tokens": tokens})).unwrap();
-    let args_base64: Base64VecU8 = args.into();
+    // let tokens = vec![(iah_issuer.id(), vec![1])];
+    let payload = serde_json::to_string(&json!([2, 3, 5, 7, 11])).unwrap();
 
     let suite = Suite {
         registry,
         human_checker,
     };
     // call the is_human_call method for alice (human)
-    let mut res = suite.is_human_call(&alice, &args_base64).await?;
+    let mut res = suite.is_human_call(&alice, &payload).await?;
     assert!(res);
     // check the key exists in human checker
     res = suite.contains_sbts(&alice).await?;
     assert!(res);
 
-    // call the is_human_call method bob (sbt but non human)
-    res = suite.is_human_call(&bob, &args_base64).await?;
+    // call the is_human_call method bob (has sbts but not a human)
+    res = suite.is_human_call(&bob, &payload).await?;
     assert!(!res);
     // check the key does not exists in human checker
     res = suite.contains_sbts(&bob).await?;
     assert!(!res);
 
-    // call the is_human_call method john (no sbt)
-    res = suite.is_human_call(&john, &args_base64).await?;
+    // call the is_human_call method john (doesn't have sbts)
+    res = suite.is_human_call(&john, &payload).await?;
     assert!(!res);
 
     // check the key does not exists in human checker
