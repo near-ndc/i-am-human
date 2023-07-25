@@ -1,58 +1,78 @@
+use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{AccountId, BorshStorageKey};
-use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 
 pub type PollId = u64;
 
 /// Helper structure for keys of the persistent collections.
-#[derive(Deserialize, Serialize)]
+#[derive(BorshSerialize, BorshDeserialize, Deserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
 pub enum PollQuestionAnswer {
     YesNo(bool),
-    TextChoices(Vec<String>), // should respect the min_choices, max_choices
-    PictureChoices(Vec<String>), // should respect the min_choices, max_choices
-    OpinionScale(usize), // should be a number between 0 and 10
+    TextChoices(Vec<usize>),    // should respect the min_choices, max_choices
+    PictureChoices(Vec<usize>), // should respect the min_choices, max_choices
+    OpinionScale(u64),          // should be a number between 0 and 10
     TextAnswer(String),
 }
 
-/// Helper structure for keys of the persistent collections.
-#[derive(Deserialize, Serialize)]
-#[serde(crate = "near_sdk::serde")]
-pub struct PollQuestion{
-    question_type: PollQuestionAnswer, // required
-    required: bool, // required, if true users can't vote without having an answer for this question
-    title: String, // required
-    description: Option<String>, // optional
-    image: Option<String>, // optional
-    labels: Option<(String, String, String)>, // if applicable, labels for the opinion scale question
-    choices: Option<Vec<usize>>, // if applicable, choices for the text and picture choices question
+pub enum PollQuestionResult {
+    YesNo((u32, u32)),
+    TextChoices(Vec<u32>),    // should respect the min_choices, max_choices
+    PictureChoices(Vec<u32>), // should respect the min_choices, max_choices
+    OpinionScale(OpinionScaleResult), // mean value
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(crate = "near_sdk::serde")]
-pub struct Poll{
-    verified_humans_only: bool, // required, if true only verified humans can vote, if false anyone can vote
-    questions: Vec<PollQuestion>, // required, a poll can have any number of questions
-    starts_at: usize, // required, time in milliseconds
-    end_at: usize, // required, time in milliseconds
-      title: String, // required
-    tags: Vec<String>, // can be an empty vector
-    description: Option<String>, // optional
-    link: Option<String>, // optional
-      created_at: usize, // should be assigned by the smart contract not the user, time in milliseconds
+pub struct OpinionScaleResult {
+    pub sum: u32,
+    pub num: u32,
 }
-  
+
+/// Helper structure for keys of the persistent collections.
+#[derive(BorshSerialize, BorshDeserialize, Deserialize, Serialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct PollQuestion {
+    pub question_type: PollQuestionAnswer,        // required
+    pub required: bool, // required, if true users can't vote without having an answer for this question
+    pub title: String,  // required
+    pub description: Option<String>, // optional
+    pub image: Option<String>, // optional
+    pub labels: Option<(String, String, String)>, // if applicable, labels for the opinion scale question
+    pub choices: Option<Vec<usize>>, // if applicable, choices for the text and picture choices question
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct Poll {
+    pub iah_only: bool, // required, if true only verified humans can vote, if false anyone can vote
+    pub questions: Vec<PollQuestion>, // required, a poll can have any number of questions
+    pub starts_at: u64, // required, time in milliseconds
+    pub ends_at: u64,   // required, time in milliseconds
+    pub title: String,  // required
+    pub tags: Vec<String>, // can be an empty vector
+    pub description: Option<String>, // optional
+    pub link: Option<String>, // optional
+    pub created_at: u64, // should be assigned by the smart contract not the user, time in milliseconds
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
-pub struct Vote {
+pub struct PollResponse {
     answers: Vec<(usize, PollQuestionAnswer)>, // question_id, answer
-      created_at: usize, // should be assigned by the smart contract not the user, time in milliseconds
+    created_at: usize, // should be assigned by the smart contract not the user, time in milliseconds
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct PollResults {
+    pub status: Status,
+    pub number_of_participants: u64,
+    pub answers: Vec<(usize, PollQuestionResult)>, // question_id, answer
 }
 
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
-  pub struct PollResult {
-    status: Status, 
+pub struct PollResult {
+    status: Status,
     results: Vec<(usize, Vec<PollQuestionAnswer>)>, // question_id, list of answers
     number_of_participants: u64,
 }
@@ -62,11 +82,12 @@ pub struct Vote {
 pub enum Status {
     NotStarted,
     Active,
-    Finished
+    Finished,
 }
 
 #[derive(BorshSerialize, BorshStorageKey)]
 pub enum StorageKey {
     Polls,
-    Another,
+    Results,
+    Answers,
 }
