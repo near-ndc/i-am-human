@@ -1,6 +1,6 @@
 use anyhow::Ok;
 use near_units::parse_near;
-use sbt::TokenMetadata;
+use sbt::{Token, TokenMetadata};
 use serde_json::json;
 use workspaces::{network::Sandbox, Account, AccountId, Contract, Worker};
 
@@ -100,7 +100,7 @@ async fn init(
     } else {
         let res = authority_acc
             .call(community_mainnet.id(), "enable_next_class")
-            .args_json(json!({"requires_iah": false, "minter": authority_acc.id(),"max_ttl": 2147483647, "memo": "test"}))
+            .args_json(json!({"requires_iah": false, "minter": authority_acc.id(),"max_ttl": 100000000, "memo": "test"}))
             .max_gas()
             .transact()
             .await?;
@@ -214,14 +214,37 @@ async fn migration_mainnet() -> anyhow::Result<()> {
 #[tokio::test]
 async fn sbt_renew() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (_, community_sbt, _, admin) = init(&worker, false).await?;
+    let (registry, community_sbt, _, admin) = init(&worker, false).await?;
+
+    let sbts: Vec<Option<Token>> = admin
+        .call(registry.id(), "sbts")
+        .args_json(json!({"issuer": community_sbt.id(), "tokens": [1,2]}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+    let sbt1_ttl_before_renew = sbts[0].as_ref().unwrap().metadata.expires_at.unwrap();
+    let sbt2_ttl_before_renew = sbts[1].as_ref().unwrap().metadata.expires_at.unwrap();
+
     let res = admin
         .call(community_sbt.id(), "sbt_renew")
-        .args_json(json!({"tokens": [1,2], "ttl": 200000, "memo": "test"}))
+        .args_json(json!({"tokens": [1,2], "ttl": 100000000, "memo": "test"}))
         .max_gas()
         .transact()
         .await?;
     assert!(res.is_success());
+
+    let sbts: Vec<Option<Token>> = admin
+        .call(registry.id(), "sbts")
+        .args_json(json!({"issuer": community_sbt.id(), "tokens": [1,2]}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+
+    // check if the renew updated the ttl
+    assert!(sbts[0].as_ref().unwrap().metadata.expires_at.unwrap() > sbt1_ttl_before_renew);
+    assert!(sbts[1].as_ref().unwrap().metadata.expires_at.unwrap() > sbt2_ttl_before_renew);
 
     // renew non existing tokens
     let res = admin
