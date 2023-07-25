@@ -50,7 +50,7 @@ pub(crate) fn balance_key(owner: AccountId, issuer_id: IssuerId, class_id: Class
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug,))]
 #[serde(crate = "near_sdk::serde")]
 pub struct IsHumanCallbackArgs<'a> {
-    pub original_caller: AccountId,
+    pub caller: AccountId,
     pub iah_proof: SBTs,
     pub payload: &'a RawValue,
 }
@@ -70,13 +70,13 @@ mod tests {
         let issuer = AccountId::new_unchecked("issuer.near".to_string());
 
         let args = IsHumanCallbackArgs {
-            original_caller: alice,
+            caller: alice,
             iah_proof: vec![(issuer, vec![1, 2, 5])],
             payload: &RawValue::from_string(payload_str).unwrap(),
         };
 
         let args_str = serde_json::to_string(&args).unwrap();
-        let expected = r#"{"original_caller":"alice.near","iah_proof":[["issuer.near",[1,2,5]]],"payload":{"nums":[200],"person":{"name":"john","surname":"Sparrow"}}}"#;
+        let expected = r#"{"caller":"alice.near","iah_proof":[["issuer.near",[1,2,5]]],"payload":{"nums":[200],"person":{"name":"john","surname":"Sparrow"}}}"#;
 
         assert_eq!(expected.to_owned(), args_str);
     }

@@ -3,9 +3,7 @@ use std::collections::{HashMap, HashSet};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, TreeMap, UnorderedMap, UnorderedSet};
 use near_sdk::serde_json::value::RawValue;
-use near_sdk::{
-    env, near_bindgen, require, serde_json, AccountId, Gas, PanicOnDefault, Promise, PromiseOrValue,
-};
+use near_sdk::{env, near_bindgen, require, serde_json, AccountId, Gas, PanicOnDefault, Promise};
 
 use cost::MILI_NEAR;
 use sbt::*;
@@ -256,40 +254,32 @@ impl Contract {
         (token_counter as u32, completed)
     }
 
-    /// Checks if the `account` is human. If the `account` is not a human, then returns false.
-    /// Otherwise, calls:
+    /// Checks if the `predecessor_account_id` is human. If yes, then calls:
     ///
-    ///     ctr.function(original_caller=predecessor_account_id(),
-    ///                  iah_proof: SBTs,
-    ///                  payload)
+    ///    ctr.function({caller: predecessor_account_id(),
+    ///                 iah_proof: SBTs,
+    ///                 payload: payload})
     ///
     /// `payload` must be a JSON string, and it will be passed through the default interface,
     /// hence it will be JSON deserialized when using SDK.
+    /// Panics if the predecessor is not a human.
     #[payable]
-    pub fn is_human_call(
-        &mut self,
-        account: AccountId,
-        ctr: AccountId,
-        function: String,
-        payload: String,
-    ) -> PromiseOrValue<bool> {
-        let iah_proof = self._is_human(&account);
-        if iah_proof.is_empty() {
-            Promise::new(account).transfer(env::attached_deposit());
-            return PromiseOrValue::Value(false);
-        }
+    pub fn is_human_call(&mut self, ctr: AccountId, function: String, payload: String) -> Promise {
+        let caller = env::predecessor_account_id();
+        let iah_proof = self._is_human(&caller);
+        require!(!iah_proof.is_empty(), "predecessor not a human");
+
         let args = IsHumanCallbackArgs {
-            original_caller: env::predecessor_account_id(),
+            caller,
             iah_proof,
             payload: &RawValue::from_string(payload).unwrap(),
         };
-
-        PromiseOrValue::Promise(Promise::new(ctr).function_call(
+        Promise::new(ctr).function_call(
             function,
             serde_json::to_vec(&args).unwrap(),
             env::attached_deposit(),
             env::prepaid_gas() - IS_HUMAN_GAS,
-        ))
+        )
     }
 
     pub(crate) fn start_transfer_with_continuation(

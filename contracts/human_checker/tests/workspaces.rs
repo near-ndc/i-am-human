@@ -1,8 +1,10 @@
 use anyhow::Ok;
 use near_units::parse_near;
-use sbt::TokenMetadata;
+use sbt::{SBTs, TokenMetadata};
 use serde_json::json;
-use workspaces::{network::Sandbox, Account, Contract, Worker};
+use workspaces::{network::Sandbox, result::ExecutionFinalResult, Account, Contract, Worker};
+
+use human_checker::RegisterHumanPayload;
 
 const REGISTER_HUMAN_TOKEN: &'static str = "register_human_token";
 
@@ -12,28 +14,32 @@ struct Suite {
 }
 
 impl Suite {
-    pub async fn is_human_call(&self, user: &Account, payload: &String) -> anyhow::Result<bool> {
-        let res: bool = self.registry
-        .call("is_human_call")
-        .args_json(json!({"account": user.id(), "ctr": self.human_checker.id(), "function": REGISTER_HUMAN_TOKEN, "payload": payload}))
+    pub async fn is_human_call(
+        &self,
+        caller: &Account,
+        payload: &RegisterHumanPayload,
+    ) -> anyhow::Result<ExecutionFinalResult> {
+        let res = caller
+        .call(self.registry.id(), "is_human_call")
+        .args_json(json!({"ctr": self.human_checker.id(), "function": REGISTER_HUMAN_TOKEN, "payload": serde_json::to_string(payload).unwrap()}))
         .max_gas()
         .transact()
-        .await?
-        .json()?;
+        .await?;
+        println!(">>> is_human_call logs {:?}\n", res.logs());
         Ok(res)
     }
 
-    pub async fn contains_sbts(&self, user: &Account) -> anyhow::Result<bool> {
+    pub async fn query_sbts(&self, user: &Account) -> anyhow::Result<Option<SBTs>> {
         // check the key does not exists in human checker
-        let res: bool = self
+        let r = self
             .human_checker
             .call("recorded_sbts")
             .args_json(json!({"user": user.id()}))
             .max_gas()
             .transact()
-            .await?
-            .json()?;
-        Ok(res)
+            .await?;
+        let result: Option<SBTs> = r.json()?;
+        Ok(result)
     }
 }
 
@@ -69,6 +75,15 @@ async fn init(
 
     assert!(res1.await?.is_success() && res2.await?.is_success());
 
+    // add iah_issuer
+    let res = authority_acc
+        .call(registry.id(), "admin_add_sbt_issuer")
+        .args_json(json!({"issuer": iah_issuer.id()}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
     // populate registry with mocked data
     let iah_token_spec = vec![
         (
@@ -93,19 +108,10 @@ async fn init(
         ),
     ];
 
-    // add iah_issuer
-    let res = authority_acc
-        .call(registry.id(), "admin_add_sbt_issuer")
-        .args_json(json!({"issuer": iah_issuer.id()}))
-        .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_success());
-
     let res = iah_issuer
         .call(registry.id(), "sbt_mint")
         .args_json(json!({ "token_spec": iah_token_spec }))
-        .deposit(parse_near!("1 N"))
+        .deposit(parse_near!("0.1 N"))
         .max_gas()
         .transact()
         .await?;
@@ -124,36 +130,44 @@ async fn init(
 #[tokio::test]
 async fn is_human_call() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (registry, human_checker, alice, bob, john, iah_issuer) = init(&worker).await?;
+    let (registry, human_checker, alice, bob, john, issuer) = init(&worker).await?;
+    let issuer_id = near_sdk::AccountId::try_from(issuer.id().as_str().to_owned())?;
 
-    // let tokens = vec![(iah_issuer.id(), vec![1])];
-    let payload = serde_json::to_string(&json!([2, 3, 5, 7, 11])).unwrap();
+    let payload = RegisterHumanPayload {
+        memo: "registering alice".to_owned(),
+        numbers: vec![2, 3, 5, 7, 11],
+    };
 
     let suite = Suite {
         registry,
         human_checker,
     };
-    // call the is_human_call method for alice (human)
-    let mut res = suite.is_human_call(&alice, &payload).await?;
-    assert!(res);
-    // check the key exists in human checker
-    res = suite.contains_sbts(&alice).await?;
-    assert!(res);
 
-    // call the is_human_call method bob (has sbts but not a human)
-    res = suite.is_human_call(&bob, &payload).await?;
-    assert!(!res);
-    // check the key does not exists in human checker
-    res = suite.contains_sbts(&bob).await?;
-    assert!(!res);
+    // Call using Alice. Should register tokens, because Alice is a human
+    let r = suite.is_human_call(&alice, &payload).await?;
+    assert!(r.is_success());
+    // println!(">>> res: {:?}\n", r.into_result());
+    let result: bool = r.json()?; // the final receipt is register_human_token, which return boolean
+    assert!(result, "should register tokens to alice");
+
+    let mut tokens = suite.query_sbts(&alice).await?;
+    assert_eq!(tokens, Some(vec![(issuer_id, vec![1])]));
+
+    // call the is_human_call method with bob (has sbts but not a human)
+    // should panic in the human_checker
+    let r = suite.is_human_call(&bob, &payload).await?;
+    assert!(r.is_failure());
+
+    tokens = suite.query_sbts(&bob).await?;
+    assert_eq!(tokens, None);
 
     // call the is_human_call method john (doesn't have sbts)
-    res = suite.is_human_call(&john, &payload).await?;
-    assert!(!res);
+    // should panic in the registry
+    let r = suite.is_human_call(&john, &payload).await?;
+    assert!(r.is_failure());
 
-    // check the key does not exists in human checker
-    res = suite.contains_sbts(&john).await?;
-    assert!(!res);
+    tokens = suite.query_sbts(&john).await?;
+    assert_eq!(tokens, None);
 
     Ok(())
 }
