@@ -1,5 +1,4 @@
 use anyhow::Ok;
-use community_sbt::MintError;
 use near_units::parse_near;
 use sbt::{Token, TokenMetadata};
 use serde_json::json;
@@ -102,7 +101,7 @@ async fn init(
     } else {
         let res = authority_acc
             .call(community_mainnet.id(), "enable_next_class")
-            .args_json(json!({"requires_iah": false, "minter": authority_acc.id(),"max_ttl": 100000000, "memo": "test"}))
+            .args_json(json!({"requires_iah": false, "minter": minter_acc.id(),"max_ttl": 100000000, "memo": "test"}))
             .max_gas()
             .transact()
             .await?;
@@ -118,7 +117,7 @@ async fn init(
         reference_hash: None,
     };
 
-    let res = authority_acc
+    let res = minter_acc
         .call(community_mainnet.id(), "sbt_mint")
         .args_json(json!({"receiver": alice_acc.id(), "metadata": token_metadata, "memo": "test"}))
         .deposit(parse_near!("0.01 N"))
@@ -127,7 +126,7 @@ async fn init(
         .await?;
     assert!(res.is_success());
 
-    let res = authority_acc
+    let res = minter_acc
         .call(community_mainnet.id(), "sbt_mint")
         .args_json(json!({"receiver": bob_acc.id(), "metadata": token_metadata, "memo": "test"}))
         .deposit(parse_near!("0.01 N"))
@@ -264,6 +263,45 @@ async fn sbt_renew() -> anyhow::Result<()> {
 #[tokio::test]
 async fn sbt_revoke_fail() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
+    let (registry, community_sbt, _, admin, _) = init(&worker, false).await?;
+
+    let sbts: Vec<Option<Token>> = admin
+        .call(registry.id(), "sbts")
+        .args_json(json!({"issuer": community_sbt.id(), "tokens": [1,2]}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+    assert!(sbts.len() == 2);
+    assert!(sbts[0].is_some());
+    assert!(sbts[1].is_some());
+
+    // should fail since the admin is not a minter
+    let res = admin
+        .call(community_sbt.id(), "sbt_revoke")
+        .args_json(json!({"tokens": [1,2], "burn": true, "memo": "test"}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_failure());
+
+    let sbts: Vec<Option<Token>> = admin
+        .call(registry.id(), "sbts")
+        .args_json(json!({"issuer": community_sbt.id(), "tokens": [1,2]}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+    assert!(sbts.len() == 2);
+    assert!(sbts[0].is_some());
+    assert!(sbts[1].is_some());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn sbt_revoke() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
     let (registry, community_sbt, _, admin, minter) = init(&worker, false).await?;
 
     let sbts: Vec<Option<Token>> = admin
@@ -277,16 +315,7 @@ async fn sbt_revoke_fail() -> anyhow::Result<()> {
     assert!(sbts[0].is_some());
     assert!(sbts[1].is_some());
 
-    // let res: String = admin
-    //     .call(community_sbt.id(), "sbt_revoke")
-    //     .args_json(json!({"tokens": [1,2], "burn": true, "memo": "test"}))
-    //     .max_gas()
-    //     .transact()
-    //     .await?
-    //     .json()?;
-    // print!("{}", res);
-    // // assert!(res.is_success());
-    let res = admin
+    let res = minter
         .call(community_sbt.id(), "sbt_revoke")
         .args_json(json!({"tokens": [1,2], "burn": true, "memo": "test"}))
         .max_gas()
@@ -305,14 +334,14 @@ async fn sbt_revoke_fail() -> anyhow::Result<()> {
     assert!(sbts[0].is_none());
     assert!(sbts[1].is_none());
 
-    // // revoke non existing tokens
-    // let res = admin
-    //     .call(community_sbt.id(), "sbt_revoke")
-    //     .args_json(json!({"tokens": [3,4], "burn": true, "memo": "test"}))
-    //     .max_gas()
-    //     .transact()
-    //     .await?;
-    // assert!(res.is_failure());
+    // revoke non existing tokens
+    let res = admin
+        .call(community_sbt.id(), "sbt_revoke")
+        .args_json(json!({"tokens": [3,4], "burn": true, "memo": "test"}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_failure());
 
     Ok(())
 }

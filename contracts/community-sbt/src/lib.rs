@@ -105,16 +105,10 @@ impl Contract {
     /// `ttl` is duration in milliseconds to set expire time: `now+ttl`.
     /// Panics if `ttl > self.minters[class].max_ttl` or ttl < `MIN_TTL` or `tokens` is an empty list.
     pub fn sbt_renew(&mut self, tokens: Vec<TokenId>, ttl: u64, memo: Option<String>) -> Promise {
+        require!(!tokens.is_empty(), "tokens must be a non empty list");
         ext_registry::ext(self.registry.clone())
             .sbts(env::current_account_id(), tokens.clone())
-            .then(Self::ext(env::current_account_id()).on_sbt_renew_callback(ttl));
-        require!(!tokens.is_empty(), "tokens must be a non empty list");
-        if let Some(memo) = memo {
-            env::log_str(&format!("SBT renew memo: {}", memo));
-        }
-
-        let expires_at_ms = env::block_timestamp_ms() + ttl;
-        ext_registry::ext(self.registry.clone()).sbt_renew(tokens, expires_at_ms)
+            .then(Self::ext(env::current_account_id()).on_sbt_renew_callback(tokens, ttl, memo))
     }
 
     /// callback for sbt_renew. Checks the return value from `sbts` and if any of the tokens
@@ -122,9 +116,11 @@ impl Contract {
     #[private]
     pub fn on_sbt_renew_callback(
         &self,
+        tokens: Vec<TokenId>,
         ttl: u64,
+        memo: Option<String>,
         #[callback_result] token_data: Result<Vec<Option<Token>>, near_sdk::PromiseError>,
-    ) {
+    ) -> Promise {
         let ts = token_data.expect("error while retrieving tokens data from registry");
         let mut cached_ttl: HashMap<u64, u64> = HashMap::new();
         for token in ts {
@@ -138,35 +134,43 @@ impl Contract {
             }
             self.assert_ttl(ttl, max_ttl);
         }
+        if let Some(memo) = memo {
+            env::log_str(&format!("SBT renew memo: {}", memo));
+        }
+
+        let expires_at_ms = env::block_timestamp_ms() + ttl;
+        ext_registry::ext(self.registry.clone()).sbt_renew(tokens, expires_at_ms)
     }
 
     /// Revokes list of tokens. If `burn==true`, the tokens are burned (removed). Otherwise,
     /// the token expire_at is set to now, making the token expired. See `registry.sbt_revoke`
     /// for more details.
+    /// Only class minters are allowed to revoke tokens
     pub fn sbt_revoke(
         &mut self,
         tokens: Vec<TokenId>,
         burn: bool,
         memo: Option<String>,
     ) -> Promise {
-        // assert is either admin or a token minter
+        require!(!tokens.is_empty(), "tokens must be a non empty list");
         let caller = env::predecessor_account_id();
         ext_registry::ext(self.registry.clone())
             .sbts(env::current_account_id(), tokens.clone())
             .then(
-                Self::ext(env::current_account_id()).on_sbt_revoke_callback(&caller, tokens, burn),
+                Self::ext(env::current_account_id())
+                    .on_sbt_revoke_callback(&caller, tokens, burn, memo),
             )
-        // if let Some(memo) = memo {
-        //     env::log_str(&format!("SBT revoke memo: {}", memo));
-        // }
     }
 
+    /// sbt_revoke callback. Checks if all the the tokens can be revoked by the caller
+    /// based on the return value from registry.sbts. If not panics with a error message
     #[private]
     pub fn on_sbt_revoke_callback(
         &self,
         caller: &AccountId,
         tokens: Vec<TokenId>,
         burn: bool,
+        memo: Option<String>,
         #[callback_result] token_data: Result<Vec<Option<Token>>, near_sdk::PromiseError>,
     ) -> Promise {
         let ts = token_data.expect("error while retrieving tokens data from registry");
@@ -185,6 +189,10 @@ impl Contract {
             }
             self.assert_minter(caller, &minters);
         }
+        if let Some(memo) = memo {
+            env::log_str(&format!("SBT revoke memo: {}", memo));
+        }
+        // call the registry to revoke the tokens
         ext_registry::ext(self.registry.clone()).sbt_revoke(tokens, burn)
     }
 
