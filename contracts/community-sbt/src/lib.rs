@@ -151,32 +151,41 @@ impl Contract {
     ) -> Promise {
         // assert is either admin or a token minter
         let caller = env::predecessor_account_id();
-        if self.admin != caller {
-            for token in &tokens {
-                ext_registry::ext(self.registry.clone())
-                    .sbt(env::current_account_id(), token.clone())
-                    .then(Self::ext(env::current_account_id()).on_sbt_token_callback(&caller));
-            }
-        }
-        if let Some(memo) = memo {
-            env::log_str(&format!("SBT revoke memo: {}", memo));
-        }
-        ext_registry::ext(self.registry.clone()).sbt_revoke(tokens, burn)
+        ext_registry::ext(self.registry.clone())
+            .sbts(env::current_account_id(), tokens.clone())
+            .then(
+                Self::ext(env::current_account_id()).on_sbt_revoke_callback(&caller, tokens, burn),
+            )
+        // if let Some(memo) = memo {
+        //     env::log_str(&format!("SBT revoke memo: {}", memo));
+        // }
     }
 
     #[private]
-    pub fn on_sbt_token_callback(
+    pub fn on_sbt_revoke_callback(
         &self,
         caller: &AccountId,
-        #[callback_result] token_data: Result<Option<Token>, near_sdk::PromiseError>,
-    ) {
-        let token = token_data.expect("token not found");
-        let class_id = token.unwrap().metadata.class;
-        let minters = self.class_minter(class_id).expect("class not found");
-        require!(
-            minters.minters.contains(caller),
-            "caller must be and admin or a minter"
-        );
+        tokens: Vec<TokenId>,
+        burn: bool,
+        #[callback_result] token_data: Result<Vec<Option<Token>>, near_sdk::PromiseError>,
+    ) -> Promise {
+        let ts = token_data.expect("error while retrieving tokens data from registry");
+        let mut cached_class_minters: HashMap<u64, Vec<AccountId>> = HashMap::new();
+        let mut minters;
+        for token in ts {
+            let class_id: u64 = token.expect("token not found").metadata.class;
+            if let Some(cached_minter) = cached_class_minters.get(&class_id) {
+                minters = cached_minter.to_vec();
+            } else {
+                minters = self
+                    .class_minter(class_id)
+                    .expect("class not found")
+                    .minters;
+                cached_class_minters.insert(class_id, minters.clone());
+            }
+            self.assert_minter(caller, &minters);
+        }
+        ext_registry::ext(self.registry.clone()).sbt_revoke(tokens, burn)
     }
 
     /// admin: remove SBT from the given accounts.
@@ -329,6 +338,10 @@ impl Contract {
             ttl <= max_ttl,
             format!("ttl must be smaller or equal than {}ms", max_ttl)
         );
+    }
+
+    fn assert_minter(&self, caller: &AccountId, minters: &Vec<AccountId>) {
+        require!(minters.contains(caller), "caller must be a minter");
     }
 }
 

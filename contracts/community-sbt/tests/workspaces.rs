@@ -1,4 +1,5 @@
 use anyhow::Ok;
+use community_sbt::MintError;
 use near_units::parse_near;
 use sbt::{Token, TokenMetadata};
 use serde_json::json;
@@ -10,7 +11,7 @@ const MAINNET_COMMUNITY_SBT_ID: &str = "community-testing.i-am-human.near";
 async fn init(
     worker: &Worker<Sandbox>,
     migration: bool,
-) -> anyhow::Result<(Account, Account, Contract, Account)> {
+) -> anyhow::Result<(Account, Account, Contract, Account, Account)> {
     let registry_contract: Contract;
     let community_contract: Contract;
     if migration {
@@ -42,6 +43,7 @@ async fn init(
     let registry_mainnet = registry_contract.as_account();
     let community_mainnet = community_contract.as_account();
     let authority_acc = worker.dev_create_account().await?;
+    let minter_acc = worker.dev_create_account().await?;
     let iah_issuer = worker.dev_create_account().await?;
     let alice_acc = worker.dev_create_account().await?;
     let bob_acc = worker.dev_create_account().await?;
@@ -92,7 +94,7 @@ async fn init(
         // authorize authority to mint tokens
         let res = authority_acc
             .call(community_mainnet.id(), "enable_next_class")
-            .args_json(json!({"requires_iah": false, "minter": authority_acc.id(), "memo": "test"}))
+            .args_json(json!({"requires_iah": false, "minter": minter_acc.id(), "memo": "test"}))
             .max_gas()
             .transact()
             .await?;
@@ -139,13 +141,14 @@ async fn init(
         community_mainnet.clone(),
         community_contract,
         authority_acc.clone(),
+        minter_acc.clone(),
     ));
 }
 
 #[tokio::test]
 async fn migration_mainnet() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (_, community_sbt, _, admin) = init(&worker, true).await?;
+    let (_, community_sbt, _, admin, _) = init(&worker, true).await?;
 
     // deploy the new contract
     let new_community_contract = community_sbt
@@ -214,7 +217,7 @@ async fn migration_mainnet() -> anyhow::Result<()> {
 #[tokio::test]
 async fn sbt_renew() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (registry, community_sbt, _, admin) = init(&worker, false).await?;
+    let (registry, community_sbt, _, admin, _) = init(&worker, false).await?;
 
     let sbts: Vec<Option<Token>> = admin
         .call(registry.id(), "sbts")
@@ -254,6 +257,62 @@ async fn sbt_renew() -> anyhow::Result<()> {
         .transact()
         .await?;
     assert!(res.is_failure());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn sbt_revoke_fail() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (registry, community_sbt, _, admin, minter) = init(&worker, false).await?;
+
+    let sbts: Vec<Option<Token>> = admin
+        .call(registry.id(), "sbts")
+        .args_json(json!({"issuer": community_sbt.id(), "tokens": [1,2]}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+    assert!(sbts.len() == 2);
+    assert!(sbts[0].is_some());
+    assert!(sbts[1].is_some());
+
+    // let res: String = admin
+    //     .call(community_sbt.id(), "sbt_revoke")
+    //     .args_json(json!({"tokens": [1,2], "burn": true, "memo": "test"}))
+    //     .max_gas()
+    //     .transact()
+    //     .await?
+    //     .json()?;
+    // print!("{}", res);
+    // // assert!(res.is_success());
+    let res = admin
+        .call(community_sbt.id(), "sbt_revoke")
+        .args_json(json!({"tokens": [1,2], "burn": true, "memo": "test"}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    let sbts: Vec<Option<Token>> = admin
+        .call(registry.id(), "sbts")
+        .args_json(json!({"issuer": community_sbt.id(), "tokens": [1,2]}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+    assert!(sbts.len() == 2);
+    assert!(sbts[0].is_none());
+    assert!(sbts[1].is_none());
+
+    // // revoke non existing tokens
+    // let res = admin
+    //     .call(community_sbt.id(), "sbt_revoke")
+    //     .args_json(json!({"tokens": [3,4], "burn": true, "memo": "test"}))
+    //     .max_gas()
+    //     .transact()
+    //     .await?;
+    // assert!(res.is_failure());
 
     Ok(())
 }
