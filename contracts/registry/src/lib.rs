@@ -103,6 +103,10 @@ impl Contract {
     /// Otherwise returns list of SBTs (identifed by issuer and list of token IDs) proving
     /// the `account` humanity.
     pub fn is_human(&self, account: AccountId) -> SBTs {
+        self._is_human(&account)
+    }
+
+    fn _is_human(&self, account: &AccountId) -> SBTs {
         if self._is_banned(&account) {
             return vec![];
         }
@@ -141,7 +145,7 @@ impl Contract {
         let issuer = &env::predecessor_account_id();
         for ts in &token_spec {
             require!(
-                !self.is_human(ts.0.clone()).is_empty(),
+                !self._is_human(&ts.0).is_empty(),
                 format!("{} is not a human", &ts.0)
             );
         }
@@ -265,7 +269,7 @@ impl Contract {
         function: String,
         payload: String,
     ) -> PromiseOrValue<bool> {
-        let iah_proof = self.is_human(account.clone());
+        let iah_proof = self._is_human(&account);
         if iah_proof.is_empty() {
             Promise::new(account).transfer(env::attached_deposit());
             return PromiseOrValue::Value(false);
