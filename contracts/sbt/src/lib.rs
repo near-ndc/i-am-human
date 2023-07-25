@@ -32,6 +32,15 @@ pub type TokenId = u64;
 /// Minimum valid `ClassId` must be 1.
 pub type ClassId = u64;
 
+/// Collection of SBTs serialized as list of pairs: (Issuer Account, Vector of Token IDs).
+/// This is used for code size and processing efficiency.
+pub type SBTs = Vec<(AccountId, Vec<TokenId>)>;
+
+/// List of pairs: (Issuer Account, Vector of Class IDs).
+/// This is used to create class sets used to specify required token classes,
+/// like set of tokens required to be verified as IAH
+pub type ClassSet = Vec<(AccountId, Vec<ClassId>)>;
+
 /// SBTContract is the minimum required interface to be implemented by issuer.
 /// Other methods, such as a mint function, which requests the registry to proceed with token
 /// minting, is specific to an Issuer implementation (similarly, mint is not part of the FT
