@@ -98,7 +98,8 @@ Social Graph can be used to generate SBT tokens, proving positive pass of a soci
 
 ### Cheddar Farm Drop
 
-As an alternative to popular AirDrops, we are designing a [Cheddar Farm](https://cheddar.farm)
+<!-- markdown-link-check-disable-line --> As an alternative to popular AirDrops, we are designing a [Cheddar Farm](https://cheddar.farm)
+
 to stake community token and farm new token:
 
 - Only users who pass a human criteria can register to a Cheddar Farm Drops.

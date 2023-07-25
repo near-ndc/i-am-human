@@ -167,4 +167,5 @@ trait ExtRegistry {
     // queries
 
     fn is_human(&self, account: AccountId) -> Vec<(AccountId, Vec<TokenId>)>;
+    fn sbts(&self, issuer: AccountId, tokens: Vec<TokenId>) -> Vec<Option<Token>>;
 }
