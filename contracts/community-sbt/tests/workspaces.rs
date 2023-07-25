@@ -1,29 +1,43 @@
 use anyhow::Ok;
 use near_units::parse_near;
-use sbt::TokenMetadata;
+use sbt::{Token, TokenMetadata};
 use serde_json::json;
 use workspaces::{network::Sandbox, Account, AccountId, Contract, Worker};
 
 const MAINNET_REGISTRY_ID: &str = "registry-v1.gwg-testing.near";
 const MAINNET_COMMUNITY_SBT_ID: &str = "community-testing.i-am-human.near";
 
-async fn init(worker: &Worker<Sandbox>) -> anyhow::Result<(Account, Account, Contract, Account)> {
-    // import the registry contract from mainnet
-    let worker_mainnet = workspaces::mainnet().await?;
-    let contract_id: AccountId = MAINNET_REGISTRY_ID.parse()?;
-    let registry_contract = worker
-        .import_contract(&contract_id, &worker_mainnet)
-        .initial_balance(parse_near!("10000000 N"))
-        .transact()
-        .await?;
+async fn init(
+    worker: &Worker<Sandbox>,
+    migration: bool,
+) -> anyhow::Result<(Account, Account, Contract, Account)> {
+    let registry_contract: Contract;
+    let community_contract: Contract;
+    if migration {
+        // import the registry contract from mainnet
+        let worker_mainnet = workspaces::mainnet().await?;
+        let contract_id: AccountId = MAINNET_REGISTRY_ID.parse()?;
+        registry_contract = worker
+            .import_contract(&contract_id, &worker_mainnet)
+            .initial_balance(parse_near!("10000000 N"))
+            .transact()
+            .await?;
 
-    // import the community-sbt contract from mainnet
-    let contract_id: AccountId = MAINNET_COMMUNITY_SBT_ID.parse()?;
-    let community_contract = worker
-        .import_contract(&contract_id, &worker_mainnet)
-        .initial_balance(parse_near!("10000000 N"))
-        .transact()
-        .await?;
+        // import the community-sbt contract from mainnet
+        let contract_id: AccountId = MAINNET_COMMUNITY_SBT_ID.parse()?;
+        community_contract = worker
+            .import_contract(&contract_id, &worker_mainnet)
+            .initial_balance(parse_near!("10000000 N"))
+            .transact()
+            .await?;
+    } else {
+        registry_contract = worker
+            .dev_deploy(include_bytes!("../../res/registry.wasm"))
+            .await?;
+        community_contract = worker
+            .dev_deploy(include_bytes!("../../res/community_sbt.wasm"))
+            .await?;
+    }
 
     let registry_mainnet = registry_contract.as_account();
     let community_mainnet = community_contract.as_account();
@@ -74,14 +88,24 @@ async fn init(worker: &Worker<Sandbox>) -> anyhow::Result<(Account, Account, Con
         .await?;
     assert!(res.is_success());
 
-    // authorize authority to mint tokens
-    let res = authority_acc
-        .call(community_mainnet.id(), "authorize")
-        .args_json(json!({"class": 1, "minter": authority_acc.id(), "memo": "test"}))
-        .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_success());
+    if migration {
+        // authorize authority to mint tokens
+        let res = authority_acc
+            .call(community_mainnet.id(), "enable_next_class")
+            .args_json(json!({"requires_iah": false, "minter": authority_acc.id(), "memo": "test"}))
+            .max_gas()
+            .transact()
+            .await?;
+        assert!(res.is_success());
+    } else {
+        let res = authority_acc
+            .call(community_mainnet.id(), "enable_next_class")
+            .args_json(json!({"requires_iah": false, "minter": authority_acc.id(),"max_ttl": 100000000, "memo": "test"}))
+            .max_gas()
+            .transact()
+            .await?;
+        assert!(res.is_success());
+    }
 
     // mint mocked community tokens
     let token_metadata = TokenMetadata {
@@ -118,11 +142,10 @@ async fn init(worker: &Worker<Sandbox>) -> anyhow::Result<(Account, Account, Con
     ));
 }
 
-#[ignore = "this test is not valid after the migration"]
 #[tokio::test]
 async fn migration_mainnet() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (_, community_sbt, _, admin) = init(&worker).await?;
+    let (_, community_sbt, _, admin) = init(&worker, true).await?;
 
     // deploy the new contract
     let new_community_contract = community_sbt
@@ -156,6 +179,17 @@ async fn migration_mainnet() -> anyhow::Result<()> {
     let expected_res: AccountId = "registry-v1.gwg-testing.near".parse().unwrap();
     assert_eq!(expected_res, res);
 
+    // authorize authority to mint tokens
+    let res = admin
+        .call(new_community_contract.id(), "enable_next_class")
+        .args_json(
+            json!({"requires_iah": true, "minter": admin.id(),"max_ttl": 2147483647, "memo": "test"}),
+        )
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
     // change the admin
     let res = admin
         .call(new_community_contract.as_account().id(), "change_admin")
@@ -169,6 +203,53 @@ async fn migration_mainnet() -> anyhow::Result<()> {
     let res = admin
         .call(new_community_contract.as_account().id(), "change_admin")
         .args_json(json!({"new_admin": "test.near"}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_failure());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn sbt_renew() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (registry, community_sbt, _, admin) = init(&worker, false).await?;
+
+    let sbts: Vec<Option<Token>> = admin
+        .call(registry.id(), "sbts")
+        .args_json(json!({"issuer": community_sbt.id(), "tokens": [1,2]}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+    let sbt1_ttl_before_renew = sbts[0].as_ref().unwrap().metadata.expires_at.unwrap();
+    let sbt2_ttl_before_renew = sbts[1].as_ref().unwrap().metadata.expires_at.unwrap();
+
+    let res = admin
+        .call(community_sbt.id(), "sbt_renew")
+        .args_json(json!({"tokens": [1,2], "ttl": 100000000, "memo": "test"}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    let sbts: Vec<Option<Token>> = admin
+        .call(registry.id(), "sbts")
+        .args_json(json!({"issuer": community_sbt.id(), "tokens": [1,2]}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+
+    // check if the renew updated the ttl
+    assert!(sbts[0].as_ref().unwrap().metadata.expires_at.unwrap() > sbt1_ttl_before_renew);
+    assert!(sbts[1].as_ref().unwrap().metadata.expires_at.unwrap() > sbt2_ttl_before_renew);
+
+    // renew non existing tokens
+    let res = admin
+        .call(community_sbt.id(), "sbt_renew")
+        .args_json(json!({"tokens": [3,4], "ttl": 200000, "memo": "test"}))
         .max_gas()
         .transact()
         .await?;
