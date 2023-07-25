@@ -2,9 +2,9 @@ use std::collections::{HashMap, HashSet};
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, TreeMap, UnorderedMap, UnorderedSet};
-use near_sdk::json_types::Base64VecU8;
+use near_sdk::serde_json::value::RawValue;
 use near_sdk::{
-    env, near_bindgen, require, AccountId, Gas, PanicOnDefault, Promise, PromiseOrValue,
+    env, near_bindgen, require, serde_json, AccountId, Gas, PanicOnDefault, Promise, PromiseOrValue,
 };
 
 use cost::MILI_NEAR;
@@ -263,15 +263,22 @@ impl Contract {
         account: AccountId,
         ctr: AccountId,
         function: String,
-        args: Base64VecU8,
+        payload: String,
     ) -> PromiseOrValue<bool> {
-        if self.is_human(account.clone()).is_empty() {
+        let iah_proof = self.is_human(account.clone());
+        if iah_proof.is_empty() {
             Promise::new(account).transfer(env::attached_deposit());
             return PromiseOrValue::Value(false);
         }
+        let args = IsHumanCallbackArgs {
+            original_caller: env::predecessor_account_id(),
+            iah_proof,
+            payload: &RawValue::from_string(payload).unwrap(),
+        };
+
         PromiseOrValue::Promise(Promise::new(ctr).function_call(
             function,
-            args.into(),
+            serde_json::to_vec(&args).unwrap(),
             env::attached_deposit(),
             env::prepaid_gas() - IS_HUMAN_GAS,
         ))
