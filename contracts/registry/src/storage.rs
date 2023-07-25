@@ -7,16 +7,6 @@ use sbt::{ClassId, SBTs, TokenId};
 /// Issuer contract ID based on the SBT Contract address -> u16 map.
 pub type IssuerId = u32;
 
-/// `is_human_call` wrapper for passing the payload args to the callback.
-#[derive(Serialize)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug,))]
-#[serde(crate = "near_sdk::serde")]
-pub struct IsHumanCallbackArgs<'a> {
-    pub original_caller: AccountId,
-    pub iah_proof: SBTs,
-    pub payload: &'a RawValue,
-}
-
 /// Helper structure for keys of the persistent collections.
 #[derive(BorshSerialize, BorshStorageKey)]
 pub enum StorageKey {
@@ -53,6 +43,16 @@ pub(crate) fn balance_key(owner: AccountId, issuer_id: IssuerId, class_id: Class
         issuer_id,
         class_id,
     }
+}
+
+/// `is_human_call` wrapper for passing the payload args to the callback.
+#[derive(Serialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug,))]
+#[serde(crate = "near_sdk::serde")]
+pub struct IsHumanCallbackArgs<'a> {
+    pub original_caller: AccountId,
+    pub iah_proof: SBTs,
+    pub payload: &'a RawValue,
 }
 
 #[cfg(test)]

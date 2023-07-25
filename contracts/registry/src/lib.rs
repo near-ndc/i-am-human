@@ -256,11 +256,15 @@ impl Contract {
         (token_counter as u32, completed)
     }
 
-    /// Checks if the `account` is human. If yes, calls the `ctr.function` with args serialized
-    /// with base64. Normally, `args` is a JSON string serialized as base64.
-    /// If the `account` is not human, then returns false.
-    /// NOTICE: the function is in development, and subject to change (alpha stage). You should
-    /// rather not use it.
+    /// Checks if the `account` is human. If the `account` is not a human, then returns false.
+    /// Otherwise, calls:
+    ///
+    ///     ctr.function(original_caller=predecessor_account_id(),
+    ///                  iah_proof: SBTs,
+    ///                  payload)
+    ///
+    /// `payload` must be a JSON string, and it will be passed through the default interface,
+    /// hence it will be JSON deserialized when using SDK.
     #[payable]
     pub fn is_human_call(
         &mut self,
