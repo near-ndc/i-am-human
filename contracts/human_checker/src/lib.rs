@@ -68,7 +68,7 @@ impl Contract {
 }
 
 #[derive(Serialize, Deserialize)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, NearSchema))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, NearSchema, Clone))]
 #[serde(crate = "near_sdk::serde")]
 pub struct RegisterHumanPayload {
     pub memo: String,
@@ -109,25 +109,28 @@ mod tests {
         return (ctx, ctr);
     }
 
-    // #[test]
-    // fn register_human_token() {
-    //     let (_, mut ctr) = setup(registry(), REG_HUMAN_DEPOSIT);
+    #[test]
+    fn register_human_token() {
+        let (_, mut ctr) = setup(registry(), REG_HUMAN_DEPOSIT);
 
-    //     let tokens = vec![(issuer1(), vec![1, 4])];
-    //     let payload = expected_vec_payload();
-    //     assert!(ctr.register_human_token(alice(), tokens.clone(), payload.clone()));
-    //     assert_eq!(ctr.used_tokens.get(&alice()).unwrap(), tokens);
+        let tokens = vec![(issuer1(), vec![1, 4])];
+        let payload = RegisterHumanPayload {
+            memo: "checking alice".to_owned(),
+            numbers: expected_vec_payload(),
+        };
+        assert!(ctr.register_human_token(alice(), tokens.clone(), payload.clone()));
+        assert_eq!(ctr.used_tokens.get(&alice()).unwrap(), tokens);
 
-    //     assert!(
-    //         !ctr.register_human_token(alice(), vec![(issuer1(), vec![2])], payload.clone()),
-    //         "second call for the same user should return false"
-    //     );
-    //     assert_eq!(
-    //         ctr.used_tokens.get(&alice()).unwrap(),
-    //         tokens,
-    //         "should not overwrite previous call"
-    //     );
-    // }
+        assert!(
+            !ctr.register_human_token(alice(), vec![(issuer1(), vec![2])], payload.clone()),
+            "second call for the same user should return false"
+        );
+        assert_eq!(
+            ctr.used_tokens.get(&alice()).unwrap(),
+            tokens,
+            "should not overwrite previous call"
+        );
+    }
 
     #[test]
     #[should_panic(expected = "must be called by registry")]
