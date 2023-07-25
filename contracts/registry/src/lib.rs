@@ -142,7 +142,7 @@ impl Contract {
         for ts in &token_spec {
             require!(
                 !self.is_human(ts.0.clone()).is_empty(),
-                format!("{} is not a human", ts.0.clone())
+                format!("{} is not a human", &ts.0)
             );
         }
         self._sbt_mint(issuer, token_spec)
