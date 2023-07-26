@@ -62,7 +62,6 @@ mod tests {
 
     #[test]
     fn is_human_callback_args_serialization() {
-        // let data = r#"{"nums":[200]}"#;
         let payload = json!({"nums": [200], "person": {"name": "john", "surname": "Sparrow"}});
         let payload_str = payload.to_string();
 

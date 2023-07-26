@@ -267,7 +267,7 @@ impl Contract {
     pub fn is_human_call(&mut self, ctr: AccountId, function: String, payload: String) -> Promise {
         let caller = env::predecessor_account_id();
         let iah_proof = self._is_human(&caller);
-        require!(!iah_proof.is_empty(), "predecessor not a human");
+        require!(!iah_proof.is_empty(), "caller not a human");
 
         let args = IsHumanCallbackArgs {
             caller,

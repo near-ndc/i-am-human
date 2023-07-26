@@ -146,7 +146,6 @@ async fn is_human_call() -> anyhow::Result<()> {
     // Call using Alice. Should register tokens, because Alice is a human
     let r = suite.is_human_call(&alice, &payload).await?;
     assert!(r.is_success());
-    // println!(">>> res: {:?}\n", r.into_result());
     let result: bool = r.json()?; // the final receipt is register_human_token, which return boolean
     assert!(result, "should register tokens to alice");
 
