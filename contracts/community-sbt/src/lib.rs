@@ -192,7 +192,6 @@ impl Contract {
         if let Some(memo) = memo {
             env::log_str(&format!("SBT revoke memo: {}", memo));
         }
-        // call the registry to revoke the tokens
         ext_registry::ext(self.registry.clone()).sbt_revoke(tokens, burn)
     }
 
