@@ -315,6 +315,7 @@ async fn sbt_revoke() -> anyhow::Result<()> {
     assert!(sbts[0].is_some());
     assert!(sbts[1].is_some());
 
+// Should pass since community_sbt is minter
     let res = minter
         .call(community_sbt.id(), "sbt_revoke")
         .args_json(json!({"tokens": [1,2], "burn": true, "memo": "test"}))
