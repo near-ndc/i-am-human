@@ -30,12 +30,15 @@ The IAH Registry supports the following extra queries, which are not part of the
 
 - `sbt_mint_iah(token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>` is a wrapper around `sbt_mint` and `is_human`. It mints SBTs only when all recipients are humans.
 - `is_human_call(ctr: AccountId, function: String, payload: JSONString)` checks if the predecessor account (_caller_) account is human (using `is_human` method). If it's not, then it panics and returns the deposit. Otherwise it makes a cross contract call passing the deposit:
-  ```
+
+  ```python
   ctr.function(caller=predecessor_account_id,
                iah_proof=tokens_prooving_caller_humanity,
                payload)
   ```
+
   Classical example will registering an action (for poll participation), only when a user is a human.
   Instead of `Poll --is_human--> Registry -> Poll`, we can simplify and do `Registry.is_human_call --> Poll`.
   See the function documentation for more details and [integration test](https://github.com/alpha-fi/i-am-human/blob/is_human_call/contracts/human_checker/tests/workspaces.rs#L131) for usage.
+
 - `sbt_burn(issuer: AccountId, tokens: Vec<TokenId>, memo: Option<String>)` - every holder can burn some of his tokens.
