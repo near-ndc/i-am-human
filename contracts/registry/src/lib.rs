@@ -939,11 +939,19 @@ mod tests {
 
         let sbts = ctr.sbts(issuer1(), vec![1, 2]);
         assert_eq!(sbts, vec![Some(sbt1_1_e.clone()), Some(sbt1_2_e.clone())]);
+        assert_eq!(
+            ctr.sbt_classes(issuer1(), vec![1, 1]),
+            vec![Some(1), Some(1)]
+        );
 
         let sbts = ctr.sbts(issuer1(), vec![2, 10, 3, 1]);
         assert_eq!(
             sbts,
             vec![Some(sbt1_2_e.clone()), None, None, Some(sbt1_1_e.clone())]
+        );
+        assert_eq!(
+            ctr.sbt_classes(issuer1(), vec![2, 10, 3, 1]),
+            vec![Some(1), None, None, Some(1)]
         );
 
         assert_eq!(1, ctr.sbt_supply_by_owner(alice(), issuer1(), None));
