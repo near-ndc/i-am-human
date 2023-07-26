@@ -30,8 +30,6 @@ impl Contract {
         }
     }
 
-    // TODO: once we find a way how to merge human tokens into the args (payload) for
-    // `registry.is_human_call`, then we should add here `tokens: Vec<(AccountId, Vec<TokenId>)>`
     #[payable]
     pub fn register_human_token(
         &mut self,
