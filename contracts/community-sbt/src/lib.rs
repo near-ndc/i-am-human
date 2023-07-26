@@ -106,9 +106,10 @@ impl Contract {
     /// Panics if `ttl > self.minters[class].max_ttl` or ttl < `MIN_TTL` or `tokens` is an empty list.
     pub fn sbt_renew(&mut self, tokens: Vec<TokenId>, ttl: u64, memo: Option<String>) -> Promise {
         require!(!tokens.is_empty(), "tokens must be a non empty list");
+        let ctr = env::current_account_id();
         ext_registry::ext(self.registry.clone())
-            .sbts(env::current_account_id(), tokens.clone())
-            .then(Self::ext(env::current_account_id()).on_sbt_renew_callback(tokens, ttl, memo))
+            .sbts(ctr.clone(), tokens.clone())
+            .then(Self::ext(ctr).on_sbt_renew_callback(tokens, ttl, memo))
     }
 
     /// callback for sbt_renew. Checks the return value from `sbts` and if any of the tokens
@@ -154,12 +155,10 @@ impl Contract {
     ) -> Promise {
         require!(!tokens.is_empty(), "tokens must be a non empty list");
         let caller = env::predecessor_account_id();
+        let ctr = env::current_account_id();
         ext_registry::ext(self.registry.clone())
-            .sbts(env::current_account_id(), tokens.clone())
-            .then(
-                Self::ext(env::current_account_id())
-                    .on_sbt_revoke_callback(&caller, tokens, burn, memo),
-            )
+            .sbts(ctr.clone(), tokens.clone())
+            .then(Self::ext(ctr).on_sbt_revoke_callback(&caller, tokens, burn, memo))
     }
 
     /// sbt_revoke callback. Checks if all the the tokens can be revoked by the caller
