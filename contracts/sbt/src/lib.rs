@@ -58,9 +58,13 @@ pub trait SBTRegistry {
     /// Get the information about specific token ID issued by the `issuer` SBT contract.
     fn sbt(&self, issuer: AccountId, token: TokenId) -> Option<Token>;
 
-    /// Get the information about list of token IDs issued by the `issuer` SBT contract.
-    /// If token ID is not found `None` is set in the specific return index.
+    /// Get the information about list of token IDs issued by the SBT `issuer`.
+    /// If token ID is not found, `None` is set in the specific return index.
     fn sbts(&self, issuer: AccountId, token: Vec<TokenId>) -> Vec<Option<Token>>;
+
+    /// Query class ID for each token ID issued by the SBT `issuer`.
+    /// If token ID is not found, `None` is set in the specific return index.
+    fn sbt_classes(&self, issuer: AccountId, tokens: Vec<TokenId>) -> Vec<Option<ClassId>>;
 
     /// Returns total amount of tokens issued by `issuer` SBT contract, including expired
     /// tokens. Depending on the implementation, if a revoke removes a token, then it should
