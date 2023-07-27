@@ -2668,7 +2668,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "caller not a human")]
     fn is_human_call_fail() {
-        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), MINT_DEPOSIT);
 
         ctx.predecessor_account_id = bob();
         testing_env!(ctx.clone());
