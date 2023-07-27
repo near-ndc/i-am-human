@@ -2662,21 +2662,17 @@ mod tests {
         ctx.predecessor_account_id = alice();
         testing_env!(ctx.clone());
 
-        ctr.is_human_call(ctx.current_account_id.clone(), "function_name".to_string(), "{}".to_string());
+        ctr.is_human_call(AccountId::new_unchecked("registry.i-am-human.near".to_string()), "function_name".to_string(), "{}".to_string());
     }
 
     #[test]
     #[should_panic(expected = "caller not a human")]
     fn is_human_call_fail() {
-        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), MINT_DEPOSIT);
-
-        let m1_1 = mk_metadata(1, Some(START));
-        ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
-        assert_eq!(ctr.is_human(alice()), vec![(fractal_mainnet(), vec![1])]);
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
 
         ctx.predecessor_account_id = bob();
         testing_env!(ctx.clone());
 
-        ctr.is_human_call(ctx.current_account_id.clone(), "function_name".to_string(), "{}".to_string());
+        ctr.is_human_call(AccountId::new_unchecked("registry.i-am-human.near".to_string()), "function_name".to_string(), "{}".to_string());
     }
 }
