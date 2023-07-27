@@ -2650,4 +2650,37 @@ mod tests {
         assert_eq!(ctr.sbt_supply(issuer2()), 20);
         assert_eq!(ctr.sbt_supply(issuer3()), 20);
     }
+
+    #[test]
+    fn is_human_call() {
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+        ctx.current_account_id = AccountId::new_unchecked("registry.i-am-human.near".to_string());
+        testing_env!(ctx.clone());
+
+        let m1_1 = mk_metadata(1, Some(START));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
+        assert_eq!(ctr.is_human(alice()), vec![(fractal_mainnet(), vec![1])]);
+
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+
+        ctr.is_human_call(ctx.current_account_id.clone(), "function_name".to_string(), "{}".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "caller not a human")]
+    fn is_human_call_fail() {
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+        ctx.current_account_id = AccountId::new_unchecked("registry.i-am-human.near".to_string());
+        testing_env!(ctx.clone());
+
+        let m1_1 = mk_metadata(1, Some(START));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
+        assert_eq!(ctr.is_human(alice()), vec![(fractal_mainnet(), vec![1])]);
+
+        ctx.predecessor_account_id = bob();
+        testing_env!(ctx.clone());
+
+        ctr.is_human_call(ctx.current_account_id.clone(), "function_name".to_string(), "{}".to_string());
+    }
 }
