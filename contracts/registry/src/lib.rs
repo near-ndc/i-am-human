@@ -2334,6 +2334,17 @@ mod tests {
     }
 
     #[test]
+    fn is_human_expires_at_none() {
+        let (_, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+
+        // make sure is_human works as expected when the expiratoin date is set to None (the token never expires).
+        let m1_1 = mk_metadata(1, None);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
+
+        assert_eq!(ctr.is_human(alice()), vec![(fractal_mainnet(), vec![1])]);
+    }
+
+    #[test]
     fn is_human_multiple_classes() {
         let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
         ctr.iah_sbts.1 = vec![1, 3];
