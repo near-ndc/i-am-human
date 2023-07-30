@@ -216,7 +216,7 @@ async fn migration_mainnet() -> anyhow::Result<()> {
 #[tokio::test]
 async fn sbt_renew() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (registry, community_sbt, _, admin, _) = init(&worker, false).await?;
+    let (registry, community_sbt, _, admin, minter) = init(&worker, false).await?;
 
     let sbts: Vec<Option<Token>> = admin
         .call(registry.id(), "sbts")
@@ -228,7 +228,7 @@ async fn sbt_renew() -> anyhow::Result<()> {
     let sbt1_ttl_before_renew = sbts[0].as_ref().unwrap().metadata.expires_at.unwrap();
     let sbt2_ttl_before_renew = sbts[1].as_ref().unwrap().metadata.expires_at.unwrap();
 
-    let res = admin
+    let res = minter
         .call(community_sbt.id(), "sbt_renew")
         .args_json(json!({"tokens": [1,2], "ttl": 100000000, "memo": "test"}))
         .max_gas()
@@ -249,7 +249,7 @@ async fn sbt_renew() -> anyhow::Result<()> {
     assert!(sbts[1].as_ref().unwrap().metadata.expires_at.unwrap() > sbt2_ttl_before_renew);
 
     // renew non existing tokens
-    let res = admin
+    let res = minter
         .call(community_sbt.id(), "sbt_renew")
         .args_json(json!({"tokens": [3,4], "ttl": 200000, "memo": "test"}))
         .max_gas()
@@ -261,7 +261,7 @@ async fn sbt_renew() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn sbt_revoke_fail() -> anyhow::Result<()> {
+async fn sbt_renew_fail() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
     let (registry, community_sbt, _, admin, _) = init(&worker, false).await?;
 
@@ -272,14 +272,13 @@ async fn sbt_revoke_fail() -> anyhow::Result<()> {
         .transact()
         .await?
         .json()?;
-    assert!(sbts.len() == 2);
-    assert!(sbts[0].is_some());
-    assert!(sbts[1].is_some());
+    let sbt1_ttl_before_renew = sbts[0].as_ref().unwrap().metadata.expires_at.unwrap();
+    let sbt2_ttl_before_renew = sbts[1].as_ref().unwrap().metadata.expires_at.unwrap();
 
     // should fail since the admin is not a minter
     let res = admin
-        .call(community_sbt.id(), "sbt_revoke")
-        .args_json(json!({"tokens": [1,2], "burn": true, "memo": "test"}))
+        .call(community_sbt.id(), "sbt_renew")
+        .args_json(json!({"tokens": [1,2], "ttl": 100000000, "memo": "test"}))
         .max_gas()
         .transact()
         .await?;
@@ -292,9 +291,25 @@ async fn sbt_revoke_fail() -> anyhow::Result<()> {
         .transact()
         .await?
         .json()?;
-    assert!(sbts.len() == 2);
-    assert!(sbts[0].is_some());
-    assert!(sbts[1].is_some());
+
+    // check if the ttl is still the same
+    assert_eq!(
+        sbts[0].as_ref().unwrap().metadata.expires_at.unwrap(),
+        sbt1_ttl_before_renew
+    );
+    assert_eq!(
+        sbts[1].as_ref().unwrap().metadata.expires_at.unwrap(),
+        sbt2_ttl_before_renew
+    );
+
+    // renew non existing tokens
+    let res = admin
+        .call(community_sbt.id(), "sbt_renew")
+        .args_json(json!({"tokens": [3,4], "ttl": 200000, "memo": "test"}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_failure());
 
     Ok(())
 }
@@ -343,6 +358,45 @@ async fn sbt_revoke() -> anyhow::Result<()> {
         .transact()
         .await?;
     assert!(res.is_failure());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn sbt_revoke_fail() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (registry, community_sbt, _, admin, _) = init(&worker, false).await?;
+
+    let sbts: Vec<Option<Token>> = admin
+        .call(registry.id(), "sbts")
+        .args_json(json!({"issuer": community_sbt.id(), "tokens": [1,2]}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+    assert!(sbts.len() == 2);
+    assert!(sbts[0].is_some());
+    assert!(sbts[1].is_some());
+
+    // should fail since the admin is not a minter
+    let res = admin
+        .call(community_sbt.id(), "sbt_revoke")
+        .args_json(json!({"tokens": [1,2], "burn": true, "memo": "test"}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_failure());
+
+    let sbts: Vec<Option<Token>> = admin
+        .call(registry.id(), "sbts")
+        .args_json(json!({"issuer": community_sbt.id(), "tokens": [1,2]}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+    assert!(sbts.len() == 2);
+    assert!(sbts[0].is_some());
+    assert!(sbts[1].is_some());
 
     Ok(())
 }
