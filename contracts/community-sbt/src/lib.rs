@@ -128,22 +128,21 @@ impl Contract {
         let ts = token_data.expect("error while retrieving tokens data from registry");
         let mut cached_class_info: HashMap<u64, (Vec<AccountId>, u64)> = HashMap::new();
         for token in ts {
-            let minters;
             let max_ttl: u64;
             let class_id: u64 = token.expect("token not found").metadata.class;
             if let Some((cached_minters, cached_ttl)) = cached_class_info.get(&class_id) {
                 max_ttl = *cached_ttl;
-                minters = cached_minters.to_vec();
+                self.assert_minter(caller, &cached_minters);
             } else {
                 max_ttl = self.get_ttl(class_id);
-                minters = self
+                let minters = self
                     .class_minter(class_id)
                     .expect("class not found")
                     .minters;
-                cached_class_info.insert(class_id, (minters.clone(), max_ttl));
+                self.assert_minter(caller, &minters);
+                cached_class_info.insert(class_id, (minters, max_ttl));
             }
             self.assert_ttl(ttl, max_ttl);
-            self.assert_minter(caller, &minters);
         }
         if let Some(memo) = memo {
             env::log_str(&format!("SBT renew memo: {}", memo));
@@ -184,19 +183,18 @@ impl Contract {
     ) -> Promise {
         let ts = token_data.expect("error while retrieving tokens data from registry");
         let mut cached_class_minters: HashMap<u64, Vec<AccountId>> = HashMap::new();
-        let mut minters;
         for token in ts {
             let class_id: u64 = token.expect("token not found").metadata.class;
             if let Some(cached_minter) = cached_class_minters.get(&class_id) {
-                minters = cached_minter.to_vec();
+                self.assert_minter(caller, &cached_minter);
             } else {
-                minters = self
+                let minters = self
                     .class_minter(class_id)
                     .expect("class not found")
                     .minters;
-                cached_class_minters.insert(class_id, minters.clone());
+                self.assert_minter(caller, &minters);
+                cached_class_minters.insert(class_id, minters);
             }
-            self.assert_minter(caller, &minters);
         }
         if let Some(memo) = memo {
             env::log_str(&format!("SBT revoke memo: {}", memo));
