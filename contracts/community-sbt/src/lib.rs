@@ -104,34 +104,43 @@ impl Contract {
     /// sbt_renew will update the expire time of provided tokens.
     /// `ttl` is duration in milliseconds to set expire time: `now+ttl`.
     /// Panics if `ttl > self.minters[class].max_ttl` or ttl < `MIN_TTL` or `tokens` is an empty list.
+    /// Only minters are allowed to renew the tokens.
     pub fn sbt_renew(&mut self, tokens: Vec<TokenId>, ttl: u64, memo: Option<String>) -> Promise {
         require!(!tokens.is_empty(), "tokens must be a non empty list");
+        let caller = env::predecessor_account_id();
         let ctr = env::current_account_id();
         ext_registry::ext(self.registry.clone())
             .sbts(ctr.clone(), tokens.clone())
-            .then(Self::ext(ctr).on_sbt_renew_callback(tokens, ttl, memo))
+            .then(Self::ext(ctr).on_sbt_renew_callback(&caller, tokens, ttl, memo))
     }
 
     /// callback for sbt_renew. Checks the return value from `sbts` and if any of the tokens
-    /// does not exist or the ttl value is invalid panics.
+    /// does not exist, the ttl value is invalid or the caller is not a minter panics.
     #[private]
     pub fn on_sbt_renew_callback(
         &self,
+        caller: &AccountId,
         tokens: Vec<TokenId>,
         ttl: u64,
         memo: Option<String>,
         #[callback_result] token_data: Result<Vec<Option<Token>>, near_sdk::PromiseError>,
     ) -> Promise {
         let ts = token_data.expect("error while retrieving tokens data from registry");
-        let mut cached_ttl: HashMap<u64, u64> = HashMap::new();
+        let mut cached_class_info: HashMap<u64, (Vec<AccountId>, u64)> = HashMap::new();
         for token in ts {
             let max_ttl: u64;
             let class_id: u64 = token.expect("token not found").metadata.class;
-            if let Some(cached_ttl) = cached_ttl.get(&class_id) {
+            if let Some((cached_minters, cached_ttl)) = cached_class_info.get(&class_id) {
                 max_ttl = *cached_ttl;
+                self.assert_minter(caller, &cached_minters);
             } else {
                 max_ttl = self.get_ttl(class_id);
-                cached_ttl.insert(class_id, max_ttl);
+                let minters = self
+                    .class_minter(class_id)
+                    .expect("class not found")
+                    .minters;
+                self.assert_minter(caller, &minters);
+                cached_class_info.insert(class_id, (minters, max_ttl));
             }
             self.assert_ttl(ttl, max_ttl);
         }
@@ -174,19 +183,18 @@ impl Contract {
     ) -> Promise {
         let ts = token_data.expect("error while retrieving tokens data from registry");
         let mut cached_class_minters: HashMap<u64, Vec<AccountId>> = HashMap::new();
-        let mut minters;
         for token in ts {
             let class_id: u64 = token.expect("token not found").metadata.class;
             if let Some(cached_minter) = cached_class_minters.get(&class_id) {
-                minters = cached_minter.to_vec();
+                self.assert_minter(caller, &cached_minter);
             } else {
-                minters = self
+                let minters = self
                     .class_minter(class_id)
                     .expect("class not found")
                     .minters;
-                cached_class_minters.insert(class_id, minters.clone());
+                self.assert_minter(caller, &minters);
+                cached_class_minters.insert(class_id, minters);
             }
-            self.assert_minter(caller, &minters);
         }
         if let Some(memo) = memo {
             env::log_str(&format!("SBT revoke memo: {}", memo));
@@ -365,7 +373,10 @@ pub fn required_sbt_mint_deposit(num_tokens: usize) -> Balance {
 
 #[cfg(test)]
 mod tests {
-    use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId, Balance, VMContext};
+    use near_sdk::{
+        test_utils::{test_env::bob, VMContextBuilder},
+        testing_env, AccountId, Balance, VMContext,
+    };
     use sbt::{ClassId, ContractMetadata, TokenMetadata};
 
     use crate::{required_sbt_mint_deposit, ClassMinters, Contract, MintError, MIN_TTL};
@@ -594,10 +605,18 @@ mod tests {
 
         Ok(())
     }
+
     #[test]
     #[should_panic(expected = "ttl must be smaller or equal than 1ms")]
     fn assert_ttl() {
         let (_, ctr) = setup(&admin(), None);
         ctr.assert_ttl(10, 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "caller must be a minter")]
+    fn assert_minter() {
+        let (_, ctr) = setup(&admin(), None);
+        ctr.assert_minter(&alice(), &vec![bob()]);
     }
 }
