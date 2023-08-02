@@ -2,11 +2,13 @@ use std::fmt::format;
 use std::future::Future;
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::UnorderedMap;
+use near_sdk::collections::{LookupMap, UnorderedMap};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
 
+pub use crate::errors::PollError;
 pub use crate::storage::*;
 
+mod errors;
 mod storage;
 
 #[near_bindgen]
@@ -16,7 +18,7 @@ pub struct Contract {
     pub admin: AccountId,
     /// map of classId -> to set of accounts authorized to mint
     pub polls: UnorderedMap<PollId, Poll>,
-    pub results: UnorderedMap<PollId, Results>,
+    pub results: LookupMap<PollId, Results>,
     pub answers: UnorderedMap<(PollId, AccountId), Vec<Answer>>,
     /// SBT registry.
     pub registry: AccountId,
@@ -34,7 +36,7 @@ impl Contract {
         Self {
             admin,
             polls: UnorderedMap::new(StorageKey::Polls),
-            results: UnorderedMap::new(StorageKey::Results),
+            results: LookupMap::new(StorageKey::Results),
             answers: UnorderedMap::new(StorageKey::Answers),
             registry,
             next_poll_id: 0,
@@ -57,6 +59,19 @@ impl Contract {
         unimplemented!();
     }
 
+    // TODO: limit the max lenght of single answer and based on that return a fixed value of answers
+    // Function must be called until true is returned -> meaning all the answers were returned
+    // returns None if poll is not found
+    // `question` must be an index of the text question in the poll
+    pub fn result_answers(
+        &self,
+        poll_id: usize,
+        question: usize,
+        from_answer: u64,
+    ) -> (Vec<String>, bool) {
+        //TODO check if question is type `TextAnswer`
+        unimplemented!();
+    }
     // user can update the poll if starts_at > now
     // it panics if
     // - user tries to create an invalid poll
@@ -93,6 +108,12 @@ impl Contract {
                 created_at,
             },
         );
+        let poll_results = Results {
+            status: Status::Active,
+            number_of_participants: 0,
+            results: vec![PollResult::YesNo((0, 0))],
+        };
+        self.results.insert(&poll_id, &poll_results);
         poll_id
     }
 
@@ -102,7 +123,12 @@ impl Contract {
     // - poll not active
     // - poll.verified_humans_only is true, and user is not verified on IAH
     // - user tries to vote with an invalid answer to a question
-    pub fn respond(&mut self, poll_id: PollId, answers: Vec<Option<Answer>>) {
+    #[handle_result]
+    pub fn respond(
+        &mut self,
+        poll_id: PollId,
+        answers: Vec<Option<Answer>>,
+    ) -> Result<(), PollError> {
         let caller = env::predecessor_account_id();
         // check if poll exists and is active
         self.assert_active(poll_id);
@@ -119,31 +145,31 @@ impl Contract {
             );
 
             match (&answers[i], &results[i]) {
-                (Some(Answer::YesNo(yes_no)), Result::YesNo((yes, no))) => {
+                (Some(Answer::YesNo(yes_no)), PollResult::YesNo((yes, no))) => {
                     if *yes_no {
-                        results[i] = Result::YesNo((*yes + 1, *no));
+                        results[i] = PollResult::YesNo((*yes + 1, *no));
                     } else {
-                        results[i] = Result::YesNo((*yes + 1, *no + 1));
+                        results[i] = PollResult::YesNo((*yes + 1, *no + 1));
                     }
                 }
-                (Some(Answer::TextChoices(value)), Result::TextChoices(vector)) => {
+                (Some(Answer::TextChoices(value)), PollResult::TextChoices(vector)) => {
                     let mut new_vec = Vec::new();
                     for i in value {
                         new_vec[*i] = vector[*i] + *i as u32;
                     }
-                    results[i] = Result::TextChoices(new_vec);
+                    results[i] = PollResult::TextChoices(new_vec);
                 }
-                (Some(Answer::PictureChoices(value)), Result::PictureChoices(vector)) => {
+                (Some(Answer::PictureChoices(value)), PollResult::PictureChoices(vector)) => {
                     let mut new_vec = Vec::new();
                     for i in value {
                         new_vec[*i] = vector[*i] + *i as u32;
                     }
-                    results[i] = Result::PictureChoices(new_vec);
+                    results[i] = PollResult::PictureChoices(new_vec);
                 }
-                (Some(Answer::OpinionScale(value)), Result::OpinionScale(opinion)) => {
+                (Some(Answer::OpinionScale(value)), PollResult::OpinionScale(opinion)) => {
                     results.insert(
                         i,
-                        Result::OpinionScale(OpinionScaleResult {
+                        PollResult::OpinionScale(OpinionScaleResult {
                             sum: opinion.sum + *value as u32,
                             num: opinion.num + 1 as u32,
                         }),
@@ -160,9 +186,13 @@ impl Contract {
                 unwrapped_answers.push(answers[i].clone().unwrap());
             }
         }
-        let mut answers = self.answers.get(&(poll_id, caller.clone())).unwrap();
+        let mut answers = self
+            .answers
+            .get(&(poll_id, caller.clone()))
+            .unwrap_or(Vec::new());
         answers.append(&mut unwrapped_answers);
         self.answers.insert(&(poll_id, caller), &answers);
+        Ok(())
     }
 
     /**********
@@ -232,7 +262,7 @@ mod tests {
             description: None, // optional
             image: None,    // optional
             labels: None,   // if applicable, labels for the opinion scale question
-            choices: None,  // if applicable, choices for the text and picture choices question
+                            // choices: None,  // if applicable, choices for the text and picture choices question
         };
         let tags = vec![String::from("tag1"), String::from("tag2")];
         let (mut ctx, mut ctr) = setup(&admin());

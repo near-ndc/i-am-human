@@ -16,7 +16,7 @@ pub enum Answer {
 }
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
-pub enum Result {
+pub enum PollResult {
     YesNo((u32, u32)),                // yes, no
     TextChoices(Vec<u32>),            // should respect the min_choices, max_choices
     PictureChoices(Vec<u32>),         // should respect the min_choices, max_choices
@@ -34,13 +34,13 @@ pub struct OpinionScaleResult {
 #[derive(BorshSerialize, BorshDeserialize, Deserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct Question {
-    pub question_type: Answer,                    // required
+    pub question_type: Answer,       // required
     pub required: bool, // required, if true users can't vote without having an answer for this question
     pub title: String,  // required
     pub description: Option<String>, // optional
     pub image: Option<String>, // optional
     pub labels: Option<(String, String, String)>, // if applicable, labels for the opinion scale question
-    pub choices: Option<Vec<usize>>, // if applicable, choices for the text and picture choices question
+                                                  // pub choices: Option<Vec<usize>>, // if applicable, choices for the text and picture choices question TODO: make sure we dont need it
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -69,7 +69,7 @@ pub struct PollResponse {
 pub struct Results {
     pub status: Status,
     pub number_of_participants: u64,
-    pub results: Vec<Result>, // question_id, result (sum of yes etc.)
+    pub results: Vec<PollResult>, // question_id, result (sum of yes etc.)
 }
 
 #[derive(Serialize, Clone)]
