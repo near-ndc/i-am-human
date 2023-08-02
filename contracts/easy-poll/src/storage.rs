@@ -15,6 +15,7 @@ pub enum Answer {
     TextAnswer(String),
 }
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub enum PollResult {
     YesNo((u32, u32)),                // yes, no
@@ -24,6 +25,7 @@ pub enum PollResult {
     TextAnswer(Vec<String>),
 }
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub struct OpinionScaleResult {
     pub sum: u32,
@@ -34,13 +36,13 @@ pub struct OpinionScaleResult {
 #[derive(BorshSerialize, BorshDeserialize, Deserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct Question {
-    pub question_type: Answer,       // required
+    pub question_type: Answer,                    // required
     pub required: bool, // required, if true users can't vote without having an answer for this question
     pub title: String,  // required
     pub description: Option<String>, // optional
     pub image: Option<String>, // optional
     pub labels: Option<(String, String, String)>, // if applicable, labels for the opinion scale question
-                                                  // pub choices: Option<Vec<usize>>, // if applicable, choices for the text and picture choices question TODO: make sure we dont need it
+    pub choices: Option<Vec<String>>, // if applicable, choices for the text and picture choices question TODO: make sure we dont need it
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -65,6 +67,7 @@ pub struct PollResponse {
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub struct Results {
     pub status: Status,
@@ -81,6 +84,7 @@ pub struct Answers {
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub enum Status {
     NotStarted,
