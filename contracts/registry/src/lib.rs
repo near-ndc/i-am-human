@@ -670,7 +670,7 @@ impl Contract {
         require!(
             storage_deposit >= required_deposit,
             format!(
-                "not enough NEAR storage depost, required: {}",
+                "not enough NEAR storage deposit, required: {}",
                 required_deposit
             )
         );
@@ -2679,7 +2679,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "caller not a human")]
     fn is_human_call_fail() {
-        let (mut ctx, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
 
         ctr.is_human_call(AccountId::new_unchecked("registry.i-am-human.near".to_string()), "function_name".to_string(), "{}".to_string());
     }

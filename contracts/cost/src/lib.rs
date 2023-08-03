@@ -3,7 +3,9 @@ use near_sdk::{Balance, Gas};
 pub const MICRO_NEAR: Balance = 1_000_000_000_000_000_000;
 pub const MILI_NEAR: Balance = 1000 * MICRO_NEAR;
 
-pub const MINT_COST: Balance = 7 * MILI_NEAR; // 0.007 NEAR
+pub const MINT_COST: Balance = 7 * MILI_NEAR; // 0.007 NEAR // 10 Tgas ? used in kudos ?
+// pub const MINT_COST: Balance = 7_510_000_000_000_000_000_000;
+
 pub const MINT_GAS: Gas = Gas(7 * Gas::ONE_TERA.0);
 pub const IS_HUMAN_GAS: Gas = Gas(2 * Gas::ONE_TERA.0);
 pub const BAN_COST: Balance = 5 * MILI_NEAR;
