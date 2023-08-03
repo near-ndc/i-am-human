@@ -590,8 +590,8 @@ impl Contract {
         let storage_start = env::storage_usage();
         let storage_deposit = env::attached_deposit();
         require!(
-            storage_deposit >= 6 * MILI_NEAR,
-            "min required storage deposit: 0.006 NEAR"
+            storage_deposit >= 9 * MILI_NEAR,
+            "min required storage deposit: 0.009 NEAR"
         );
 
         let issuer_id = self.assert_issuer(issuer);
@@ -851,7 +851,7 @@ mod tests {
 
     const MILI_SECOND: u64 = 1_000_000; // milisecond in ns
     const START: u64 = 10;
-    const MINT_DEPOSIT: Balance = 6 * MILI_NEAR;
+    const MINT_DEPOSIT: Balance = 9 * MILI_NEAR;
 
     fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
