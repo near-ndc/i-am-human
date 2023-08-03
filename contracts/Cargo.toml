@@ -26,23 +26,30 @@ opt-level = "s"
 # link time optimization
 lto = true
 panic = "abort"
+# overflow-checks = true
+# debug = false
+# debug-assertions = false
+# rpath = false
+
+[profile.test]
+panic = "abort"
 overflow-checks = true
-debug = false
-debug-assertions = false
 rpath = false
 
+
 [workspace.dependencies]
-near-sdk = { version = "^4.1.1", features = ["unstable"] }
-near-contract-standards = "^4.1.1"
-uint = { version = "^0.9.5", default-features = false }
-serde_json = { version = "^1.0", features = ["raw_value"] }
+anyhow = "1.0.71"
 ed25519-dalek = "1"
 near-abi = "0.3.0"
-schemars = "0.8.12"
-pretty_assertions = "1.4.0"
-anyhow = "1.0.71"
-tokio = { version = "1.29.1", features = ["full"] }
-workspaces = { version = "0.7.0", features = ["unstable"] }
+near-contract-standards = "^4.1.1"
+near-crypto = "0.17"
 near-primitives = "0.17.0"
+near-sdk = { version = "^4.1.1", features = ["unstable"] }
 near-units = "0.2.0"
+pretty_assertions = "1.4.0"
+schemars = "0.8.12"
+serde_json = { version = "^1.0", features = ["raw_value"] }
+tokio = { version = "1.29.1", features = ["full"] }
 tracing = "0.1.37"
+uint = { version = "^0.9.5", default-features = false }
+workspaces = { version = "0.7.0", features = ["unstable"] }
