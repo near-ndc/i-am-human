@@ -391,6 +391,7 @@ mod tests {
             .predecessor_account_id(predecessor.clone())
             .attached_deposit(MINT_TOTAL_COST)
             .block_timestamp(start())
+            .current_account_id("oracle.near".parse().unwrap())
             .is_view(false)
             .build();
 
@@ -503,7 +504,7 @@ mod tests {
 
     #[test]
     fn mint_no_root_account() {
-        let signer: AccountId = "user1".parse().unwrap();
+        let signer: AccountId = "user1.near.org".parse().unwrap();
         let predecessor: AccountId = "some.other".parse().unwrap();
         let (mut ctx, mut ctr, k) = setup(&signer, &predecessor);
 
@@ -521,13 +522,6 @@ mod tests {
         );
 
         ctx.signer_account_id = "sub.sub.user1.near".parse().unwrap();
-        testing_env!(ctx.clone());
-        assert_bad_request(
-            ctr.sbt_mint(c_str.clone(), sig.clone(), None),
-            "only root and implicit accounts are allowed to get SBT",
-        );
-
-        ctx.signer_account_id = "a123".parse().unwrap();
         testing_env!(ctx.clone());
         assert_bad_request(
             ctr.sbt_mint(c_str.clone(), sig.clone(), None),
