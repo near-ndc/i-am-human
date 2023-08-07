@@ -670,6 +670,12 @@ mod tests {
             pk_bs58, pk_b64, sk_str, sk_str2,
         );
 
+        // let sk2 = near_crypto::SecretKey::from_str(
+        //     "secp256k1:AxynSCWRr2RrBXbzcbykYTo5vPmCkMf35s1D1bXV8P51",
+        // )
+        // .unwrap();
+        // println!("\nsecp: {}, public: {}", sk2, sk2.public_key());
+
         // assert!(false);
     }
 
