@@ -38,7 +38,4 @@ pub mod tests {
             "deserialization check"
         );
     }
-
-    #[test]
-    fn check_claim_hostess() {}
 }
