@@ -1,6 +1,3 @@
-use std::fmt::format;
-use std::future::Future;
-
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, UnorderedMap};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
@@ -54,7 +51,8 @@ impl Contract {
             .expect("respond not found")
     }
 
-    // returns None if poll is not found
+    /// returns None if poll is not found
+    /// this should result all the restuls but `TextAnswers`
     pub fn results(&self, poll_id: u64) -> Results {
         self.results.get(&poll_id).expect("poll not found")
     }
@@ -140,41 +138,45 @@ impl Contract {
             }
 
             match (&answers[i], &poll_results.results[i]) {
-                (Some(Answer::YesNo(yes_no)), PollResult::YesNo((yes, no))) => {
-                    if *yes_no {
+                (Some(Answer::YesNo(answer)), PollResult::YesNo((yes, no))) => {
+                    if *answer {
                         poll_results.results[i] = PollResult::YesNo((*yes + 1, *no));
                     } else {
                         poll_results.results[i] = PollResult::YesNo((*yes, *no + 1));
                     }
                 }
-                (Some(Answer::TextChoices(value)), PollResult::TextChoices(vector)) => {
-                    let mut new_vec = Vec::new();
-                    for i in value {
-                        new_vec[*i] = vector[*i] + *i as u32;
+                (Some(Answer::TextChoices(answer)), PollResult::TextChoices(results)) => {
+                    let mut res: Vec<u32> = results.to_vec();
+                    for i in 0..answer.len() {
+                        if answer[i] == true {
+                            res[i] += 1;
+                        }
                     }
-                    poll_results.results[i] = PollResult::TextChoices(new_vec);
+                    poll_results.results[i] = PollResult::TextChoices(res);
                 }
-                (Some(Answer::PictureChoices(value)), PollResult::PictureChoices(vector)) => {
-                    let mut new_vec = Vec::new();
-                    for i in value {
-                        new_vec[*i] = vector[*i] + *i as u32;
+                (Some(Answer::PictureChoices(answer)), PollResult::PictureChoices(results)) => {
+                    let mut res: Vec<u32> = results.to_vec();
+                    for i in 0..answer.len() {
+                        if answer[i] == true {
+                            res[i] += 1;
+                        }
                     }
-                    poll_results.results[i] = PollResult::PictureChoices(new_vec);
+                    poll_results.results[i] = PollResult::PictureChoices(res);
                 }
-                (Some(Answer::OpinionScale(value)), PollResult::OpinionScale(opinion)) => {
-                    if *value > 10 {
+                (Some(Answer::OpinionScale(answer)), PollResult::OpinionScale(results)) => {
+                    if *answer > 10 {
                         env::panic_str("opinion must be between 0 and 10");
                     }
                     poll_results.results[i] = PollResult::OpinionScale(OpinionScaleResult {
-                        sum: opinion.sum + *value as u32,
-                        num: opinion.num + 1 as u32,
+                        sum: results.sum + *answer as u32,
+                        num: results.num + 1 as u32,
                     });
                 }
-                // (Some(Answer::TextAnswer(answer)), Result::TextAnswer(answers)) => {
-                //     let mut new_vec = Vec::new();
-                //     new_vec = *answers;
-                //     new_vec.push(*answer);
-                // }
+                (Some(Answer::TextAnswer(answer)), PollResult::TextAnswer(results)) => {
+                    let mut results = results.clone();
+                    results.push(answer.clone());
+                    poll_results.results[i] = PollResult::TextAnswer(results);
+                }
                 (_, _) => (),
             }
             if answers[i].is_some() {
@@ -233,7 +235,9 @@ impl Contract {
         for question in questions {
             results.push(match question.question_type {
                 Answer::YesNo(_) => PollResult::YesNo((0, 0)),
-                Answer::TextChoices(_) => PollResult::TextChoices(Vec::new()),
+                Answer::TextChoices(_) => {
+                    PollResult::TextChoices(vec![0; question.choices.clone().unwrap().len()])
+                }
                 Answer::PictureChoices(_) => PollResult::PictureChoices(Vec::new()),
                 Answer::OpinionScale(_) => {
                     PollResult::OpinionScale(OpinionScaleResult { sum: 0, num: 0 })
@@ -291,9 +295,10 @@ mod tests {
             image: None,
             labels: None,
             choices: None,
+            max_choices: None,
         });
         questions.push(Question {
-            question_type: Answer::TextChoices(vec![0, 0, 0]),
+            question_type: Answer::TextChoices(vec![false, false, false]),
             required: false,
             title: String::from("Yes and no test!"),
             description: None,
@@ -304,6 +309,7 @@ mod tests {
                 String::from("disagree"),
                 String::from("no opinion"),
             ]),
+            max_choices: Some(1),
         });
         questions.push(Question {
             question_type: Answer::OpinionScale(0),
@@ -313,6 +319,17 @@ mod tests {
             image: None,
             labels: None,
             choices: None,
+            max_choices: None,
+        });
+        questions.push(Question {
+            question_type: Answer::TextAnswer(String::from("")),
+            required: false,
+            title: String::from("Opinion test!"),
+            description: None,
+            image: None,
+            labels: None,
+            choices: None,
+            max_choices: None,
         });
         questions
     }
@@ -353,13 +370,13 @@ mod tests {
         ctx.predecessor_account_id = alice();
         ctx.block_timestamp = MILI_SECOND * 3;
         testing_env!(ctx.clone());
-        ctr.respond(poll_id, vec![Some(Answer::YesNo(true)), None, None]);
+        ctr.respond(poll_id, vec![Some(Answer::YesNo(true)), None, None, None]);
         ctx.predecessor_account_id = bob();
         testing_env!(ctx.clone());
-        ctr.respond(poll_id, vec![Some(Answer::YesNo(true)), None, None]);
+        ctr.respond(poll_id, vec![Some(Answer::YesNo(true)), None, None, None]);
         ctx.predecessor_account_id = charlie();
         testing_env!(ctx.clone());
-        ctr.respond(poll_id, vec![Some(Answer::YesNo(false)), None, None]);
+        ctr.respond(poll_id, vec![Some(Answer::YesNo(false)), None, None, None]);
         let results = ctr.results(poll_id);
         assert_eq!(
             results,
@@ -369,7 +386,8 @@ mod tests {
                 results: vec![
                     PollResult::YesNo((2, 1)),
                     PollResult::TextChoices(vec![]),
-                    PollResult::OpinionScale(OpinionScaleResult { sum: 0, num: 0 })
+                    PollResult::OpinionScale(OpinionScaleResult { sum: 0, num: 0 }),
+                    PollResult::TextAnswer(vec![])
                 ]
             }
         )
@@ -398,14 +416,21 @@ mod tests {
                 Some(Answer::YesNo(true)),
                 None,
                 Some(Answer::OpinionScale(5)),
+                None,
             ],
         );
         ctx.predecessor_account_id = bob();
         testing_env!(ctx.clone());
-        ctr.respond(poll_id, vec![None, None, Some(Answer::OpinionScale(10))]);
+        ctr.respond(
+            poll_id,
+            vec![None, None, Some(Answer::OpinionScale(10)), None],
+        );
         ctx.predecessor_account_id = charlie();
         testing_env!(ctx.clone());
-        ctr.respond(poll_id, vec![None, None, Some(Answer::OpinionScale(2))]);
+        ctr.respond(
+            poll_id,
+            vec![None, None, Some(Answer::OpinionScale(2)), None],
+        );
         let results = ctr.results(poll_id);
         assert_eq!(
             results,
@@ -415,7 +440,123 @@ mod tests {
                 results: vec![
                     PollResult::YesNo((1, 0)),
                     PollResult::TextChoices(vec![]),
-                    PollResult::OpinionScale(OpinionScaleResult { sum: 17, num: 3 })
+                    PollResult::OpinionScale(OpinionScaleResult { sum: 17, num: 3 }),
+                    PollResult::TextAnswer(vec![])
+                ]
+            }
+        )
+    }
+    #[test]
+    fn text_chocies_flow() {
+        let tags = vec![String::from("tag1"), String::from("tag2")];
+        let (mut ctx, mut ctr) = setup(&admin());
+        let poll_id = ctr.create_poll(
+            false,
+            questions(),
+            2,
+            100,
+            String::from("Hello, world!"),
+            tags,
+            None,
+            None,
+        );
+        ctx.predecessor_account_id = alice();
+        ctx.block_timestamp = MILI_SECOND * 3;
+        testing_env!(ctx.clone());
+        ctr.respond(
+            poll_id,
+            vec![
+                None,
+                Some(Answer::TextChoices(vec![true, false, false])),
+                None,
+                None,
+            ],
+        );
+        ctx.predecessor_account_id = bob();
+        testing_env!(ctx.clone());
+        ctr.respond(
+            poll_id,
+            vec![
+                None,
+                Some(Answer::TextChoices(vec![true, false, false])),
+                None,
+                None,
+            ],
+        );
+        ctx.predecessor_account_id = charlie();
+        testing_env!(ctx.clone());
+        ctr.respond(
+            poll_id,
+            vec![
+                None,
+                Some(Answer::TextChoices(vec![false, true, false])),
+                None,
+                None,
+            ],
+        );
+        let results = ctr.results(poll_id);
+        assert_eq!(
+            results,
+            Results {
+                status: Status::Active,
+                number_of_participants: 3,
+                results: vec![
+                    PollResult::YesNo((0, 0)),
+                    PollResult::TextChoices(vec![2, 1, 0]),
+                    PollResult::OpinionScale(OpinionScaleResult { sum: 0, num: 0 }),
+                    PollResult::TextAnswer(vec![])
+                ]
+            }
+        )
+    }
+
+    #[test]
+    fn text_answers_flow() {
+        let tags = vec![String::from("tag1"), String::from("tag2")];
+        let (mut ctx, mut ctr) = setup(&admin());
+        let poll_id = ctr.create_poll(
+            false,
+            questions(),
+            2,
+            100,
+            String::from("Hello, world!"),
+            tags,
+            None,
+            None,
+        );
+        ctx.predecessor_account_id = alice();
+        ctx.block_timestamp = MILI_SECOND * 3;
+        testing_env!(ctx.clone());
+        let answer1: String = "Answer 1".to_string();
+        let answer2: String = "Answer 2".to_string();
+        let answer3: String = "Answer 3".to_string();
+        ctr.respond(
+            poll_id,
+            vec![None, None, None, Some(Answer::TextAnswer(answer1.clone()))],
+        );
+        ctx.predecessor_account_id = bob();
+        testing_env!(ctx.clone());
+        ctr.respond(
+            poll_id,
+            vec![None, None, None, Some(Answer::TextAnswer(answer2.clone()))],
+        );
+        ctx.predecessor_account_id = charlie();
+        testing_env!(ctx.clone());
+        ctr.respond(
+            poll_id,
+            vec![None, None, None, Some(Answer::TextAnswer(answer3.clone()))],
+        );
+        let results = ctr.results(poll_id);
+        assert_eq!(
+            results,
+            Results {
+                status: Status::Active,
+                number_of_participants: 3,
+                results: vec![
+                    PollResult::YesNo((0, 0)),
+                    PollResult::TextChoices(vec![]),
+                    PollResult::OpinionScale(OpinionScaleResult { sum: 0, num: 0 }),
+                    PollResult::TextAnswer(vec![answer1, answer2, answer3])
                 ]
             }
         )

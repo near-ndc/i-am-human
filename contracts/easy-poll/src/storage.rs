@@ -1,6 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{AccountId, BorshStorageKey};
+use near_sdk::BorshStorageKey;
 
 pub type PollId = u64;
 
@@ -9,9 +9,9 @@ pub type PollId = u64;
 #[serde(crate = "near_sdk::serde")]
 pub enum Answer {
     YesNo(bool),
-    TextChoices(Vec<usize>),    // should respect the min_choices, max_choices
-    PictureChoices(Vec<usize>), // should respect the min_choices, max_choices
-    OpinionScale(u64),          // should be a number between 0 and 10
+    TextChoices(Vec<bool>),    // should respect the min_choices, max_choices
+    PictureChoices(Vec<bool>), // should respect the min_choices, max_choices
+    OpinionScale(u64),         // should be a number between 0 and 10
     TextAnswer(String),
 }
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -43,6 +43,7 @@ pub struct Question {
     pub image: Option<String>, // optional
     pub labels: Option<(String, String, String)>, // if applicable, labels for the opinion scale question
     pub choices: Option<Vec<String>>, // if applicable, choices for the text and picture choices question TODO: make sure we dont need it
+    pub max_choices: Option<u32>,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
