@@ -1,11 +1,16 @@
+use ext::ext_registry;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, UnorderedMap};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
 
+pub use crate::constants::*;
 pub use crate::errors::PollError;
+pub use crate::ext::*;
 pub use crate::storage::*;
 
+mod constants;
 mod errors;
+mod ext;
 mod storage;
 
 #[near_bindgen]
@@ -123,18 +128,57 @@ impl Contract {
         answers: Vec<Option<Answer>>,
     ) -> Result<(), PollError> {
         let caller = env::predecessor_account_id();
-        // check if poll exists and is active
-        self.assert_active(poll_id);
+
+        match self.assert_active(poll_id) {
+            Err(err) => return Err(err),
+            Ok(_) => (),
+        };
+
+        // TODO: I think we should add a option for the poll creator to choose whether changing
+        // the answers while the poll is active is allowed or not
         self.assert_answered(poll_id, &caller);
+        let poll = self.polls.get(&poll_id).unwrap();
         // if iah calls the registry to verify the iah sbt
-        self.assert_human(poll_id, &caller);
+        if poll.iah_only {
+            ext_registry::ext(self.registry.clone())
+                .is_human(caller.clone())
+                .then(
+                    Self::ext(env::current_account_id())
+                        .with_static_gas(GAS_UPVOTE)
+                        .on_human_verifed(true, caller, poll_id, answers),
+                );
+        } else {
+            Self::ext(env::current_account_id())
+                .with_static_gas(GAS_UPVOTE)
+                .on_human_verifed(false, caller, poll_id, answers);
+        }
+        Ok(())
+    }
+
+    /**********
+     * PRIVATE
+     **********/
+
+    #[private]
+    #[handle_result]
+    pub fn on_human_verifed(
+        &mut self,
+        #[callback_unwrap] tokens: Vec<(AccountId, Vec<sbt::TokenId>)>,
+        iah_only: bool,
+        caller: AccountId,
+        poll_id: PollId,
+        answers: Vec<Option<Answer>>,
+    ) -> Result<(), PollError> {
+        if iah_only && tokens.is_empty() {
+            return Err(PollError::NoSBTs);
+        }
         let questions: Vec<Question> = self.polls.get(&poll_id).unwrap().questions;
         let mut unwrapped_answers: Vec<Answer> = Vec::new();
         let mut poll_results = self.results.get(&poll_id).unwrap();
         // let mut results = poll_results.results;
         for i in 0..questions.len() {
             if questions[i].required && answers[i].is_none() {
-                env::panic_str(format!("poll question {} requires an answer", i).as_str());
+                return Err(PollError::RequiredAnswer);
             }
 
             match (&answers[i], &poll_results.results[i]) {
@@ -165,7 +209,7 @@ impl Contract {
                 }
                 (Some(Answer::OpinionScale(answer)), PollResult::OpinionScale(results)) => {
                     if *answer > 10 {
-                        env::panic_str("opinion must be between 0 and 10");
+                        return Err(PollError::OpinionScale);
                     }
                     poll_results.results[i] = PollResult::OpinionScale(OpinionScaleResult {
                         sum: results.sum + *answer as u32,
@@ -199,24 +243,17 @@ impl Contract {
     /**********
      * INTERNAL
      **********/
-    fn assert_active(&self, poll_id: PollId) {
-        let poll = self.polls.get(&poll_id).expect("poll not found");
+    #[handle_result]
+    fn assert_active(&self, poll_id: PollId) -> Result<(), PollError> {
+        let poll = match self.polls.get(&poll_id) {
+            Some(poll) => poll,
+            None => return Err(PollError::NotFound),
+        };
         let current_timestamp = env::block_timestamp_ms();
-        require!(
-            poll.starts_at < current_timestamp,
-            format!(
-                "poll have not started yet, start_at: {:?}, current_timestamp: {:?}",
-                poll.starts_at, current_timestamp
-            )
-        );
-        require!(poll.ends_at > current_timestamp, "poll not active");
-    }
-
-    fn assert_human(&self, poll_id: PollId, caller: &AccountId) {
-        let poll = self.polls.get(&poll_id).unwrap();
-        if poll.iah_only {
-            // TODO: call registry to verify humanity
+        if poll.starts_at < current_timestamp || poll.ends_at > current_timestamp {
+            return Err(PollError::NotActive);
         }
+        Ok(())
     }
 
     fn assert_admin(&self) {
@@ -258,8 +295,7 @@ impl Contract {
 
 #[cfg(test)]
 mod tests {
-    use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId, Balance, VMContext};
-    use sbt::{ClassId, ContractMetadata, TokenMetadata};
+    use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId, VMContext};
 
     use crate::{Answer, Contract, OpinionScaleResult, PollResult, Question, Results, Status};
 
@@ -341,7 +377,7 @@ mod tests {
             .is_view(false)
             .build();
         testing_env!(ctx.clone());
-        let mut ctr = Contract::new(admin(), registry());
+        let ctr = Contract::new(admin(), registry());
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
@@ -349,7 +385,7 @@ mod tests {
 
     #[test]
     fn assert_admin() {
-        let (mut ctx, mut ctr) = setup(&admin());
+        let (_, ctr) = setup(&admin());
         ctr.assert_admin();
     }
 
@@ -370,13 +406,34 @@ mod tests {
         ctx.predecessor_account_id = alice();
         ctx.block_timestamp = MILI_SECOND * 3;
         testing_env!(ctx.clone());
-        ctr.respond(poll_id, vec![Some(Answer::YesNo(true)), None, None, None]);
+        let mut res = ctr.on_human_verifed(
+            vec![],
+            false,
+            ctx.predecessor_account_id,
+            poll_id,
+            vec![Some(Answer::YesNo(true)), None, None, None],
+        );
+        assert!(res.is_ok());
         ctx.predecessor_account_id = bob();
         testing_env!(ctx.clone());
-        ctr.respond(poll_id, vec![Some(Answer::YesNo(true)), None, None, None]);
+        res = ctr.on_human_verifed(
+            vec![],
+            false,
+            ctx.predecessor_account_id,
+            poll_id,
+            vec![Some(Answer::YesNo(true)), None, None, None],
+        );
+        assert!(res.is_ok());
         ctx.predecessor_account_id = charlie();
         testing_env!(ctx.clone());
-        ctr.respond(poll_id, vec![Some(Answer::YesNo(false)), None, None, None]);
+        res = ctr.on_human_verifed(
+            vec![],
+            false,
+            ctx.predecessor_account_id,
+            poll_id,
+            vec![Some(Answer::YesNo(false)), None, None, None],
+        );
+        assert!(res.is_ok());
         let results = ctr.results(poll_id);
         assert_eq!(
             results,
@@ -385,7 +442,7 @@ mod tests {
                 number_of_participants: 3,
                 results: vec![
                     PollResult::YesNo((2, 1)),
-                    PollResult::TextChoices(vec![]),
+                    PollResult::TextChoices(vec![0, 0, 0]),
                     PollResult::OpinionScale(OpinionScaleResult { sum: 0, num: 0 }),
                     PollResult::TextAnswer(vec![])
                 ]
@@ -408,9 +465,12 @@ mod tests {
             None,
         );
         ctx.predecessor_account_id = alice();
-        ctx.block_timestamp = (MILI_SECOND * 3);
+        ctx.block_timestamp = MILI_SECOND * 3;
         testing_env!(ctx.clone());
-        ctr.respond(
+        let mut res = ctr.on_human_verifed(
+            vec![],
+            false,
+            alice(),
             poll_id,
             vec![
                 Some(Answer::YesNo(true)),
@@ -419,18 +479,27 @@ mod tests {
                 None,
             ],
         );
+        assert!(res.is_ok());
         ctx.predecessor_account_id = bob();
         testing_env!(ctx.clone());
-        ctr.respond(
+        res = ctr.on_human_verifed(
+            vec![],
+            false,
+            bob(),
             poll_id,
             vec![None, None, Some(Answer::OpinionScale(10)), None],
         );
+        assert!(res.is_ok());
         ctx.predecessor_account_id = charlie();
         testing_env!(ctx.clone());
-        ctr.respond(
+        res = ctr.on_human_verifed(
+            vec![],
+            false,
+            charlie(),
             poll_id,
             vec![None, None, Some(Answer::OpinionScale(2)), None],
         );
+        assert!(res.is_ok());
         let results = ctr.results(poll_id);
         assert_eq!(
             results,
@@ -439,7 +508,7 @@ mod tests {
                 number_of_participants: 3,
                 results: vec![
                     PollResult::YesNo((1, 0)),
-                    PollResult::TextChoices(vec![]),
+                    PollResult::TextChoices(vec![0, 0, 0]),
                     PollResult::OpinionScale(OpinionScaleResult { sum: 17, num: 3 }),
                     PollResult::TextAnswer(vec![])
                 ]
@@ -463,7 +532,10 @@ mod tests {
         ctx.predecessor_account_id = alice();
         ctx.block_timestamp = MILI_SECOND * 3;
         testing_env!(ctx.clone());
-        ctr.respond(
+        let mut res = ctr.on_human_verifed(
+            vec![],
+            false,
+            ctx.predecessor_account_id,
             poll_id,
             vec![
                 None,
@@ -472,9 +544,13 @@ mod tests {
                 None,
             ],
         );
+        assert!(res.is_ok());
         ctx.predecessor_account_id = bob();
         testing_env!(ctx.clone());
-        ctr.respond(
+        res = ctr.on_human_verifed(
+            vec![],
+            false,
+            ctx.predecessor_account_id,
             poll_id,
             vec![
                 None,
@@ -483,9 +559,13 @@ mod tests {
                 None,
             ],
         );
+        assert!(res.is_ok());
         ctx.predecessor_account_id = charlie();
         testing_env!(ctx.clone());
-        ctr.respond(
+        res = ctr.on_human_verifed(
+            vec![],
+            false,
+            ctx.predecessor_account_id,
             poll_id,
             vec![
                 None,
@@ -494,6 +574,7 @@ mod tests {
                 None,
             ],
         );
+        assert!(res.is_ok());
         let results = ctr.results(poll_id);
         assert_eq!(
             results,
@@ -530,22 +611,34 @@ mod tests {
         let answer1: String = "Answer 1".to_string();
         let answer2: String = "Answer 2".to_string();
         let answer3: String = "Answer 3".to_string();
-        ctr.respond(
+        let mut res = ctr.on_human_verifed(
+            vec![],
+            false,
+            ctx.predecessor_account_id,
             poll_id,
             vec![None, None, None, Some(Answer::TextAnswer(answer1.clone()))],
         );
+        assert!(res.is_ok());
         ctx.predecessor_account_id = bob();
         testing_env!(ctx.clone());
-        ctr.respond(
+        res = ctr.on_human_verifed(
+            vec![],
+            false,
+            ctx.predecessor_account_id,
             poll_id,
             vec![None, None, None, Some(Answer::TextAnswer(answer2.clone()))],
         );
+        assert!(res.is_ok());
         ctx.predecessor_account_id = charlie();
         testing_env!(ctx.clone());
-        ctr.respond(
+        res = ctr.on_human_verifed(
+            vec![],
+            false,
+            ctx.predecessor_account_id,
             poll_id,
             vec![None, None, None, Some(Answer::TextAnswer(answer3.clone()))],
         );
+        assert!(res.is_ok());
         let results = ctr.results(poll_id);
         assert_eq!(
             results,
@@ -554,7 +647,7 @@ mod tests {
                 number_of_participants: 3,
                 results: vec![
                     PollResult::YesNo((0, 0)),
-                    PollResult::TextChoices(vec![]),
+                    PollResult::TextChoices(vec![0, 0, 0]),
                     PollResult::OpinionScale(OpinionScaleResult { sum: 0, num: 0 }),
                     PollResult::TextAnswer(vec![answer1, answer2, answer3])
                 ]
