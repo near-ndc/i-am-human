@@ -130,12 +130,13 @@ impl Contract {
             ));
         }
 
-        let sig = b64_decode("claim_sig", claim_sig)?;
+        //let sig = b64_decode("claim_sig", claim_sig)?;
         let claim_bytes = b64_decode("claim_b64", claim_b64)?;
         // let claim = Claim::deserialize(&mut &claim_bytes[..])
         let claim = Claim::try_from_slice(&claim_bytes)
             .map_err(|_| CtrError::Borsh("claim".to_string()))?;
-        verify_claim(&self.authority_pubkey, claim_bytes, sig)?;
+        let signature = sig_from_b64(claim_sig);
+        verify_claim(&self.authority_pubkey, claim_bytes, &signature)?;
 
         if claim.verified_kyc {
             require!(
@@ -299,18 +300,51 @@ impl Contract {
     // - fn sbt_renew
 }
 
+mod sys {
+    extern "C" {
+        pub fn ed25519_verify(
+            sig_len: u64,
+            sig_ptr: u64,
+            msg_len: u64,
+            msg_ptr: u64,
+            pub_key_len: u64,
+            pub_key_ptr: u64,
+        ) -> u64;
+    }
+  }
+  
+  pub fn ed25519_verify(signature: &[u8; 64], message: &[u8], public_key: &[u8; 32]) -> bool {
+      unsafe {
+          sys::ed25519_verify(
+              signature.len() as _,
+              signature.as_ptr() as _,
+              message.len() as _,
+              message.as_ptr() as _,
+              public_key.len() as _,
+              public_key.as_ptr() as _,
+          ) == 1
+      }
+}
+
 fn verify_claim(
     pubkey: &[u8; PUBLIC_KEY_LENGTH],
     claim: Vec<u8>,
-    claim_sig: Vec<u8>,
+    claim_sig: &[u8; 64],
 ) -> Result<(), CtrError> {
-    let pk = PublicKey::from_bytes(pubkey).unwrap();
-    let sig = match Signature::from_bytes(&claim_sig) {
-        Ok(sig) => sig,
-        Err(_) => return Err(CtrError::Signature("malformed signature".to_string())),
-    };
-    pk.verify(&claim, &sig)
-        .map_err(|_| CtrError::Signature("invalid signature".to_string()))
+    //let sig: &[u8; 64] = claim_sig.try_into().expect("authority pubkey must be 64 bytes");
+    let valid = ed25519_verify(claim_sig, &claim, pubkey);
+    if !valid {
+        return Err(CtrError::Signature("invalid signature".to_string()))
+    } else {
+        Ok(())
+    }
+    // let pk = PublicKey::from_bytes(pubkey).unwrap();
+    // let sig = match Signature::from_bytes(&claim_sig) {
+    //     Ok(sig) => sig,
+    //     Err(_) => return Err(CtrError::Signature("malformed signature".to_string())),
+    // };
+    // pk.verify(&claim, &sig)
+    //     .map_err(|_| CtrError::Signature("invalid signature".to_string()))
 }
 
 #[near_bindgen]
@@ -561,8 +595,9 @@ mod tests {
         let claim_sig_b64 = "38X2TnWgc6moc4zReAJFQ7BjtOUlWZ+i3YQl9gSMOXwnm5gupfHV/YGmGPOek6SSkotT586d4zTTT2U8Qh3GBw==".to_owned();
 
         let claim_bytes = b64_decode("claim_b64", claim_b64.clone()).unwrap();
-        let sig = b64_decode("claim_sig", claim_sig_b64.clone()).unwrap();
-        verify_claim(&ctr.authority_pubkey, claim_bytes, sig).unwrap();
+        //let sig = b64_decode("claim_sig", claim_sig_b64.clone()).unwrap();
+        let sig = sig_from_b64(claim_sig_b64.clone());
+        verify_claim(&ctr.authority_pubkey, claim_bytes, &sig).unwrap();
 
         let r = ctr.sbt_mint(claim_b64, claim_sig_b64, None);
         match r {
@@ -647,7 +682,7 @@ mod tests {
         let res = verify_claim(
             &k.public.to_bytes(),
             claim_bytes,
-            b64_decode("sig", sig).unwrap(),
+            &sig_from_b64(sig),
         );
         assert!(res.is_ok(), "verification result: {:?}", res);
     }

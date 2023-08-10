@@ -38,6 +38,11 @@ pub fn pubkey_from_b64(pubkey: String) -> [u8; PUBLIC_KEY_LENGTH] {
     pk_bz.try_into().expect("authority pubkey must be 32 bytes")
 }
 
+pub fn sig_from_b64(sig: String) -> [u8; PUBLIC_KEY_LENGTH * 2] {
+    let sig_bz = base64::decode(sig).expect("authority_pubkey is not a valid standard base64");
+    sig_bz.try_into().expect("authority pubkey must be 32 bytes")
+}
+
 /// only root accounts and implicit accounts are supported
 pub(crate) fn is_supported_account(account: Chars) -> bool {
     let mut num_dots = 0;
