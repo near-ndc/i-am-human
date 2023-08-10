@@ -1,4 +1,4 @@
-use ed25519_dalek::{PublicKey, Signature, Verifier, PUBLIC_KEY_LENGTH};
+use ed25519_dalek::{PUBLIC_KEY_LENGTH};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, UnorderedSet};
 use near_sdk::serde::Serialize;
@@ -130,12 +130,12 @@ impl Contract {
             ));
         }
 
-        let sig = b64_decode("claim_sig", claim_sig)?;
         let claim_bytes = b64_decode("claim_b64", claim_b64)?;
-        // let claim = Claim::deserialize(&mut &claim_bytes[..])
         let claim = Claim::try_from_slice(&claim_bytes)
             .map_err(|_| CtrError::Borsh("claim".to_string()))?;
-        verify_claim(&self.authority_pubkey, claim_bytes, sig)?;
+        let signature = b64_decode("sign_b64", claim_sig)?;
+        let signature: [u8; 64] = signature.try_into().expect("signature must be 64 bytes");
+        verify_claim(&self.authority_pubkey, claim_bytes, &signature)?;
 
         if claim.verified_kyc {
             require!(
@@ -299,18 +299,43 @@ impl Contract {
     // - fn sbt_renew
 }
 
+mod sys {
+    extern "C" {
+        pub fn ed25519_verify(
+            sig_len: u64,
+            sig_ptr: u64,
+            msg_len: u64,
+            msg_ptr: u64,
+            pub_key_len: u64,
+            pub_key_ptr: u64,
+        ) -> u64;
+    }
+  }
+  
+  pub fn ed25519_verify(signature: &[u8; 64], message: &[u8], public_key: &[u8; 32]) -> bool {
+      unsafe {
+          sys::ed25519_verify(
+              signature.len() as _,
+              signature.as_ptr() as _,
+              message.len() as _,
+              message.as_ptr() as _,
+              public_key.len() as _,
+              public_key.as_ptr() as _,
+          ) == 1
+      }
+}
+
 fn verify_claim(
     pubkey: &[u8; PUBLIC_KEY_LENGTH],
     claim: Vec<u8>,
-    claim_sig: Vec<u8>,
+    claim_sig: &[u8; 64],
 ) -> Result<(), CtrError> {
-    let pk = PublicKey::from_bytes(pubkey).unwrap();
-    let sig = match Signature::from_bytes(&claim_sig) {
-        Ok(sig) => sig,
-        Err(_) => return Err(CtrError::Signature("malformed signature".to_string())),
-    };
-    pk.verify(&claim, &sig)
-        .map_err(|_| CtrError::Signature("invalid signature".to_string()))
+    let valid = ed25519_verify(claim_sig, &claim, pubkey);
+    if !valid {
+        return Err(CtrError::Signature("invalid signature".to_string()))
+    } else {
+        Ok(())
+    }
 }
 
 #[near_bindgen]
@@ -561,8 +586,9 @@ mod tests {
         let claim_sig_b64 = "38X2TnWgc6moc4zReAJFQ7BjtOUlWZ+i3YQl9gSMOXwnm5gupfHV/YGmGPOek6SSkotT586d4zTTT2U8Qh3GBw==".to_owned();
 
         let claim_bytes = b64_decode("claim_b64", claim_b64.clone()).unwrap();
-        let sig = b64_decode("claim_sig", claim_sig_b64.clone()).unwrap();
-        verify_claim(&ctr.authority_pubkey, claim_bytes, sig).unwrap();
+        let signature = b64_decode("sign_b64", claim_sig_b64.clone()).unwrap();
+        let signature: [u8; 64] = signature.try_into().expect("signature must be 64 bytes");
+        verify_claim(&ctr.authority_pubkey, claim_bytes, &signature).unwrap();
 
         let r = ctr.sbt_mint(claim_b64, claim_sig_b64, None);
         match r {
@@ -644,10 +670,12 @@ mod tests {
 
         let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x12", &k, false);
         let claim_bytes = b64_decode("claim_b64", c_str).unwrap();
+        let signature = b64_decode("sign_b64", sig).unwrap();
+        let signature: [u8; 64] = signature.try_into().expect("signature must be 64 bytes");
         let res = verify_claim(
             &k.public.to_bytes(),
             claim_bytes,
-            b64_decode("sig", sig).unwrap(),
+            &signature,
         );
         assert!(res.is_ok(), "verification result: {:?}", res);
     }
@@ -686,15 +714,5 @@ mod tests {
         let claim_str = b64_encode(claim_bz);
         let claim2 = checks::tests::deserialize_claim(&claim_str);
         assert_eq!(c, claim2, "serialization should work");
-    }
-
-    #[allow(dead_code)]
-    // #[test]
-    fn sig_deserialization_check() {
-        let sig_b64 =
-            "o8MGudK9OrdNKVCMhjF7rEv9LangB+PdjxuQ0kgglCskZX7Al4JPrwf7tRlT252kiNpJaGPURgAvAA==";
-        let sig_bz = b64_decode("sig", sig_b64.to_string()).unwrap();
-        println!("sig len: {}", sig_bz.len());
-        Signature::from_bytes(&sig_bz).unwrap();
     }
 }
