@@ -110,7 +110,7 @@ impl Contract {
         let caller = env::predecessor_account_id();
         let ctr = env::current_account_id();
         ext_registry::ext(self.registry.clone())
-            .sbts(ctr.clone(), tokens.clone())
+            .sbt_classes(ctr.clone(), tokens.clone())
             .then(Self::ext(ctr).on_sbt_renew_callback(&caller, tokens, ttl, memo))
     }
 
@@ -123,13 +123,13 @@ impl Contract {
         tokens: Vec<TokenId>,
         ttl: u64,
         memo: Option<String>,
-        #[callback_result] token_data: Result<Vec<Option<Token>>, near_sdk::PromiseError>,
+        #[callback_result] token_classes: Result<Vec<Option<ClassId>>, near_sdk::PromiseError>,
     ) -> Promise {
-        let ts = token_data.expect("error while retrieving tokens data from registry");
+        let ts = token_classes.expect("error while retrieving tokens data from registry");
         let mut cached_class_info: HashMap<u64, (Vec<AccountId>, u64)> = HashMap::new();
-        for token in ts {
+        for token_class in ts {
             let max_ttl: u64;
-            let class_id: u64 = token.expect("token not found").metadata.class;
+            let class_id: u64 = token_class.expect("token not found");
             if let Some((cached_minters, cached_ttl)) = cached_class_info.get(&class_id) {
                 max_ttl = *cached_ttl;
                 self.assert_minter(caller, &cached_minters);
@@ -166,7 +166,7 @@ impl Contract {
         let caller = env::predecessor_account_id();
         let ctr = env::current_account_id();
         ext_registry::ext(self.registry.clone())
-            .sbts(ctr.clone(), tokens.clone())
+            .sbt_classes(ctr.clone(), tokens.clone())
             .then(Self::ext(ctr).on_sbt_revoke_callback(&caller, tokens, burn, memo))
     }
 
@@ -179,12 +179,12 @@ impl Contract {
         tokens: Vec<TokenId>,
         burn: bool,
         memo: Option<String>,
-        #[callback_result] token_data: Result<Vec<Option<Token>>, near_sdk::PromiseError>,
+        #[callback_result] token_classes: Result<Vec<Option<ClassId>>, near_sdk::PromiseError>,
     ) -> Promise {
-        let ts = token_data.expect("error while retrieving tokens data from registry");
+        let ts = token_classes.expect("error while retrieving tokens data from registry");
         let mut cached_class_minters: HashMap<u64, Vec<AccountId>> = HashMap::new();
-        for token in ts {
-            let class_id: u64 = token.expect("token not found").metadata.class;
+        for token_class in ts {
+            let class_id: u64 = token_class.expect("token not found");
             if let Some(cached_minter) = cached_class_minters.get(&class_id) {
                 self.assert_minter(caller, &cached_minter);
             } else {
