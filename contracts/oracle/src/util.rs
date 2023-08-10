@@ -39,7 +39,7 @@ pub fn pubkey_from_b64(pubkey: String) -> [u8; PUBLIC_KEY_LENGTH] {
 }
 
 pub fn sig_from_b64(sig: String) -> [u8; 64] {
-    let sig_bz = base64::decode(sig).expect("authority_pubkey is not a valid standard base64");
+    let sig_bz = base64::decode(sig).expect("signature is not a valid standard base64");
     sig_bz.try_into().expect("signature must be 64 bytes")
 }
 

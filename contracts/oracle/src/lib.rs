@@ -585,7 +585,6 @@ mod tests {
         let claim_sig_b64 = "38X2TnWgc6moc4zReAJFQ7BjtOUlWZ+i3YQl9gSMOXwnm5gupfHV/YGmGPOek6SSkotT586d4zTTT2U8Qh3GBw==".to_owned();
 
         let claim_bytes = b64_decode("claim_b64", claim_b64.clone()).unwrap();
-        //let sig = b64_decode("claim_sig", claim_sig_b64.clone()).unwrap();
         let sig = sig_from_b64(claim_sig_b64.clone());
         verify_claim(&ctr.authority_pubkey, claim_bytes, &sig).unwrap();
 
