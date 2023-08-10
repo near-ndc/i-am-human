@@ -1,7 +1,7 @@
 #[cfg(all(test, not(target_arch = "wasm32")))]
 pub mod tests {
-
     use crate::*;
+
     pub fn deserialize_claim(claim_b64: &str) -> Claim {
         let c_bz = crate::b64_decode("claim", claim_b64.to_string()).unwrap();
         let c = Claim::try_from_slice(&c_bz).unwrap();

@@ -21,7 +21,6 @@ sbt = { path = "../sbt" }
 [dev-dependencies]
 rand = "^0.7"
 near-primitives.workspace = true
-near-crypto.workspace = true
 ed25519-dalek.workspace = true
 
 # integration tests

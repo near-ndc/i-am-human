@@ -6,7 +6,8 @@ use uint::hex;
 
 pub use crate::errors::*;
 
-pub const PUBLIC_KEY_LENGTH: usize = 32;
+pub const PUBLIC_KEY_LEN: usize = 32;
+pub const SIGNATURE_LEN: usize = 64;
 
 type CtrResult<T> = Result<T, CtrError>;
 
@@ -34,7 +35,7 @@ pub fn b64_decode(arg: &str, data: String) -> CtrResult<Vec<u8>> {
     })
 }
 
-pub fn pubkey_from_b64(pubkey: String) -> [u8; PUBLIC_KEY_LENGTH] {
+pub fn pubkey_from_b64(pubkey: String) -> [u8; PUBLIC_KEY_LEN] {
     let pk_bz = base64::decode(pubkey).expect("authority_pubkey is not a valid standard base64");
     pk_bz.try_into().expect("authority pubkey must be 32 bytes")
 }
@@ -54,34 +55,43 @@ mod sys {
 }
 
 #[cfg(not(all(test, not(target_arch = "wasm32"))))]
-pub fn ed25519_verify(signature: &[u8; 64], message: &[u8], public_key: &[u8; 32]) -> bool {
+pub fn ed25519_verify(signature: &[u8; 64], message: &[u8], pubkey: &[u8; 32]) -> bool {
     unsafe {
         sys::ed25519_verify(
             signature.len() as _,
             signature.as_ptr() as _,
             message.len() as _,
             message.as_ptr() as _,
-            public_key.len() as _,
-            public_key.as_ptr() as _,
+            pubkey.len() as _,
+            pubkey.as_ptr() as _,
         ) == 1
     }
 }
 
+#[cfg(test)]
+use ed25519_dalek::{PublicKey, Signature, Verifier};
+
 #[cfg(all(test, not(target_arch = "wasm32")))]
-pub fn ed25519_verify(signature: &[u8; 64], message: &[u8], public_key: &[u8; 32]) -> bool {
-    return true;
+pub fn ed25519_verify(signature: &[u8; 64], message: &[u8], pubkey: &[u8; 32]) -> bool {
+    let pk = PublicKey::from_bytes(pubkey).unwrap();
+    match Signature::from_bytes(signature) {
+        Ok(sig) => pk.verify(message, &sig).is_ok(),
+        Err(_) => false,
+    }
 }
 
 pub fn verify_claim(
-    pubkey: &[u8; PUBLIC_KEY_LENGTH],
-    claim: Vec<u8>,
-    claim_sig: &[u8; 64],
+    claim_sig: &Vec<u8>,
+    claim: &Vec<u8>,
+    pubkey: &[u8; PUBLIC_KEY_LEN],
 ) -> Result<(), CtrError> {
-    let valid = ed25519_verify(claim_sig, &claim, pubkey);
-    if !valid {
-        return Err(CtrError::Signature("invalid signature".to_string()));
-    } else {
-        Ok(())
+    let claim_sig: &[u8; SIGNATURE_LEN] = claim_sig
+        .as_slice()
+        .try_into()
+        .expect("signature must be 64 bytes");
+    match ed25519_verify(claim_sig, claim, pubkey) {
+        true => Ok(()),
+        false => Err(CtrError::Signature("invalid signature".to_string())),
     }
 }
 
@@ -113,10 +123,58 @@ pub(crate) fn is_supported_account(account: Chars) -> bool {
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
-mod tests {
+pub mod tests {
+    extern crate ed25519_dalek;
+    extern crate rand;
+    use ed25519_dalek::{Keypair, Signer};
+    use rand::rngs::OsRng;
+
     use uint::hex::FromHexError;
 
     use super::*;
+    use crate::checks::tests::deserialize_claim;
+
+    pub fn gen_key() -> Keypair {
+        let mut csprng = OsRng {};
+        Keypair::generate(&mut csprng)
+    }
+
+    pub fn acc_claimer() -> AccountId {
+        "user1.near".parse().unwrap()
+    }
+
+    pub fn b64_encode(data: Vec<u8>) -> String {
+        near_sdk::base64::encode(data)
+    }
+
+    /// @timestamp: in seconds
+    pub fn mk_claim(timestamp: u64, external_id: &str, is_verified_kyc: bool) -> Claim {
+        Claim {
+            claimer: acc_claimer(),
+            external_id: external_id.to_string(),
+            timestamp,
+            verified_kyc: is_verified_kyc,
+        }
+    }
+
+    // returns b64 serialized claim and signature
+    pub fn sign_claim(c: &Claim, k: &Keypair) -> (String, String) {
+        let c_bz = c.try_to_vec().unwrap();
+        let sig = k.sign(&c_bz);
+        let sig_bz = sig.to_bytes();
+        (b64_encode(c_bz), b64_encode(sig_bz.to_vec()))
+    }
+
+    pub fn mk_claim_sign(
+        timestamp: u64,
+        external_id: &str,
+        k: &Keypair,
+        is_verified_kyc: bool,
+    ) -> (Claim, String, String) {
+        let c = mk_claim(timestamp, external_id, is_verified_kyc);
+        let (c_str, sig) = sign_claim(&c, &k);
+        return (c, c_str, sig);
+    }
 
     fn check_hex(s: &str, r: Vec<u8>) -> Result<(), FromHexError> {
         let b = hex::decode(s)?;
@@ -155,34 +213,38 @@ mod tests {
     }
 
     #[test]
-    fn check_pub_key_len() {
-        assert_eq!(ed25519_dalek::PUBLIC_KEY_LENGTH, PUBLIC_KEY_LENGTH);
+    fn claim_serialization() {
+        let c = mk_claim(1677621259142, "some_111#$!", false);
+        let claim_bz = c.try_to_vec().unwrap();
+        let claim_str = b64_encode(claim_bz);
+        let claim2 = deserialize_claim(&claim_str);
+        assert_eq!(c, claim2, "serialization should work");
     }
 
     #[test]
-    fn pubkey_near_crypto() {
-        //let sk = near_crypto::SecretKey::from_str("ed25519:...").unwrap();
-        let sk = near_crypto::SecretKey::from_random(near_crypto::KeyType::ED25519);
-        let k = match sk.clone() {
-            near_crypto::SecretKey::ED25519(k) => ed25519_dalek::Keypair::from_bytes(&k.0).unwrap(),
-            _ => panic!("expecting ed25519 key"),
-        };
+    fn check_pub_key_len() {
+        assert_eq!(ed25519_dalek::PUBLIC_KEY_LENGTH, PUBLIC_KEY_LEN);
+        assert_eq!(ed25519_dalek::SIGNATURE_LENGTH, SIGNATURE_LEN);
+    }
 
-        let pk_bs58 = near_sdk::bs58::encode(k.public).into_string();
-        let pk_b64 = near_sdk::base64::encode(k.public.as_bytes().to_vec());
-        let sk_str = near_sdk::bs58::encode(k.secret).into_string();
-        let sk_str2 = sk.to_string();
-        println!(
-            "pubkey_bs58={}  pubkey_b64={}\nsecret={} {}",
-            pk_bs58, pk_b64, sk_str, sk_str2,
-        );
+    #[test]
+    fn test_verify_claim() {
+        let k = gen_key();
+        let (_, c_str, sig) = mk_claim_sign(10000, "0x12", &k, false);
+        let claim_bytes = b64_decode("claim_b64", c_str).unwrap();
+        let signature = b64_decode("sign_b64", sig).unwrap();
+        let res = verify_claim(&signature, &claim_bytes, &k.public.to_bytes());
+        assert!(res.is_ok(), "verification result: {:?}", res);
 
-        // let sk2 = near_crypto::SecretKey::from_str(
-        //     "secp256k1:AxynSCWRr2RrBXbzcbykYTo5vPmCkMf35s1D1bXV8P51",
-        // )
-        // .unwrap();
-        // println!("\nsecp: {}, public: {}", sk2, sk2.public_key());
+        let pk2 = gen_key().public;
+        // let pk_bs58 = near_sdk::bs58::encode(k.public).into_string();
+        // println!(">>> pub {:?}", b64_encode(pk2.as_bytes().to_vec()));
+        let res = verify_claim(&signature, &claim_bytes, pk2.as_bytes());
+        assert!(res.is_err(), "verification result: {:?}", res);
 
-        // assert!(false);
+        let pk3_bytes = pubkey_from_b64("FGoAI6DXghOSK2ZaKVT/5lSP4X4JkoQQphv1FD4YRto=".to_string());
+        assert_ne!(pk3_bytes[0], 0);
+        let res = verify_claim(&signature, &claim_bytes, &pk3_bytes);
+        assert!(res.is_err(), "verification result: {:?}", res);
     }
 }

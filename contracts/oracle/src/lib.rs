@@ -44,7 +44,7 @@ pub struct Contract {
     /// SBT ttl until expire in miliseconds (expire=issue_time+sbt_ttl)
     pub sbt_ttl_ms: u64,
     /// ed25519 pub key (could be same as a NEAR pub key)
-    pub authority_pubkey: [u8; PUBLIC_KEY_LENGTH], // Vec<u8>,
+    pub authority_pubkey: [u8; PUBLIC_KEY_LEN], // Vec<u8>,
     pub used_identities: UnorderedSet<Vec<u8>>,
 
     /// used for backend key rotation
@@ -110,7 +110,8 @@ impl Contract {
      **********/
 
     /// Mints a new SBT for the transaction signer.
-    /// @claim_b64: standard base64 borsh serialized Claim (same bytes as used for the claim signature)
+    /// @claim_b64: standard base64 borsh serialized Claim (same bytes as used for the claim signature).
+    /// @claim_sig: standard base64 serialized ed25519 signature.
     /// If `metadata.expires_at` is None then we set it to ` now+self.ttl`.
     /// Panics if `metadata.expires_at > now+self.ttl`.
     // TODO: update result to return TokenId
@@ -132,9 +133,8 @@ impl Contract {
         let claim_bytes = b64_decode("claim_b64", claim_b64)?;
         let claim = Claim::try_from_slice(&claim_bytes)
             .map_err(|_| CtrError::Borsh("claim".to_string()))?;
-        let signature = b64_decode("sign_b64", claim_sig)?;
-        let signature: [u8; 64] = signature.try_into().expect("signature must be 64 bytes");
-        verify_claim(&self.authority_pubkey, claim_bytes, &signature)?;
+        let signature = b64_decode("claim_sig", claim_sig)?;
+        verify_claim(&signature, &claim_bytes, &self.authority_pubkey)?;
 
         if claim.verified_kyc {
             require!(
@@ -320,23 +320,12 @@ mod checks;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 pub mod tests {
-    extern crate ed25519_dalek;
-    extern crate rand;
-
     use crate::*;
+    use ed25519_dalek::Keypair;
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::{testing_env, VMContext};
 
-    use ed25519_dalek::{Keypair, Signer};
-    use rand::rngs::OsRng;
-
-    pub fn b64_encode(data: Vec<u8>) -> String {
-        near_sdk::base64::encode(data)
-    }
-
-    fn acc_claimer() -> AccountId {
-        "user1.near".parse().unwrap()
-    }
+    use crate::util::tests::{acc_claimer, b64_encode, gen_key, mk_claim_sign};
 
     fn acc_u1() -> AccountId {
         "user2.near".parse().unwrap()
@@ -380,9 +369,7 @@ pub mod tests {
             .is_view(false)
             .build();
 
-        let mut csprng = OsRng {};
-        let keypair: Keypair = Keypair::generate(&mut csprng);
-
+        let keypair = gen_key();
         let ctr = Contract::new(
             b64_encode(keypair.public.to_bytes().to_vec()),
             ContractMetadata {
@@ -401,35 +388,6 @@ pub mod tests {
         testing_env!(ctx.clone());
 
         return (ctx, ctr, keypair);
-    }
-
-    /// @timestamp: in seconds
-    pub fn mk_claim(timestamp: u64, external_id: &str, is_verified_kyc: bool) -> Claim {
-        Claim {
-            claimer: acc_claimer(),
-            external_id: external_id.to_string(),
-            timestamp,
-            verified_kyc: is_verified_kyc,
-        }
-    }
-
-    // returns b64 serialized claim and signature
-    fn sign_claim(c: &Claim, k: &Keypair) -> (String, String) {
-        let c_bz = c.try_to_vec().unwrap();
-        let sig = k.sign(&c_bz);
-        let sig_bz = sig.to_bytes();
-        (b64_encode(c_bz), b64_encode(sig_bz.to_vec()))
-    }
-
-    fn mk_claim_sign(
-        timestamp: u64,
-        external_id: &str,
-        k: &Keypair,
-        is_verified_kyc: bool,
-    ) -> (Claim, String, String) {
-        let c = mk_claim(timestamp, external_id, is_verified_kyc);
-        let (c_str, sig) = sign_claim(&c, &k);
-        return (c, c_str, sig);
     }
 
     fn assert_bad_request(resp: Result<Promise, CtrError>, expected_msg: &str) {
@@ -546,9 +504,8 @@ pub mod tests {
         let claim_sig_b64 = "38X2TnWgc6moc4zReAJFQ7BjtOUlWZ+i3YQl9gSMOXwnm5gupfHV/YGmGPOek6SSkotT586d4zTTT2U8Qh3GBw==".to_owned();
 
         let claim_bytes = b64_decode("claim_b64", claim_b64.clone()).unwrap();
-        let signature = b64_decode("sign_b64", claim_sig_b64.clone()).unwrap();
-        let signature: [u8; 64] = signature.try_into().expect("signature must be 64 bytes");
-        verify_claim(&ctr.authority_pubkey, claim_bytes, &signature).unwrap();
+        let signature = b64_decode("sig_b64", claim_sig_b64.clone()).unwrap();
+        verify_claim(&signature, &claim_bytes, &ctr.authority_pubkey).unwrap();
 
         let r = ctr.sbt_mint(claim_b64, claim_sig_b64, None);
         match r {
@@ -618,30 +575,5 @@ pub mod tests {
             Err(error) => panic!("expected DuplicatedID, got: {:?}", error),
             Ok(_) => panic!("expected DuplicatedID, got: Ok"),
         }
-    }
-
-    #[test]
-    fn pubkey() {
-        let pk_bytes = pubkey_from_b64("kSj7W/TdN9RGLgdJA8ac7i/WdQdm2lwQ1IPGlO1L3xc=".to_string());
-        assert_ne!(pk_bytes[0], 0);
-
-        let mut csprng = OsRng {};
-        let k = Keypair::generate(&mut csprng);
-
-        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x12", &k, false);
-        let claim_bytes = b64_decode("claim_b64", c_str).unwrap();
-        let signature = b64_decode("sign_b64", sig).unwrap();
-        let signature: [u8; 64] = signature.try_into().expect("signature must be 64 bytes");
-        let res = verify_claim(&k.public.to_bytes(), claim_bytes, &signature);
-        assert!(res.is_ok(), "verification result: {:?}", res);
-    }
-
-    #[test]
-    fn claim_serialization() {
-        let c = mk_claim(1677621259142, "some_111#$!", false);
-        let claim_bz = c.try_to_vec().unwrap();
-        let claim_str = b64_encode(claim_bz);
-        let claim2 = checks::tests::deserialize_claim(&claim_str);
-        assert_eq!(c, claim2, "serialization should work");
     }
 }
