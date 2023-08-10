@@ -173,4 +173,5 @@ trait ExtRegistry {
     fn is_human(&self, account: AccountId) -> Vec<(AccountId, Vec<TokenId>)>;
     fn sbt(&self, issuer: AccountId, token: TokenId) -> Option<Token>;
     fn sbts(&self, issuer: AccountId, tokens: Vec<TokenId>) -> Vec<Option<Token>>;
+    fn sbt_classes(&self, issuer: AccountId, tokens: Vec<TokenId>) -> Vec<Option<ClassId>>;
 }
