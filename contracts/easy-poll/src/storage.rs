@@ -22,7 +22,7 @@ pub enum PollResult {
     TextChoices(Vec<u32>),            // should respect the min_choices, max_choices
     PictureChoices(Vec<u32>),         // should respect the min_choices, max_choices
     OpinionScale(OpinionScaleResult), // mean value
-    TextAnswer(Vec<String>),
+    TextAnswer(bool), // indicates whether the question exist or not, the answers are stored in a different struct called `TextAnswers`
 }
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
@@ -76,12 +76,10 @@ pub struct Results {
     pub results: Vec<PollResult>, // question_id, result (sum of yes etc.)
 }
 
-#[derive(Serialize, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
-pub struct Answers {
-    status: Status,
-    number_of_participants: u64,
-    answers: Vec<(usize, Vec<Answer>)>, // question_id, list of answers
+pub struct TextAnswers {
+    pub answers: Vec<String>, // question_id, list of answers
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone)]
@@ -98,4 +96,5 @@ pub enum StorageKey {
     Polls,
     Results,
     Answers,
+    TextAnswers,
 }

@@ -22,6 +22,7 @@ pub struct Contract {
     pub polls: UnorderedMap<PollId, Poll>,
     pub results: LookupMap<PollId, Results>,
     pub answers: UnorderedMap<(PollId, AccountId), Vec<Answer>>,
+    pub text_answers: LookupMap<(PollId, usize), TextAnswers>,
     /// SBT registry.
     pub registry: AccountId,
     /// next poll id
@@ -40,6 +41,7 @@ impl Contract {
             polls: UnorderedMap::new(StorageKey::Polls),
             results: LookupMap::new(StorageKey::Results),
             answers: UnorderedMap::new(StorageKey::Answers),
+            text_answers: LookupMap::new(StorageKey::TextAnswers),
             registry,
             next_poll_id: 0,
         }
@@ -62,18 +64,46 @@ impl Contract {
         self.results.get(&poll_id).expect("poll not found")
     }
 
+    pub fn result_text_answers(
+        &self,
+        poll_id: u64,
+        question: usize,
+        from_answer: usize,
+    ) -> (bool, Vec<String>) {
+        self._result_answers(poll_id, question, from_answer, 10)
+    }
+
     // TODO: limit the max lenght of single answer and based on that return a fixed value of answers
     // Function must be called until true is returned -> meaning all the answers were returned
     // returns None if poll is not found
     // `question` must be an index of the text question in the poll
-    pub fn result_answers(
+    pub fn _result_answers(
         &self,
-        poll_id: usize,
+        poll_id: u64,
         question: usize,
-        from_answer: u64,
-    ) -> (Vec<String>, bool) {
-        //TODO check if question is type `TextAnswer`
-        unimplemented!();
+        from_answer: usize,
+        limit: usize,
+    ) -> (bool, Vec<String>) {
+        self.polls
+            .get(&poll_id)
+            .expect("poll not found")
+            .questions
+            .get(question)
+            .expect("question not type `TextAnswer`");
+        let text_answers = self
+            .text_answers
+            .get(&(poll_id, question))
+            .expect("no answer found")
+            .answers;
+        let to_return;
+        let mut finished = false;
+        if from_answer + limit > text_answers.len() {
+            to_return = text_answers[from_answer..].to_vec();
+            finished = true;
+        } else {
+            to_return = text_answers[from_answer..from_answer + limit].to_vec();
+        }
+        (finished, to_return)
     }
     // user can update the poll if starts_at > now
     // it panics if
@@ -216,10 +246,10 @@ impl Contract {
                         num: results.num + 1 as u32,
                     });
                 }
-                (Some(Answer::TextAnswer(answer)), PollResult::TextAnswer(results)) => {
-                    let mut results = results.clone();
-                    results.push(answer.clone());
-                    poll_results.results[i] = PollResult::TextAnswer(results);
+                (Some(Answer::TextAnswer(answer)), _) => {
+                    let mut text_answers = self.text_answers.get(&(poll_id, i)).expect("not found");
+                    text_answers.answers.push(answer.clone());
+                    self.text_answers.insert(&(poll_id, i), &text_answers);
                 }
                 (_, _) => (),
             }
@@ -269,18 +299,36 @@ impl Contract {
 
     fn initalize_results(&mut self, poll_id: PollId, questions: &Vec<Question>) {
         let mut results = Vec::new();
+        let mut index = 0;
         for question in questions {
-            results.push(match question.question_type {
-                Answer::YesNo(_) => PollResult::YesNo((0, 0)),
-                Answer::TextChoices(_) => {
-                    PollResult::TextChoices(vec![0; question.choices.clone().unwrap().len()])
-                }
-                Answer::PictureChoices(_) => PollResult::PictureChoices(Vec::new()),
+            match question.question_type {
+                Answer::YesNo(_) => results.push(PollResult::YesNo((0, 0))),
+                Answer::TextChoices(_) => results.push(PollResult::TextChoices(vec![
+                    0;
+                    question
+                        .choices
+                        .clone()
+                        .unwrap()
+                        .len()
+                ])),
+                Answer::PictureChoices(_) => results.push(PollResult::PictureChoices(Vec::new())),
                 Answer::OpinionScale(_) => {
-                    PollResult::OpinionScale(OpinionScaleResult { sum: 0, num: 0 })
+                    results.push(PollResult::OpinionScale(OpinionScaleResult {
+                        sum: 0,
+                        num: 0,
+                    }))
                 }
-                Answer::TextAnswer(_) => PollResult::TextAnswer(Vec::new()),
-            });
+                Answer::TextAnswer(_) => {
+                    results.push(PollResult::TextAnswer(true));
+                    self.text_answers.insert(
+                        &(poll_id, index),
+                        &TextAnswers {
+                            answers: Vec::new(),
+                        },
+                    );
+                }
+            };
+            index += 1;
         }
         self.results.insert(
             &poll_id,
@@ -444,7 +492,7 @@ mod tests {
                     PollResult::YesNo((2, 1)),
                     PollResult::TextChoices(vec![0, 0, 0]),
                     PollResult::OpinionScale(OpinionScaleResult { sum: 0, num: 0 }),
-                    PollResult::TextAnswer(vec![])
+                    PollResult::TextAnswer(true)
                 ]
             }
         )
@@ -510,7 +558,7 @@ mod tests {
                     PollResult::YesNo((1, 0)),
                     PollResult::TextChoices(vec![0, 0, 0]),
                     PollResult::OpinionScale(OpinionScaleResult { sum: 17, num: 3 }),
-                    PollResult::TextAnswer(vec![])
+                    PollResult::TextAnswer(true)
                 ]
             }
         )
@@ -585,7 +633,7 @@ mod tests {
                     PollResult::YesNo((0, 0)),
                     PollResult::TextChoices(vec![2, 1, 0]),
                     PollResult::OpinionScale(OpinionScaleResult { sum: 0, num: 0 }),
-                    PollResult::TextAnswer(vec![])
+                    PollResult::TextAnswer(true)
                 ]
             }
         )
@@ -649,9 +697,12 @@ mod tests {
                     PollResult::YesNo((0, 0)),
                     PollResult::TextChoices(vec![0, 0, 0]),
                     PollResult::OpinionScale(OpinionScaleResult { sum: 0, num: 0 }),
-                    PollResult::TextAnswer(vec![answer1, answer2, answer3])
+                    PollResult::TextAnswer(true)
                 ]
             }
-        )
+        );
+        let text_answers = ctr.result_text_answers(poll_id, 3, 0);
+        assert!(text_answers.0);
+        assert_eq!(text_answers.1, vec![answer1, answer2, answer3])
     }
 }
