@@ -133,9 +133,8 @@ impl Contract {
         let claim_bytes = b64_decode("claim_b64", claim_b64)?;
         let claim = Claim::try_from_slice(&claim_bytes)
             .map_err(|_| CtrError::Borsh("claim".to_string()))?;
-        let sign = b64_decode("sign_b64", claim_sig)?;
-        let signature: [u8; 64] = sign.try_into().expect("signature must be 64 bytes");
-
+        let signature = b64_decode("sign_b64", claim_sig)?;
+        let signature: [u8; 64] = signature.try_into().expect("signature must be 64 bytes");
         verify_claim(&self.authority_pubkey, claim_bytes, &signature)?;
 
         if claim.verified_kyc {
@@ -587,8 +586,8 @@ mod tests {
         let claim_sig_b64 = "38X2TnWgc6moc4zReAJFQ7BjtOUlWZ+i3YQl9gSMOXwnm5gupfHV/YGmGPOek6SSkotT586d4zTTT2U8Qh3GBw==".to_owned();
 
         let claim_bytes = b64_decode("claim_b64", claim_b64.clone()).unwrap();
-        let sign = b64_decode("sign_b64", claim_sig_b64.clone()).unwrap();
-        let signature: [u8; 64] = sign.try_into().expect("signature must be 64 bytes");
+        let signature = b64_decode("sign_b64", claim_sig_b64.clone()).unwrap();
+        let signature: [u8; 64] = signature.try_into().expect("signature must be 64 bytes");
         verify_claim(&ctr.authority_pubkey, claim_bytes, &signature).unwrap();
 
         let r = ctr.sbt_mint(claim_b64, claim_sig_b64, None);
@@ -671,8 +670,8 @@ mod tests {
 
         let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x12", &k, false);
         let claim_bytes = b64_decode("claim_b64", c_str).unwrap();
-        let sign = b64_decode("sign_b64", sig).unwrap();
-        let signature: [u8; 64] = sign.try_into().expect("signature must be 64 bytes");
+        let signature = b64_decode("sign_b64", sig).unwrap();
+        let signature: [u8; 64] = signature.try_into().expect("signature must be 64 bytes");
         let res = verify_claim(
             &k.public.to_bytes(),
             claim_bytes,
