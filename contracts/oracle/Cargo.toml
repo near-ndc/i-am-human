@@ -14,7 +14,6 @@ crate-type = ["cdylib", "rlib"]
 uint.workspace = true
 near-sdk.workspace = true
 serde_json.workspace = true
-ed25519-dalek.workspace = true
 
 cost = { path = "../cost" }
 sbt = { path = "../sbt" }
@@ -23,7 +22,9 @@ sbt = { path = "../sbt" }
 rand = "^0.7"
 near-primitives.workspace = true
 near-crypto.workspace = true
+ed25519-dalek.workspace = true
 
+# integration tests
 pretty_assertions.workspace = true
 anyhow.workspace = true
 tokio.workspace = true

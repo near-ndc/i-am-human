@@ -1,4 +1,3 @@
-use ed25519_dalek::{PUBLIC_KEY_LENGTH};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, UnorderedSet};
 use near_sdk::serde::Serialize;
@@ -299,45 +298,6 @@ impl Contract {
     // - fn sbt_renew
 }
 
-mod sys {
-    extern "C" {
-        pub fn ed25519_verify(
-            sig_len: u64,
-            sig_ptr: u64,
-            msg_len: u64,
-            msg_ptr: u64,
-            pub_key_len: u64,
-            pub_key_ptr: u64,
-        ) -> u64;
-    }
-  }
-  
-  pub fn ed25519_verify(signature: &[u8; 64], message: &[u8], public_key: &[u8; 32]) -> bool {
-      unsafe {
-          sys::ed25519_verify(
-              signature.len() as _,
-              signature.as_ptr() as _,
-              message.len() as _,
-              message.as_ptr() as _,
-              public_key.len() as _,
-              public_key.as_ptr() as _,
-          ) == 1
-      }
-}
-
-fn verify_claim(
-    pubkey: &[u8; PUBLIC_KEY_LENGTH],
-    claim: Vec<u8>,
-    claim_sig: &[u8; 64],
-) -> Result<(), CtrError> {
-    let valid = ed25519_verify(claim_sig, &claim, pubkey);
-    if !valid {
-        return Err(CtrError::Signature("invalid signature".to_string()))
-    } else {
-        Ok(())
-    }
-}
-
 #[near_bindgen]
 impl SBTContract for Contract {
     fn sbt_metadata(&self) -> ContractMetadata {
@@ -359,7 +319,7 @@ pub enum CallbackResult<T, E> {
 mod checks;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
-mod tests {
+pub mod tests {
     extern crate ed25519_dalek;
     extern crate rand;
 
@@ -370,7 +330,7 @@ mod tests {
     use ed25519_dalek::{Keypair, Signer};
     use rand::rngs::OsRng;
 
-    fn b64_encode(data: Vec<u8>) -> String {
+    pub fn b64_encode(data: Vec<u8>) -> String {
         near_sdk::base64::encode(data)
     }
 
@@ -672,39 +632,8 @@ mod tests {
         let claim_bytes = b64_decode("claim_b64", c_str).unwrap();
         let signature = b64_decode("sign_b64", sig).unwrap();
         let signature: [u8; 64] = signature.try_into().expect("signature must be 64 bytes");
-        let res = verify_claim(
-            &k.public.to_bytes(),
-            claim_bytes,
-            &signature,
-        );
+        let res = verify_claim(&k.public.to_bytes(), claim_bytes, &signature);
         assert!(res.is_ok(), "verification result: {:?}", res);
-    }
-
-    #[test]
-    fn pubkey_near_crypto() {
-        //let sk = near_crypto::SecretKey::from_str("ed25519:...").unwrap();
-        let sk = near_crypto::SecretKey::from_random(near_crypto::KeyType::ED25519);
-        let k = match sk.clone() {
-            near_crypto::SecretKey::ED25519(k) => ed25519_dalek::Keypair::from_bytes(&k.0).unwrap(),
-            _ => panic!("expecting ed25519 key"),
-        };
-
-        let pk_bs58 = near_sdk::bs58::encode(k.public).into_string();
-        let pk_b64 = b64_encode(k.public.as_bytes().to_vec());
-        let sk_str = near_sdk::bs58::encode(k.secret).into_string();
-        let sk_str2 = sk.to_string();
-        println!(
-            "pubkey_bs58={}  pubkey_b64={}\nsecret={} {}",
-            pk_bs58, pk_b64, sk_str, sk_str2,
-        );
-
-        // let sk2 = near_crypto::SecretKey::from_str(
-        //     "secp256k1:AxynSCWRr2RrBXbzcbykYTo5vPmCkMf35s1D1bXV8P51",
-        // )
-        // .unwrap();
-        // println!("\nsecp: {}, public: {}", sk2, sk2.public_key());
-
-        // assert!(false);
     }
 
     #[test]

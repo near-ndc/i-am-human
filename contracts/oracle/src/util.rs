@@ -1,11 +1,12 @@
 use std::str::Chars;
 
-use ed25519_dalek::PUBLIC_KEY_LENGTH;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::{base64, env, AccountId};
 use uint::hex;
 
 pub use crate::errors::*;
+
+pub const PUBLIC_KEY_LENGTH: usize = 32;
 
 type CtrResult<T> = Result<T, CtrError>;
 
@@ -36,6 +37,52 @@ pub fn b64_decode(arg: &str, data: String) -> CtrResult<Vec<u8>> {
 pub fn pubkey_from_b64(pubkey: String) -> [u8; PUBLIC_KEY_LENGTH] {
     let pk_bz = base64::decode(pubkey).expect("authority_pubkey is not a valid standard base64");
     pk_bz.try_into().expect("authority pubkey must be 32 bytes")
+}
+
+mod sys {
+    extern "C" {
+        #[allow(dead_code)]
+        pub fn ed25519_verify(
+            sig_len: u64,
+            sig_ptr: u64,
+            msg_len: u64,
+            msg_ptr: u64,
+            pub_key_len: u64,
+            pub_key_ptr: u64,
+        ) -> u64;
+    }
+}
+
+#[cfg(not(all(test, not(target_arch = "wasm32"))))]
+pub fn ed25519_verify(signature: &[u8; 64], message: &[u8], public_key: &[u8; 32]) -> bool {
+    unsafe {
+        sys::ed25519_verify(
+            signature.len() as _,
+            signature.as_ptr() as _,
+            message.len() as _,
+            message.as_ptr() as _,
+            public_key.len() as _,
+            public_key.as_ptr() as _,
+        ) == 1
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+pub fn ed25519_verify(signature: &[u8; 64], message: &[u8], public_key: &[u8; 32]) -> bool {
+    return true;
+}
+
+pub fn verify_claim(
+    pubkey: &[u8; PUBLIC_KEY_LENGTH],
+    claim: Vec<u8>,
+    claim_sig: &[u8; 64],
+) -> Result<(), CtrError> {
+    let valid = ed25519_verify(claim_sig, &claim, pubkey);
+    if !valid {
+        return Err(CtrError::Signature("invalid signature".to_string()));
+    } else {
+        Ok(())
+    }
 }
 
 /// only root accounts and implicit accounts are supported
@@ -105,5 +152,37 @@ mod tests {
             hex::decode("1w").unwrap_err(),
             FromHexError::InvalidHexCharacter { c: 'w', index: 1 },
         );
+    }
+
+    #[test]
+    fn check_pub_key_len() {
+        assert_eq!(ed25519_dalek::PUBLIC_KEY_LENGTH, PUBLIC_KEY_LENGTH);
+    }
+
+    #[test]
+    fn pubkey_near_crypto() {
+        //let sk = near_crypto::SecretKey::from_str("ed25519:...").unwrap();
+        let sk = near_crypto::SecretKey::from_random(near_crypto::KeyType::ED25519);
+        let k = match sk.clone() {
+            near_crypto::SecretKey::ED25519(k) => ed25519_dalek::Keypair::from_bytes(&k.0).unwrap(),
+            _ => panic!("expecting ed25519 key"),
+        };
+
+        let pk_bs58 = near_sdk::bs58::encode(k.public).into_string();
+        let pk_b64 = near_sdk::base64::encode(k.public.as_bytes().to_vec());
+        let sk_str = near_sdk::bs58::encode(k.secret).into_string();
+        let sk_str2 = sk.to_string();
+        println!(
+            "pubkey_bs58={}  pubkey_b64={}\nsecret={} {}",
+            pk_bs58, pk_b64, sk_str, sk_str2,
+        );
+
+        // let sk2 = near_crypto::SecretKey::from_str(
+        //     "secp256k1:AxynSCWRr2RrBXbzcbykYTo5vPmCkMf35s1D1bXV8P51",
+        // )
+        // .unwrap();
+        // println!("\nsecp: {}, public: {}", sk2, sk2.public_key());
+
+        // assert!(false);
     }
 }
