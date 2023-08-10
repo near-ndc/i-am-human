@@ -7,7 +7,7 @@ repository = { workspace = true }
 license = { workspace = true }
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 
 [dependencies]
@@ -22,3 +22,11 @@ sbt = { path = "../sbt" }
 [dev-dependencies]
 rand = "^0.7"
 near-primitives.workspace = true
+near-crypto.workspace = true
+
+pretty_assertions.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+workspaces.workspace = true
+near-units.workspace = true
+tracing.workspace = true

@@ -2,10 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, TreeMap, UnorderedMap, UnorderedSet};
-use near_sdk::json_types::Base64VecU8;
-use near_sdk::{
-    env, near_bindgen, require, AccountId, Gas, PanicOnDefault, Promise, PromiseOrValue,
-};
+use near_sdk::serde_json::value::RawValue;
+use near_sdk::{env, near_bindgen, require, serde_json, AccountId, Gas, PanicOnDefault, Promise};
 
 use cost::MILI_NEAR;
 use sbt::*;
@@ -103,6 +101,10 @@ impl Contract {
     /// Otherwise returns list of SBTs (identifed by issuer and list of token IDs) proving
     /// the `account` humanity.
     pub fn is_human(&self, account: AccountId) -> SBTs {
+        self._is_human(&account)
+    }
+
+    fn _is_human(&self, account: &AccountId) -> SBTs {
         if self._is_banned(&account) {
             return vec![];
         }
@@ -141,8 +143,8 @@ impl Contract {
         let issuer = &env::predecessor_account_id();
         for ts in &token_spec {
             require!(
-                !self.is_human(ts.0.clone()).is_empty(),
-                format!("{} is not a human", ts.0.clone())
+                !self._is_human(&ts.0).is_empty(),
+                format!("{} is not a human", &ts.0)
             );
         }
         self._sbt_mint(issuer, token_spec)
@@ -252,29 +254,32 @@ impl Contract {
         (token_counter as u32, completed)
     }
 
-    /// Checks if the `account` is human. If yes, calls the `ctr.function` with args serialized
-    /// with base64. Normally, `args` is a JSON string serialized as base64.
-    /// If the `account` is not human, then returns false.
-    /// NOTICE: the function is in development, and subject to change (alpha stage). You should
-    /// rather not use it.
+    /// Checks if the `predecessor_account_id` is human. If yes, then calls:
+    ///
+    ///    ctr.function({caller: predecessor_account_id(),
+    ///                 iah_proof: SBTs,
+    ///                 payload: payload})
+    ///
+    /// `payload` must be a JSON string, and it will be passed through the default interface,
+    /// hence it will be JSON deserialized when using SDK.
+    /// Panics if the predecessor is not a human.
     #[payable]
-    pub fn is_human_call(
-        &mut self,
-        account: AccountId,
-        ctr: AccountId,
-        function: String,
-        args: Base64VecU8,
-    ) -> PromiseOrValue<bool> {
-        if self.is_human(account.clone()).is_empty() {
-            Promise::new(account).transfer(env::attached_deposit());
-            return PromiseOrValue::Value(false);
-        }
-        PromiseOrValue::Promise(Promise::new(ctr).function_call(
+    pub fn is_human_call(&mut self, ctr: AccountId, function: String, payload: String) -> Promise {
+        let caller = env::predecessor_account_id();
+        let iah_proof = self._is_human(&caller);
+        require!(!iah_proof.is_empty(), "caller not a human");
+
+        let args = IsHumanCallbackArgs {
+            caller,
+            iah_proof,
+            payload: &RawValue::from_string(payload).unwrap(),
+        };
+        Promise::new(ctr).function_call(
             function,
-            args.into(),
+            serde_json::to_vec(&args).unwrap(),
             env::attached_deposit(),
             env::prepaid_gas() - IS_HUMAN_GAS,
-        ))
+        )
     }
 
     pub(crate) fn start_transfer_with_continuation(
@@ -585,8 +590,8 @@ impl Contract {
         let storage_start = env::storage_usage();
         let storage_deposit = env::attached_deposit();
         require!(
-            storage_deposit >= 6 * MILI_NEAR,
-            "min required storage deposit: 0.006 NEAR"
+            storage_deposit >= 9 * MILI_NEAR,
+            "min required storage deposit: 0.009 NEAR"
         );
 
         let issuer_id = self.assert_issuer(issuer);
@@ -665,7 +670,7 @@ impl Contract {
         require!(
             storage_deposit >= required_deposit,
             format!(
-                "not enough NEAR storage depost, required: {}",
+                "not enough NEAR storage deposit, required: {}",
                 required_deposit
             )
         );
@@ -846,7 +851,7 @@ mod tests {
 
     const MILI_SECOND: u64 = 1_000_000; // milisecond in ns
     const START: u64 = 10;
-    const MINT_DEPOSIT: Balance = 6 * MILI_NEAR;
+    const MINT_DEPOSIT: Balance = 9 * MILI_NEAR;
 
     fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
@@ -934,11 +939,19 @@ mod tests {
 
         let sbts = ctr.sbts(issuer1(), vec![1, 2]);
         assert_eq!(sbts, vec![Some(sbt1_1_e.clone()), Some(sbt1_2_e.clone())]);
+        assert_eq!(
+            ctr.sbt_classes(issuer1(), vec![1, 1]),
+            vec![Some(1), Some(1)]
+        );
 
         let sbts = ctr.sbts(issuer1(), vec![2, 10, 3, 1]);
         assert_eq!(
             sbts,
             vec![Some(sbt1_2_e.clone()), None, None, Some(sbt1_1_e.clone())]
+        );
+        assert_eq!(
+            ctr.sbt_classes(issuer1(), vec![2, 10, 3, 1]),
+            vec![Some(1), None, None, Some(1)]
         );
 
         assert_eq!(1, ctr.sbt_supply_by_owner(alice(), issuer1(), None));
@@ -2321,6 +2334,17 @@ mod tests {
     }
 
     #[test]
+    fn is_human_expires_at_none() {
+        let (_, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+
+        // make sure is_human works as expected when the expiratoin date is set to None (the token never expires).
+        let m1_1 = mk_metadata(1, None);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
+
+        assert_eq!(ctr.is_human(alice()), vec![(fractal_mainnet(), vec![1])]);
+    }
+
+    #[test]
     fn is_human_multiple_classes() {
         let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
         ctr.iah_sbts.1 = vec![1, 3];
@@ -2636,5 +2660,27 @@ mod tests {
         assert_eq!(ctr.sbt_supply(issuer1()), 20);
         assert_eq!(ctr.sbt_supply(issuer2()), 20);
         assert_eq!(ctr.sbt_supply(issuer3()), 20);
+    }
+
+    #[test]
+    fn is_human_call() {
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), MINT_DEPOSIT);
+
+        let m1_1 = mk_metadata(1, Some(START));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
+        assert_eq!(ctr.is_human(alice()), vec![(fractal_mainnet(), vec![1])]);
+
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+
+        ctr.is_human_call(AccountId::new_unchecked("registry.i-am-human.near".to_string()), "function_name".to_string(), "{}".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "caller not a human")]
+    fn is_human_call_fail() {
+        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctr.is_human_call(AccountId::new_unchecked("registry.i-am-human.near".to_string()), "function_name".to_string(), "{}".to_string());
     }
 }

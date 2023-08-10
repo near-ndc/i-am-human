@@ -15,8 +15,9 @@ Only admin can add or revoke minting authority.
 
 #### TTL
 
-Time To Live (TTL) is a duration in milliseconds used to define token expire time: `expires_at = now + ttl`
-The constructor parameter is used to define max and default TTL when minting tokens.
+Time To Live (TTL) is a duration in milliseconds used to define token expire time: `expires_at = now + ttl`.
+Every token class has its own `MAX_TTL` value which is being set when enabling new class for minting.
+The `max_ttl` value can be changed by an admin by calling the `set_max_ttl` method.
 
 #### SBT classes
 

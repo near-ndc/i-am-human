@@ -1,19 +1,18 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
-use near_sdk::{env, near_bindgen, require, AccountId, Balance, PanicOnDefault};
+use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::{env, near_bindgen, require, AccountId, Balance, NearSchema, PanicOnDefault};
 
 use sbt::*;
 
 pub const MILI_NEAR: Balance = 1_000_000_000_000_000_000__000;
 pub const REG_HUMAN_DEPOSIT: Balance = 3 * MILI_NEAR;
 
-pub type HumanSBTs = Vec<(AccountId, Vec<TokenId>)>;
-
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
     /// Accounts authorized to issue new SBT
-    pub used_tokens: LookupMap<AccountId, HumanSBTs>,
+    pub used_tokens: LookupMap<AccountId, SBTs>,
     /// SBT registry.
     pub registry: AccountId,
 }
@@ -31,28 +30,51 @@ impl Contract {
         }
     }
 
-    // TODO: once we find a way how to merge human tokens into the args (payload) for
-    // `registry.is_human_call`, then we should add here `tokens: Vec<(AccountId, Vec<TokenId>)>`
     #[payable]
-    pub fn register_human_token(&mut self, user: AccountId, tokens: HumanSBTs) -> bool {
+    pub fn register_human_token(
+        &mut self,
+        caller: AccountId,
+        iah_proof: SBTs,
+        payload: RegisterHumanPayload,
+    ) -> bool {
+        env::log_str(&format!(
+            "register token for {}, memo={}",
+            caller, payload.memo
+        ));
         require!(
             env::predecessor_account_id() == self.registry,
             "must be called by registry"
         );
-        require!(!tokens.is_empty(), "tokens must be a non empty list");
-        for ti in &tokens {
-            require!(!ti.1.is_empty(), "tokens must be a non empty list");
+        assert_eq!(payload.numbers, expected_vec_payload(), "wrong payload");
+        require!(!iah_proof.is_empty(), "not a human");
+        for (_, tokens) in &iah_proof {
+            require!(
+                !tokens.is_empty(),
+                "bad response, expected non empty token list"
+            );
         }
-        if self.used_tokens.contains_key(&user) {
+        if self.used_tokens.contains_key(&caller) {
             return false;
         }
-        self.used_tokens.insert(&user, &tokens);
+        self.used_tokens.insert(&caller, &iah_proof);
         true
     }
 
-    pub fn recorded_sbts(&self, user: AccountId) -> bool {
-        self.used_tokens.contains_key(&user)
+    pub fn recorded_sbts(&self, user: AccountId) -> Option<SBTs> {
+        self.used_tokens.get(&user)
     }
+}
+
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, NearSchema, Clone))]
+#[serde(crate = "near_sdk::serde")]
+pub struct RegisterHumanPayload {
+    pub memo: String,
+    pub numbers: Vec<u32>,
+}
+
+pub(crate) fn expected_vec_payload() -> Vec<u32> {
+    vec![2, 3, 5, 7, 11]
 }
 
 #[cfg(test)]
@@ -90,11 +112,15 @@ mod tests {
         let (_, mut ctr) = setup(registry(), REG_HUMAN_DEPOSIT);
 
         let tokens = vec![(issuer1(), vec![1, 4])];
-        assert!(ctr.register_human_token(alice(), tokens.clone()));
+        let payload = RegisterHumanPayload {
+            memo: "checking alice".to_owned(),
+            numbers: expected_vec_payload(),
+        };
+        assert!(ctr.register_human_token(alice(), tokens.clone(), payload.clone()));
         assert_eq!(ctr.used_tokens.get(&alice()).unwrap(), tokens);
 
         assert!(
-            !ctr.register_human_token(alice(), vec![(issuer1(), vec![2])]),
+            !ctr.register_human_token(alice(), vec![(issuer1(), vec![2])], payload.clone()),
             "second call for the same user should return false"
         );
         assert_eq!(
@@ -110,6 +136,13 @@ mod tests {
         let (_, mut ctr) = setup(issuer1(), REG_HUMAN_DEPOSIT);
 
         let tokens = vec![(issuer1(), vec![1, 4])];
-        ctr.register_human_token(alice(), tokens);
+        ctr.register_human_token(
+            alice(),
+            tokens,
+            RegisterHumanPayload {
+                memo: "registering alice".to_owned(),
+                numbers: expected_vec_payload(),
+            },
+        );
     }
 }
