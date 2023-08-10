@@ -1,4 +1,4 @@
-use ed25519_dalek::{PublicKey, Signature, Verifier, PUBLIC_KEY_LENGTH};
+use ed25519_dalek::{PUBLIC_KEY_LENGTH};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, UnorderedSet};
 use near_sdk::serde::Serialize;
@@ -130,9 +130,7 @@ impl Contract {
             ));
         }
 
-        //let sig = b64_decode("claim_sig", claim_sig)?;
         let claim_bytes = b64_decode("claim_b64", claim_b64)?;
-        // let claim = Claim::deserialize(&mut &claim_bytes[..])
         let claim = Claim::try_from_slice(&claim_bytes)
             .map_err(|_| CtrError::Borsh("claim".to_string()))?;
         let signature = sig_from_b64(claim_sig);
@@ -331,20 +329,12 @@ fn verify_claim(
     claim: Vec<u8>,
     claim_sig: &[u8; 64],
 ) -> Result<(), CtrError> {
-    //let sig: &[u8; 64] = claim_sig.try_into().expect("authority pubkey must be 64 bytes");
     let valid = ed25519_verify(claim_sig, &claim, pubkey);
     if !valid {
         return Err(CtrError::Signature("invalid signature".to_string()))
     } else {
         Ok(())
     }
-    // let pk = PublicKey::from_bytes(pubkey).unwrap();
-    // let sig = match Signature::from_bytes(&claim_sig) {
-    //     Ok(sig) => sig,
-    //     Err(_) => return Err(CtrError::Signature("malformed signature".to_string())),
-    // };
-    // pk.verify(&claim, &sig)
-    //     .map_err(|_| CtrError::Signature("invalid signature".to_string()))
 }
 
 #[near_bindgen]
@@ -717,13 +707,13 @@ mod tests {
         assert_eq!(c, claim2, "serialization should work");
     }
 
-    #[allow(dead_code)]
-    // #[test]
-    fn sig_deserialization_check() {
-        let sig_b64 =
-            "o8MGudK9OrdNKVCMhjF7rEv9LangB+PdjxuQ0kgglCskZX7Al4JPrwf7tRlT252kiNpJaGPURgAvAA==";
-        let sig_bz = b64_decode("sig", sig_b64.to_string()).unwrap();
-        println!("sig len: {}", sig_bz.len());
-        Signature::from_bytes(&sig_bz).unwrap();
-    }
+    // #[allow(dead_code)]
+    // // #[test]
+    // fn sig_deserialization_check() {
+    //     let sig_b64 =
+    //         "o8MGudK9OrdNKVCMhjF7rEv9LangB+PdjxuQ0kgglCskZX7Al4JPrwf7tRlT252kiNpJaGPURgAvAA==";
+    //     let sig_bz = b64_decode("sig", sig_b64.to_string()).unwrap();
+    //     println!("sig len: {}", sig_bz.len());
+    //     Signature::from_bytes(&sig_bz).unwrap();
+    // }
 }
