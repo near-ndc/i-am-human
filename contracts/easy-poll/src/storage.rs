@@ -11,7 +11,7 @@ pub enum Answer {
     YesNo(bool),
     TextChoices(Vec<bool>),    // should respect the min_choices, max_choices
     PictureChoices(Vec<bool>), // should respect the min_choices, max_choices
-    OpinionScale(u8),          // should be a number between 0 and 10
+    OpinionRange(u8),          // should be a number between 0 and 10
     TextAnswer(String),
 }
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -21,13 +21,13 @@ pub enum PollResult {
     YesNo((u32, u32)),                // yes, no
     TextChoices(Vec<u32>),            // should respect the min_choices, max_choices
     PictureChoices(Vec<u32>),         // should respect the min_choices, max_choices
-    OpinionScale(OpinionScaleResult), // mean value
+    OpinionRange(OpinionRangeResult), // mean value
     TextAnswer, // indicates whether the question exist or not, the answers are stored in a different struct called `TextAnswers`
 }
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 #[serde(crate = "near_sdk::serde")]
-pub struct OpinionScaleResult {
+pub struct OpinionRangeResult {
     pub sum: u64,
     pub num: u64,
 }
@@ -64,7 +64,7 @@ pub struct Poll {
 #[serde(crate = "near_sdk::serde")]
 pub struct PollResponse {
     answers: Vec<(usize, Answer)>, // question_id, answer
-    created_at: u64, // time in milliseconds
+    created_at: u64,               // time in milliseconds
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -72,14 +72,8 @@ pub struct PollResponse {
 #[serde(crate = "near_sdk::serde")]
 pub struct Results {
     pub status: Status,
-    pub participants: u64, // number of participants
+    pub participants: u64,        // number of participants
     pub results: Vec<PollResult>, // question_id, result (sum of yes etc.)
-}
-
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Clone)]
-#[serde(crate = "near_sdk::serde")]
-pub struct TextAnswers {
-    pub answers: Vec<String>, // question_id, list of answers
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone)]

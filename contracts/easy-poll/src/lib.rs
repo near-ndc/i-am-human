@@ -18,12 +18,13 @@ pub const RESPOND_CALLBACK_GAS: Gas = Gas(2 * Gas::ONE_TERA.0);
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
-    /// Account authorized to add new minting authority
-    pub admin: AccountId,
-    /// map of classId -> to set of accounts authorized to mint
+    /// map of all polls
     pub polls: UnorderedMap<PollId, Poll>,
+    /// map of all results summarized
     pub results: LookupMap<PollId, Results>,
+    /// map of all answers, (poll, user) -> vec of answers
     pub answers: UnorderedMap<(PollId, AccountId), Vec<Answer>>,
+    /// text answers are stored in a separate map
     pub text_answers: LookupMap<(PollId, usize), Vector<String>>,
     /// SBT registry.
     pub registry: AccountId,
@@ -31,15 +32,11 @@ pub struct Contract {
     pub next_poll_id: PollId,
 }
 
-// Implement the contract structure
 #[near_bindgen]
 impl Contract {
-    /// @admin: account authorized to add new minting authority
-    /// @ttl: time to live for SBT expire. Must be number in miliseconds.
     #[init]
-    pub fn new(admin: AccountId, registry: AccountId) -> Self {
+    pub fn new(registry: AccountId) -> Self {
         Self {
-            admin,
             polls: UnorderedMap::new(StorageKey::Polls),
             results: LookupMap::new(StorageKey::Results),
             answers: UnorderedMap::new(StorageKey::Answers),
@@ -53,6 +50,7 @@ impl Contract {
      * QUERIES
      **********/
 
+    /// Returns caller response to the specified poll
     pub fn my_respond(&self, poll_id: PollId) -> Vec<Answer> {
         let caller = env::predecessor_account_id();
         self.answers
@@ -60,26 +58,25 @@ impl Contract {
             .expect("respond not found")
     }
 
-    /// returns None if poll is not found
-    /// this should result all the restuls but `TextAnswers`
+    /// Returns poll results (except for text answers), if poll not found panics
     pub fn results(&self, poll_id: u64) -> Results {
         self.results.get(&poll_id).expect("poll not found")
     }
 
+    /// Returns text answers in rounds. Starts from the question id provided. Needs to be called until true is returned.
     pub fn result_text_answers(
         &self,
         poll_id: u64,
         question: usize,
         from_answer: usize,
     ) -> (bool, Vec<String>) {
-        self._result_answers(poll_id, question, from_answer, 20)
+        self._result_text_answers(poll_id, question, from_answer, 20)
     }
 
-    // TODO: limit the max lenght of single answer and based on that return a fixed value of answers
+    ///Returns a fixed value of answers
     // Function must be called until true is returned -> meaning all the answers were returned
-    // returns None if poll is not found
     // `question` must be an index of the text question in the poll
-    pub fn _result_answers(
+    pub fn _result_text_answers(
         &self,
         poll_id: u64,
         question: usize,
@@ -106,10 +103,11 @@ impl Contract {
         }
         (finished, to_return)
     }
-    // user can update the poll if starts_at > now
-    // it panics if
-    // - user tries to create an invalid poll
-    // - if poll aready exists and starts_at < now
+
+    /// User can update the poll if starts_at > now
+    /// it panics if
+    /// - user tries to create an invalid poll
+    /// - if poll aready exists and starts_at < now
     pub fn create_poll(
         &mut self,
         iah_only: bool,
@@ -146,11 +144,11 @@ impl Contract {
         poll_id
     }
 
-    // user can change his answer when the poll is still active.
-    // it panics if
-    // - poll not found
-    // - poll not active
-    // - poll.verified_humans_only is true, and user is not verified on IAH
+    /// user can change his answer when the poll is still active.
+    /// it panics if
+    /// - poll not found
+    /// - poll not active
+    /// - poll.verified_humans_only is true, and user is not verified on IAH
     // - user tries to vote with an invalid answer to a question
     #[payable]
     #[handle_result]
@@ -195,6 +193,7 @@ impl Contract {
      * PRIVATE
      **********/
 
+    /// Callback for the respond method.
     #[private]
     #[handle_result]
     pub fn on_human_verifed(
@@ -243,11 +242,11 @@ impl Contract {
                     }
                     poll_results.results[i] = PollResult::PictureChoices(res);
                 }
-                (Some(Answer::OpinionScale(answer)), PollResult::OpinionScale(results)) => {
+                (Some(Answer::OpinionRange(answer)), PollResult::OpinionRange(results)) => {
                     if *answer > 10 {
-                        return Err(PollError::OpinionScale);
+                        return Err(PollError::OpinionRange);
                     }
-                    poll_results.results[i] = PollResult::OpinionScale(OpinionScaleResult {
+                    poll_results.results[i] = PollResult::OpinionRange(OpinionRangeResult {
                         sum: results.sum + *answer as u64,
                         num: results.num + 1 as u64,
                     });
@@ -271,7 +270,7 @@ impl Contract {
         self.answers.insert(&(poll_id, caller), &answers);
         // update the status and number of participants
         poll_results.status = Status::Active;
-        poll_results.number_of_participants += 1;
+        poll_results.participants += 1;
         self.results.insert(&poll_id, &poll_results);
         Ok(())
     }
@@ -290,10 +289,6 @@ impl Contract {
             return Err(PollError::NotActive);
         }
         Ok(())
-    }
-
-    fn assert_admin(&self) {
-        require!(self.admin == env::predecessor_account_id(), "not an admin");
     }
 
     fn assert_answered(&self, poll_id: PollId, caller: &AccountId) {
@@ -318,8 +313,8 @@ impl Contract {
                         .len()
                 ])),
                 Answer::PictureChoices(_) => results.push(PollResult::PictureChoices(Vec::new())),
-                Answer::OpinionScale(_) => {
-                    results.push(PollResult::OpinionScale(OpinionScaleResult {
+                Answer::OpinionRange(_) => {
+                    results.push(PollResult::OpinionRange(OpinionRangeResult {
                         sum: 0,
                         num: 0,
                     }))
@@ -336,7 +331,7 @@ impl Contract {
             &poll_id,
             &Results {
                 status: Status::NotStarted,
-                number_of_participants: 0,
+                participants: 0,
                 results: results,
             },
         );
@@ -347,7 +342,9 @@ impl Contract {
 mod tests {
     use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId, VMContext};
 
-    use crate::{Answer, Contract, OpinionScaleResult, PollResult, Question, Results, Status};
+    use crate::{
+        Answer, Contract, OpinionRangeResult, PollId, PollResult, Question, Results, Status,
+    };
 
     const MILI_SECOND: u64 = 1000000; // nanoseconds
 
@@ -367,25 +364,39 @@ mod tests {
         AccountId::new_unchecked("registry.near".to_string())
     }
 
-    fn admin() -> AccountId {
-        AccountId::new_unchecked("admin.near".to_string())
+    fn tags() -> Vec<String> {
+        vec![String::from("tag1"), String::from("tag2")]
+    }
+    fn question_text_answers(required: bool) -> Question {
+        Question {
+            question_type: Answer::TextAnswer(String::from("")),
+            required,
+            title: String::from("Opinion test!"),
+            description: None,
+            image: None,
+            labels: None,
+            choices: None,
+            max_choices: None,
+        }
     }
 
-    fn questions() -> Vec<Question> {
-        let mut questions = Vec::new();
-        questions.push(Question {
+    fn question_yes_no(required: bool) -> Question {
+        Question {
             question_type: Answer::YesNo(true),
-            required: false,
+            required,
             title: String::from("Yes and no test!"),
             description: None,
             image: None,
             labels: None,
             choices: None,
             max_choices: None,
-        });
-        questions.push(Question {
+        }
+    }
+
+    fn question_text_choices(required: bool) -> Question {
+        Question {
             question_type: Answer::TextChoices(vec![false, false, false]),
-            required: false,
+            required,
             title: String::from("Yes and no test!"),
             description: None,
             image: None,
@@ -396,60 +407,66 @@ mod tests {
                 String::from("no opinion"),
             ]),
             max_choices: Some(1),
-        });
-        questions.push(Question {
-            question_type: Answer::OpinionScale(0),
-            required: false,
+        }
+    }
+
+    fn question_opinion_range(required: bool) -> Question {
+        Question {
+            question_type: Answer::OpinionRange(0),
+            required,
             title: String::from("Opinion test!"),
             description: None,
             image: None,
             labels: None,
             choices: None,
             max_choices: None,
-        });
-        questions.push(Question {
-            question_type: Answer::TextAnswer(String::from("")),
-            required: false,
-            title: String::from("Opinion test!"),
-            description: None,
-            image: None,
-            labels: None,
-            choices: None,
-            max_choices: None,
-        });
-        questions
+        }
+    }
+
+    fn mk_batch_text_answers(
+        ctr: &mut Contract,
+        predecessor: AccountId,
+        poll_id: PollId,
+        num_answers: u64,
+    ) {
+        for i in 0..num_answers {
+            let res = ctr.on_human_verifed(
+                vec![],
+                false,
+                predecessor.clone(),
+                poll_id,
+                vec![Some(Answer::TextAnswer(format!(
+                    "Answer Answer Answer Answer Answer Answer Answer Answer Answer{}",
+                    i
+                )))],
+            );
+            assert!(res.is_ok());
+        }
     }
 
     fn setup(predecessor: &AccountId) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
-            .predecessor_account_id(admin())
+            .predecessor_account_id(alice())
             .block_timestamp(MILI_SECOND)
             .is_view(false)
             .build();
         testing_env!(ctx.clone());
-        let ctr = Contract::new(admin(), registry());
+        let ctr = Contract::new(registry());
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
     }
 
     #[test]
-    fn assert_admin() {
-        let (_, ctr) = setup(&admin());
-        ctr.assert_admin();
-    }
-
-    #[test]
     fn yes_no_flow() {
-        let tags = vec![String::from("tag1"), String::from("tag2")];
-        let (mut ctx, mut ctr) = setup(&admin());
+        let (mut ctx, mut ctr) = setup(&alice());
         let poll_id = ctr.create_poll(
             false,
-            questions(),
+            vec![question_yes_no(true)],
             2,
             100,
             String::from("Hello, world!"),
-            tags,
+            tags(),
             None,
             None,
         );
@@ -461,7 +478,7 @@ mod tests {
             false,
             ctx.predecessor_account_id,
             poll_id,
-            vec![Some(Answer::YesNo(true)), None, None, None],
+            vec![Some(Answer::YesNo(true))],
         );
         assert!(res.is_ok());
         ctx.predecessor_account_id = bob();
@@ -471,7 +488,7 @@ mod tests {
             false,
             ctx.predecessor_account_id,
             poll_id,
-            vec![Some(Answer::YesNo(true)), None, None, None],
+            vec![Some(Answer::YesNo(true))],
         );
         assert!(res.is_ok());
         ctx.predecessor_account_id = charlie();
@@ -481,7 +498,7 @@ mod tests {
             false,
             ctx.predecessor_account_id,
             poll_id,
-            vec![Some(Answer::YesNo(false)), None, None, None],
+            vec![Some(Answer::YesNo(false))],
         );
         assert!(res.is_ok());
         let results = ctr.results(poll_id);
@@ -489,28 +506,22 @@ mod tests {
             results,
             Results {
                 status: Status::Active,
-                number_of_participants: 3,
-                results: vec![
-                    PollResult::YesNo((2, 1)),
-                    PollResult::TextChoices(vec![0, 0, 0]),
-                    PollResult::OpinionScale(OpinionScaleResult { sum: 0, num: 0 }),
-                    PollResult::TextAnswer
-                ]
+                participants: 3,
+                results: vec![PollResult::YesNo((2, 1)),]
             }
         )
     }
 
     #[test]
-    fn opinion_scale_flow() {
-        let tags = vec![String::from("tag1"), String::from("tag2")];
-        let (mut ctx, mut ctr) = setup(&admin());
+    fn opinion_range_flow() {
+        let (mut ctx, mut ctr) = setup(&alice());
         let poll_id = ctr.create_poll(
             false,
-            questions(),
+            vec![question_opinion_range(false)],
             2,
             100,
             String::from("Multiple questions test!"),
-            tags,
+            tags(),
             None,
             None,
         );
@@ -522,12 +533,7 @@ mod tests {
             false,
             alice(),
             poll_id,
-            vec![
-                Some(Answer::YesNo(true)),
-                None,
-                Some(Answer::OpinionScale(5)),
-                None,
-            ],
+            vec![Some(Answer::OpinionRange(5))],
         );
         assert!(res.is_ok());
         ctx.predecessor_account_id = bob();
@@ -537,7 +543,7 @@ mod tests {
             false,
             bob(),
             poll_id,
-            vec![None, None, Some(Answer::OpinionScale(10)), None],
+            vec![Some(Answer::OpinionRange(10))],
         );
         assert!(res.is_ok());
         ctx.predecessor_account_id = charlie();
@@ -547,7 +553,7 @@ mod tests {
             false,
             charlie(),
             poll_id,
-            vec![None, None, Some(Answer::OpinionScale(2)), None],
+            vec![Some(Answer::OpinionRange(2))],
         );
         assert!(res.is_ok());
         let results = ctr.results(poll_id);
@@ -555,27 +561,24 @@ mod tests {
             results,
             Results {
                 status: Status::Active,
-                number_of_participants: 3,
-                results: vec![
-                    PollResult::YesNo((1, 0)),
-                    PollResult::TextChoices(vec![0, 0, 0]),
-                    PollResult::OpinionScale(OpinionScaleResult { sum: 17, num: 3 }),
-                    PollResult::TextAnswer
-                ]
+                participants: 3,
+                results: vec![PollResult::OpinionRange(OpinionRangeResult {
+                    sum: 17,
+                    num: 3
+                }),]
             }
         )
     }
     #[test]
     fn text_chocies_flow() {
-        let tags = vec![String::from("tag1"), String::from("tag2")];
-        let (mut ctx, mut ctr) = setup(&admin());
+        let (mut ctx, mut ctr) = setup(&alice());
         let poll_id = ctr.create_poll(
             false,
-            questions(),
+            vec![question_text_choices(true)],
             2,
             100,
             String::from("Hello, world!"),
-            tags,
+            tags(),
             None,
             None,
         );
@@ -587,12 +590,7 @@ mod tests {
             false,
             ctx.predecessor_account_id,
             poll_id,
-            vec![
-                None,
-                Some(Answer::TextChoices(vec![true, false, false])),
-                None,
-                None,
-            ],
+            vec![Some(Answer::TextChoices(vec![true, false, false]))],
         );
         assert!(res.is_ok());
         ctx.predecessor_account_id = bob();
@@ -602,12 +600,7 @@ mod tests {
             false,
             ctx.predecessor_account_id,
             poll_id,
-            vec![
-                None,
-                Some(Answer::TextChoices(vec![true, false, false])),
-                None,
-                None,
-            ],
+            vec![Some(Answer::TextChoices(vec![true, false, false]))],
         );
         assert!(res.is_ok());
         ctx.predecessor_account_id = charlie();
@@ -617,12 +610,7 @@ mod tests {
             false,
             ctx.predecessor_account_id,
             poll_id,
-            vec![
-                None,
-                Some(Answer::TextChoices(vec![false, true, false])),
-                None,
-                None,
-            ],
+            vec![Some(Answer::TextChoices(vec![false, true, false]))],
         );
         assert!(res.is_ok());
         let results = ctr.results(poll_id);
@@ -630,28 +618,22 @@ mod tests {
             results,
             Results {
                 status: Status::Active,
-                number_of_participants: 3,
-                results: vec![
-                    PollResult::YesNo((0, 0)),
-                    PollResult::TextChoices(vec![2, 1, 0]),
-                    PollResult::OpinionScale(OpinionScaleResult { sum: 0, num: 0 }),
-                    PollResult::TextAnswer
-                ]
+                participants: 3,
+                results: vec![PollResult::TextChoices(vec![2, 1, 0]),]
             }
         )
     }
 
     #[test]
     fn text_answers_flow() {
-        let tags = vec![String::from("tag1"), String::from("tag2")];
-        let (mut ctx, mut ctr) = setup(&admin());
+        let (mut ctx, mut ctr) = setup(&alice());
         let poll_id = ctr.create_poll(
             false,
-            questions(),
+            vec![question_text_answers(true)],
             2,
             100,
             String::from("Hello, world!"),
-            tags,
+            tags(),
             None,
             None,
         );
@@ -666,7 +648,7 @@ mod tests {
             false,
             ctx.predecessor_account_id,
             poll_id,
-            vec![None, None, None, Some(Answer::TextAnswer(answer1.clone()))],
+            vec![Some(Answer::TextAnswer(answer1.clone()))],
         );
         assert!(res.is_ok());
         ctx.predecessor_account_id = bob();
@@ -676,7 +658,7 @@ mod tests {
             false,
             ctx.predecessor_account_id,
             poll_id,
-            vec![None, None, None, Some(Answer::TextAnswer(answer2.clone()))],
+            vec![Some(Answer::TextAnswer(answer2.clone()))],
         );
         assert!(res.is_ok());
         ctx.predecessor_account_id = charlie();
@@ -686,7 +668,7 @@ mod tests {
             false,
             ctx.predecessor_account_id,
             poll_id,
-            vec![None, None, None, Some(Answer::TextAnswer(answer3.clone()))],
+            vec![Some(Answer::TextAnswer(answer3.clone()))],
         );
         assert!(res.is_ok());
         let results = ctr.results(poll_id);
@@ -694,17 +676,30 @@ mod tests {
             results,
             Results {
                 status: Status::Active,
-                number_of_participants: 3,
-                results: vec![
-                    PollResult::YesNo((0, 0)),
-                    PollResult::TextChoices(vec![0, 0, 0]),
-                    PollResult::OpinionScale(OpinionScaleResult { sum: 0, num: 0 }),
-                    PollResult::TextAnswer
-                ]
+                participants: 3,
+                results: vec![PollResult::TextAnswer]
             }
         );
-        let text_answers = ctr.result_text_answers(poll_id, 3, 0);
+        let text_answers = ctr.result_text_answers(poll_id, 0, 0);
         assert!(text_answers.0);
         assert_eq!(text_answers.1, vec![answer1, answer2, answer3])
+    }
+
+    #[test]
+    fn result_text_answers() {
+        let (mut ctx, mut ctr) = setup(&alice());
+        let poll_id = ctr.create_poll(
+            false,
+            vec![question_text_answers(true)],
+            2,
+            100,
+            String::from("Hello, world!"),
+            tags(),
+            None,
+            None,
+        );
+        mk_batch_text_answers(&mut ctr, alice(), poll_id, 50);
+        let text_answers = ctr._result_text_answers(poll_id, 0, 0, 30);
+        assert!(!text_answers.0);
     }
 }

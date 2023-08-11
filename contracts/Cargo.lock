@@ -862,7 +862,7 @@ checksum = "53aff6fdc1b181225acdcb5b14c47106726fd8e486707315b1b138baed68ee31"
 
 [[package]]
 name = "easy-poll"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "cost",
