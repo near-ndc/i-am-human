@@ -208,9 +208,12 @@ impl Contract {
             return Err(PollError::NoSBTs);
         }
         let questions: Vec<Question> = self.polls.get(&poll_id).unwrap().questions;
+        if questions.len() != answers.len() {
+            return Err(PollError::IncorrectAnswerVector);
+        }
         let mut unwrapped_answers: Vec<Answer> = Vec::new();
         let mut poll_results = self.results.get(&poll_id).unwrap();
-        // let mut results = poll_results.results;
+
         for i in 0..questions.len() {
             if questions[i].required && answers[i].is_none() {
                 return Err(PollError::RequiredAnswer);
@@ -252,11 +255,14 @@ impl Contract {
                     });
                 }
                 (Some(Answer::TextAnswer(answer)), _) => {
-                    let mut answers = self.text_answers.get(&(poll_id, i)).expect("not found");
+                    let mut answers = self
+                        .text_answers
+                        .get(&(poll_id, i))
+                        .expect(&format!("question not found for index {:?}", i));
                     answers.push(answer);
                     self.text_answers.insert(&(poll_id, i), &answers);
                 }
-                (_, _) => (),
+                (_, _) => return Err(PollError::WrongAnswer),
             }
             if answers[i].is_some() {
                 unwrapped_answers.push(answers[i].clone().unwrap());

@@ -10,6 +10,8 @@ pub enum PollError {
     NotFound,
     NotActive,
     OpinionRange,
+    WrongAnswer,
+    IncorrectAnswerVector,
 }
 
 impl FunctionError for PollError {
@@ -22,6 +24,10 @@ impl FunctionError for PollError {
             PollError::NotFound => panic_str("poll not found"),
             PollError::NotActive => panic_str("poll is not active"),
             PollError::OpinionRange => panic_str("opinion must be between 0 and 10"),
+            PollError::WrongAnswer => {
+                panic_str("answer provied does not match the expected question")
+            },
+            PollError::IncorrectAnswerVector => panic_str("The answer vector provided is incorrect and does not match the questions in the poll"),
         }
     }
 }
