@@ -2,7 +2,7 @@ use std::str::Chars;
 
 use ed25519_dalek::PUBLIC_KEY_LENGTH;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::{base64, AccountId};
+use near_sdk::{base64, env, AccountId};
 use uint::hex;
 
 pub use crate::errors::*;
@@ -53,8 +53,13 @@ pub(crate) fn is_supported_account(account: Chars) -> bool {
     if num_dots == 1 {
         return true;
     }
-    // check if implicit account
-    if num_dots == 0 && len == 64 && all_hex {
+    // check if implicit account only for mainnet and testnet
+    if num_dots == 0 {
+        let a = env::current_account_id();
+        let a = a.as_str();
+        if a.ends_with(".near") || a.ends_with(".testnet") {
+            return len == 64 && all_hex;
+        }
         return true;
     }
     false

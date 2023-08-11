@@ -71,3 +71,9 @@ Consider Alice who wants to get Fractal FV SBT.
 
 NOTE: SBT tokens are minted through a SBT registry - a separate contract responsible for registering SBTs. Basically, the issuer and token registry are separated to provide expected functionality of Soul Bound Tokens.
 See the [NEP-393](https://github.com/near/NEPs/pull/393) standard for more details.
+
+## Decentralization
+
+The smart contract can be easily extended to assure Fractal Oracle decentralization
+
+- select multiple, verified parties who will provide oracle service. Each oracle has to provide a security stake.

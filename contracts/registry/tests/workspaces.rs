@@ -1,7 +1,7 @@
 use anyhow::Ok;
+use near_sdk::serde_json::json;
 use near_units::parse_near;
 use sbt::TokenMetadata;
-use serde_json::json;
 use workspaces::{network::Sandbox, Account, AccountId, Contract, Worker};
 
 const MAINNET_REGISTRY_ID: &str = "registry.i-am-human.near";

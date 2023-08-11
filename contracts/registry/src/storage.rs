@@ -1,18 +1,11 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::serde::Serialize;
+use near_sdk::serde_json::value::RawValue;
 use near_sdk::{AccountId, BorshStorageKey};
-use sbt::{ClassId, TokenId};
+use sbt::{ClassId, SBTs, TokenId};
 
 /// Issuer contract ID based on the SBT Contract address -> u16 map.
 pub type IssuerId = u32;
-
-/// Collection of SBTs serialized as list of pairs: (Issuer Account, Vector of Token IDs).
-/// This is used for code size and processing efficiency.
-pub type SBTs = Vec<(AccountId, Vec<TokenId>)>;
-
-/// List of pairs: (Issuer Account, Vector of Class IDs).
-/// This is used to create class sets used to specify required token classes,
-/// like set of tokens required to be verified as IAH
-pub type ClassSet = Vec<(AccountId, Vec<ClassId>)>;
 
 /// Helper structure for keys of the persistent collections.
 #[derive(BorshSerialize, BorshStorageKey)]
@@ -49,6 +42,42 @@ pub(crate) fn balance_key(owner: AccountId, issuer_id: IssuerId, class_id: Class
         owner,
         issuer_id,
         class_id,
+    }
+}
+
+/// `is_human_call` wrapper for passing the payload args to the callback.
+#[derive(Serialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug,))]
+#[serde(crate = "near_sdk::serde")]
+pub struct IsHumanCallbackArgs<'a> {
+    pub caller: AccountId,
+    pub iah_proof: SBTs,
+    pub payload: &'a RawValue,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use near_sdk::serde_json::{self, json};
+
+    #[test]
+    fn is_human_callback_args_serialization() {
+        let payload = json!({"nums": [200], "person": {"name": "john", "surname": "Sparrow"}});
+        let payload_str = payload.to_string();
+
+        let alice = AccountId::new_unchecked("alice.near".to_string());
+        let issuer = AccountId::new_unchecked("issuer.near".to_string());
+
+        let args = IsHumanCallbackArgs {
+            caller: alice,
+            iah_proof: vec![(issuer, vec![1, 2, 5])],
+            payload: &RawValue::from_string(payload_str).unwrap(),
+        };
+
+        let args_str = serde_json::to_string(&args).unwrap();
+        let expected = r#"{"caller":"alice.near","iah_proof":[["issuer.near",[1,2,5]]],"payload":{"nums":[200],"person":{"name":"john","surname":"Sparrow"}}}"#;
+
+        assert_eq!(expected.to_owned(), args_str);
     }
 }
 

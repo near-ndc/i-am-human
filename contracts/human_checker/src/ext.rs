@@ -13,6 +13,6 @@ pub trait ExtSbtRegistry {
         account: AccountId,
         ctr: AccountId,
         function: String,
-        args: Base64VecU8,
+        payload: String,
     ) -> PromiseOrValue<bool>;
 }
