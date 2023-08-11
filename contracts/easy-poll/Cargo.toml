@@ -1,7 +1,9 @@
 [package]
 name = "easy-poll"
 version = "0.0.1"
-authors = [""]
+authors = [
+    "NDC GWG (https://near.social/#/mob.near/widget/ProfilePage?accountId=govworkinggroup.near)",
+]
 edition = { workspace = true }
 repository = { workspace = true }
 license = { workspace = true }

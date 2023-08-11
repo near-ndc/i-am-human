@@ -11,7 +11,7 @@ pub enum PollError {
     NoSBTs,
     NotFound,
     NotActive,
-    OpinionScale,
+    OpinionRange,
 }
 
 impl FunctionError for PollError {

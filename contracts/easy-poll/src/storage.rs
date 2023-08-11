@@ -57,14 +57,14 @@ pub struct Poll {
     pub tags: Vec<String>, // can be an empty vector
     pub description: Option<String>, // optional
     pub link: Option<String>, // optional
-    pub created_at: u64, // should be assigned by the smart contract not the user, time in milliseconds
+    pub created_at: u64, // time in milliseconds, should be assigned by the smart contract not a user.
 }
 
 #[derive(Deserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct PollResponse {
     answers: Vec<(usize, Answer)>, // question_id, answer
-    created_at: usize, // should be assigned by the smart contract not the user, time in milliseconds
+    created_at: u64, // time in milliseconds
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -72,7 +72,7 @@ pub struct PollResponse {
 #[serde(crate = "near_sdk::serde")]
 pub struct Results {
     pub status: Status,
-    pub number_of_participants: u64,
+    pub participants: u64, // number of participants
     pub results: Vec<PollResult>, // question_id, result (sum of yes etc.)
 }
 
