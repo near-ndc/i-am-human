@@ -86,7 +86,7 @@ Deprecated:
   - `registry-unstable.i-am-human.testnet` @ registry/v1.2.0
 - **Demo SBT Issuer**: `sbt1.i-am-human.testnet` (the `demo_issuer` contract)
 - **Fractal Issuer**: `i-am-human-staging.testnet` (the `oracle` contract).
-  registry: `registry-1.i-am-human.testnet`; Verification pubkey base64: `zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E=`, `claim_ttl`: 3600ms, FV class: 1
+  registry: `registry-1.i-am-human.testnet`; Verification pubkey base64: `FGoAI6DXghOSK2ZaKVT/5lSP4X4JkoQQphv1FD4YRto=`, `claim_ttl`: 3600ms, FV class: 1
 - **Community-SBT**: `community-v1.i-am-human.testnet` @ community-sbt/v4.1.0
   registry: `registry-1.i-am-human.testnet`; classes: OG=1, Vibes=2
   Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.

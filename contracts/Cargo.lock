@@ -2321,7 +2321,6 @@ dependencies = [
  "anyhow",
  "cost",
  "ed25519-dalek",
- "near-crypto 0.17.0",
  "near-primitives 0.17.0",
  "near-sdk",
  "near-units",
