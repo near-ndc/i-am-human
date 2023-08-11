@@ -253,7 +253,7 @@ impl Contract {
 
     /* for testing the callback
         #[payable]
-        pub fn admin_mint(&mut self, receipient: AccountId, external_id: String) -> Promise {
+        pub fn admin_mint(&mut self, recipient: AccountId, external_id: String) -> Promise {
             let external_id = normalize_external_id(external_id).ok().unwrap();
             let now = env::block_timestamp_ms();
             let metadata = TokenMetadata {
@@ -266,7 +266,7 @@ impl Contract {
             ext_registry::ext(self.registry.clone())
                 .with_attached_deposit(MINT_COST)
                 .with_static_gas(MINT_GAS)
-                .sbt_mint(vec![(receipient, vec![metadata])])
+                .sbt_mint(vec![(recipient, vec![metadata])])
                 .then(
                     Self::ext(env::current_account_id())
                         .with_static_gas(Gas::ONE_TERA * 3)
