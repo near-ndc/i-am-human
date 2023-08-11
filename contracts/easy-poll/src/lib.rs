@@ -1,17 +1,19 @@
-use ext::ext_registry;
-use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LookupMap, UnorderedMap};
-use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
-
-pub use crate::constants::*;
 pub use crate::errors::PollError;
 pub use crate::ext::*;
 pub use crate::storage::*;
+use cost::MILI_NEAR;
+use ext::ext_registry;
+use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::collections::{LookupMap, UnorderedMap, Vector};
+use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
+use near_sdk::{Balance, Gas};
 
-mod constants;
 mod errors;
 mod ext;
 mod storage;
+
+pub const RESPOND_COST: Balance = MILI_NEAR;
+pub const RESPOND_CALLBACK_GAS: Gas = Gas(2 * Gas::ONE_TERA.0);
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -22,7 +24,7 @@ pub struct Contract {
     pub polls: UnorderedMap<PollId, Poll>,
     pub results: LookupMap<PollId, Results>,
     pub answers: UnorderedMap<(PollId, AccountId), Vec<Answer>>,
-    pub text_answers: LookupMap<(PollId, usize), TextAnswers>,
+    pub text_answers: LookupMap<(PollId, usize), Vector<String>>,
     /// SBT registry.
     pub registry: AccountId,
     /// next poll id
@@ -70,7 +72,7 @@ impl Contract {
         question: usize,
         from_answer: usize,
     ) -> (bool, Vec<String>) {
-        self._result_answers(poll_id, question, from_answer, 10)
+        self._result_answers(poll_id, question, from_answer, 20)
     }
 
     // TODO: limit the max lenght of single answer and based on that return a fixed value of answers
@@ -93,15 +95,14 @@ impl Contract {
         let text_answers = self
             .text_answers
             .get(&(poll_id, question))
-            .expect("no answer found")
-            .answers;
+            .expect("no answer found");
         let to_return;
         let mut finished = false;
-        if from_answer + limit > text_answers.len() {
-            to_return = text_answers[from_answer..].to_vec();
+        if from_answer + limit > text_answers.len() as usize {
+            to_return = text_answers.to_vec()[from_answer..].to_vec();
             finished = true;
         } else {
-            to_return = text_answers[from_answer..from_answer + limit].to_vec();
+            to_return = text_answers.to_vec()[from_answer..from_answer + limit].to_vec();
         }
         (finished, to_return)
     }
@@ -151,12 +152,17 @@ impl Contract {
     // - poll not active
     // - poll.verified_humans_only is true, and user is not verified on IAH
     // - user tries to vote with an invalid answer to a question
+    #[payable]
     #[handle_result]
     pub fn respond(
         &mut self,
         poll_id: PollId,
         answers: Vec<Option<Answer>>,
     ) -> Result<(), PollError> {
+        require!(
+            env::attached_deposit() >= RESPOND_COST,
+            "attached_deposit not sufficient"
+        );
         let caller = env::predecessor_account_id();
 
         match self.assert_active(poll_id) {
@@ -174,12 +180,12 @@ impl Contract {
                 .is_human(caller.clone())
                 .then(
                     Self::ext(env::current_account_id())
-                        .with_static_gas(GAS_UPVOTE)
+                        .with_static_gas(RESPOND_CALLBACK_GAS)
                         .on_human_verifed(true, caller, poll_id, answers),
                 );
         } else {
             Self::ext(env::current_account_id())
-                .with_static_gas(GAS_UPVOTE)
+                .with_static_gas(RESPOND_CALLBACK_GAS)
                 .on_human_verifed(false, caller, poll_id, answers);
         }
         Ok(())
@@ -242,14 +248,14 @@ impl Contract {
                         return Err(PollError::OpinionScale);
                     }
                     poll_results.results[i] = PollResult::OpinionScale(OpinionScaleResult {
-                        sum: results.sum + *answer as u32,
-                        num: results.num + 1 as u32,
+                        sum: results.sum + *answer as u64,
+                        num: results.num + 1 as u64,
                     });
                 }
                 (Some(Answer::TextAnswer(answer)), _) => {
-                    let mut text_answers = self.text_answers.get(&(poll_id, i)).expect("not found");
-                    text_answers.answers.push(answer.clone());
-                    self.text_answers.insert(&(poll_id, i), &text_answers);
+                    let mut answers = self.text_answers.get(&(poll_id, i)).expect("not found");
+                    answers.push(answer);
+                    self.text_answers.insert(&(poll_id, i), &answers);
                 }
                 (_, _) => (),
             }
@@ -319,13 +325,9 @@ impl Contract {
                     }))
                 }
                 Answer::TextAnswer(_) => {
-                    results.push(PollResult::TextAnswer(true));
-                    self.text_answers.insert(
-                        &(poll_id, index),
-                        &TextAnswers {
-                            answers: Vec::new(),
-                        },
-                    );
+                    results.push(PollResult::TextAnswer);
+                    self.text_answers
+                        .insert(&(poll_id, index), &Vector::new(StorageKey::TextAnswers));
                 }
             };
             index += 1;
@@ -492,7 +494,7 @@ mod tests {
                     PollResult::YesNo((2, 1)),
                     PollResult::TextChoices(vec![0, 0, 0]),
                     PollResult::OpinionScale(OpinionScaleResult { sum: 0, num: 0 }),
-                    PollResult::TextAnswer(true)
+                    PollResult::TextAnswer
                 ]
             }
         )
@@ -558,7 +560,7 @@ mod tests {
                     PollResult::YesNo((1, 0)),
                     PollResult::TextChoices(vec![0, 0, 0]),
                     PollResult::OpinionScale(OpinionScaleResult { sum: 17, num: 3 }),
-                    PollResult::TextAnswer(true)
+                    PollResult::TextAnswer
                 ]
             }
         )
@@ -633,7 +635,7 @@ mod tests {
                     PollResult::YesNo((0, 0)),
                     PollResult::TextChoices(vec![2, 1, 0]),
                     PollResult::OpinionScale(OpinionScaleResult { sum: 0, num: 0 }),
-                    PollResult::TextAnswer(true)
+                    PollResult::TextAnswer
                 ]
             }
         )
@@ -697,7 +699,7 @@ mod tests {
                     PollResult::YesNo((0, 0)),
                     PollResult::TextChoices(vec![0, 0, 0]),
                     PollResult::OpinionScale(OpinionScaleResult { sum: 0, num: 0 }),
-                    PollResult::TextAnswer(true)
+                    PollResult::TextAnswer
                 ]
             }
         );

@@ -11,7 +11,7 @@ pub enum Answer {
     YesNo(bool),
     TextChoices(Vec<bool>),    // should respect the min_choices, max_choices
     PictureChoices(Vec<bool>), // should respect the min_choices, max_choices
-    OpinionScale(u64),         // should be a number between 0 and 10
+    OpinionScale(u8),          // should be a number between 0 and 10
     TextAnswer(String),
 }
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -22,14 +22,14 @@ pub enum PollResult {
     TextChoices(Vec<u32>),            // should respect the min_choices, max_choices
     PictureChoices(Vec<u32>),         // should respect the min_choices, max_choices
     OpinionScale(OpinionScaleResult), // mean value
-    TextAnswer(bool), // indicates whether the question exist or not, the answers are stored in a different struct called `TextAnswers`
+    TextAnswer, // indicates whether the question exist or not, the answers are stored in a different struct called `TextAnswers`
 }
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub struct OpinionScaleResult {
-    pub sum: u32,
-    pub num: u32,
+    pub sum: u64,
+    pub num: u64,
 }
 
 /// Helper structure for keys of the persistent collections.
