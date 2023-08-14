@@ -6,6 +6,7 @@ pub type PollId = u64;
 
 /// Helper structure for keys of the persistent collections.
 #[derive(BorshSerialize, BorshDeserialize, Deserialize, Serialize, Clone)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub enum Answer {
     YesNo(bool),
@@ -58,13 +59,6 @@ pub struct Poll {
     pub description: Option<String>, // optional
     pub link: Option<String>, // optional
     pub created_at: u64, // time in milliseconds, should be assigned by the smart contract not a user.
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(crate = "near_sdk::serde")]
-pub struct PollResponse {
-    answers: Vec<(usize, Answer)>, // question_id, answer
-    created_at: u64,               // time in milliseconds
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]

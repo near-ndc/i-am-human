@@ -88,11 +88,11 @@ impl Contract {
             .expect("poll not found")
             .questions
             .get(question)
-            .expect("question not type `TextAnswer`");
+            .expect("question not found");
         let text_answers = self
             .text_answers
             .get(&(poll_id, question))
-            .expect("no answer found");
+            .expect("question not type `TextAnswer`");
         let to_return;
         let mut finished = false;
         if from_answer + limit > text_answers.len() as usize {
@@ -291,7 +291,7 @@ impl Contract {
             None => return Err(PollError::NotFound),
         };
         let current_timestamp = env::block_timestamp_ms();
-        if poll.starts_at < current_timestamp || poll.ends_at > current_timestamp {
+        if poll.starts_at > current_timestamp || poll.ends_at < current_timestamp {
             return Err(PollError::NotActive);
         }
         Ok(())
@@ -349,7 +349,8 @@ mod tests {
     use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId, VMContext};
 
     use crate::{
-        Answer, Contract, OpinionRangeResult, PollId, PollResult, Question, Results, Status,
+        Answer, Contract, OpinionRangeResult, PollError, PollId, PollResult, Question, Results,
+        Status, RESPOND_COST,
     };
 
     const MILI_SECOND: u64 = 1000000; // nanoseconds
@@ -464,6 +465,187 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "poll start must be in the future")]
+    fn create_poll_wrong_time() {
+        let (_, mut ctr) = setup(&alice());
+        ctr.create_poll(
+            false,
+            vec![question_yes_no(true)],
+            1,
+            100,
+            String::from("Hello, world!"),
+            tags(),
+            None,
+            None,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "respond not found")]
+    fn my_respond_not_found() {
+        let (_, mut ctr) = setup(&alice());
+        let poll_id = ctr.create_poll(
+            false,
+            vec![question_yes_no(true)],
+            2,
+            100,
+            String::from("Hello, world!"),
+            tags(),
+            None,
+            None,
+        );
+        ctr.my_respond(poll_id);
+    }
+
+    #[test]
+    fn my_respond() {
+        let (mut ctx, mut ctr) = setup(&alice());
+        let poll_id = ctr.create_poll(
+            false,
+            vec![question_yes_no(true)],
+            2,
+            100,
+            String::from("Hello, world!"),
+            tags(),
+            None,
+            None,
+        );
+        ctx.block_timestamp = MILI_SECOND * 3;
+        testing_env!(ctx.clone());
+        let res = ctr.on_human_verifed(
+            vec![],
+            false,
+            ctx.predecessor_account_id,
+            poll_id,
+            vec![Some(Answer::YesNo(true))],
+        );
+        assert!(res.is_ok());
+        let res = ctr.my_respond(poll_id);
+        assert_eq!(res, vec![Answer::YesNo(true)])
+    }
+
+    #[test]
+    #[should_panic(expected = "poll not found")]
+    fn results_poll_not_found() {
+        let (_, ctr) = setup(&alice());
+        ctr.results(1);
+    }
+
+    #[test]
+    fn results() {
+        let (_, mut ctr) = setup(&alice());
+        let poll_id = ctr.create_poll(
+            false,
+            vec![question_yes_no(true)],
+            2,
+            100,
+            String::from("Hello, world!"),
+            tags(),
+            None,
+            None,
+        );
+        let res = ctr.results(poll_id);
+        let expected = Results {
+            status: Status::NotStarted,
+            participants: 0,
+            results: vec![PollResult::YesNo((0, 0))],
+        };
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "poll not found")]
+    fn result_text_answers_poll_not_found() {
+        let (_, ctr) = setup(&alice());
+        ctr.result_text_answers(0, 0, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "question not found")]
+    fn result_text_answers_wrong_question() {
+        let (_, mut ctr) = setup(&alice());
+        let poll_id = ctr.create_poll(
+            false,
+            vec![question_yes_no(true)],
+            2,
+            100,
+            String::from("Hello, world!"),
+            tags(),
+            None,
+            None,
+        );
+        ctr.result_text_answers(poll_id, 1, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "question not type `TextAnswer`")]
+    fn result_text_answers_wrong_type() {
+        let (_, mut ctr) = setup(&alice());
+        let poll_id = ctr.create_poll(
+            false,
+            vec![question_yes_no(true)],
+            2,
+            100,
+            String::from("Hello, world!"),
+            tags(),
+            None,
+            None,
+        );
+        ctr.result_text_answers(poll_id, 0, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "attached_deposit not sufficient")]
+    fn respond_wrong_deposit() {
+        let (mut ctx, mut ctr) = setup(&alice());
+        ctx.attached_deposit = RESPOND_COST - 1;
+        testing_env!(ctx);
+        let res = ctr.respond(0, vec![Some(Answer::YesNo(true))]);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn respond_poll_not_active() {
+        let (mut ctx, mut ctr) = setup(&alice());
+        let poll_id = ctr.create_poll(
+            false,
+            vec![question_yes_no(true)],
+            2,
+            100,
+            String::from("Hello, world!"),
+            tags(),
+            None,
+            None,
+        );
+        ctx.attached_deposit = RESPOND_COST;
+        testing_env!(ctx.clone());
+        // too early
+        match ctr.respond(poll_id, vec![Some(Answer::YesNo(true))]) {
+            Err(err) => {
+                println!("Received error: {:?}", err);
+                match err {
+                    PollError::NotActive => println!("Expected error: PollError::NotActive"),
+                    _ => panic!("Unexpected error: {:?}", err),
+                }
+            }
+            Ok(_) => panic!("Received Ok result, but expected an error"),
+        }
+        ctx.block_timestamp = MILI_SECOND * 101;
+        testing_env!(ctx);
+        // too late
+        match ctr.respond(poll_id, vec![Some(Answer::YesNo(true))]) {
+            Err(err) => {
+                println!("Received error: {:?}", err);
+                match err {
+                    PollError::NotActive => println!("Expected error: PollError::NotActive"),
+                    _ => panic!("Unexpected error: {:?}", err),
+                }
+            }
+            Ok(_) => panic!("Received Ok result, but expected an error"),
+        }
+    }
+
+    #[test]
     fn yes_no_flow() {
         let (mut ctx, mut ctr) = setup(&alice());
         let poll_id = ctr.create_poll(
@@ -476,7 +658,6 @@ mod tests {
             None,
             None,
         );
-        ctx.predecessor_account_id = alice();
         ctx.block_timestamp = MILI_SECOND * 3;
         testing_env!(ctx.clone());
         let mut res = ctr.on_human_verifed(
@@ -516,6 +697,77 @@ mod tests {
                 results: vec![PollResult::YesNo((2, 1)),]
             }
         )
+    }
+
+    #[test]
+    fn opinion_range_out_of_range() {
+        let (mut ctx, mut ctr) = setup(&alice());
+        let poll_id = ctr.create_poll(
+            false,
+            vec![question_opinion_range(false)],
+            2,
+            100,
+            String::from("Multiple questions test!"),
+            tags(),
+            None,
+            None,
+        );
+        ctx.block_timestamp = MILI_SECOND * 3;
+        testing_env!(ctx);
+        match ctr.on_human_verifed(
+            vec![],
+            false,
+            alice(),
+            poll_id,
+            vec![Some(Answer::OpinionRange(11))],
+        ) {
+            Err(err) => {
+                println!("Received error: {:?}", err);
+                match err {
+                    PollError::OpinionRange => println!("Expected error: PollError::OpinionRange"),
+                    _ => panic!("Unexpected error: {:?}", err),
+                }
+            }
+            Ok(_) => panic!("Received Ok result, but expected an error"),
+        }
+    }
+
+    #[test]
+    fn respond_wrong_answer_vector() {
+        let (mut ctx, mut ctr) = setup(&alice());
+        let poll_id = ctr.create_poll(
+            false,
+            vec![question_opinion_range(false)],
+            2,
+            100,
+            String::from("Multiple questions test!"),
+            tags(),
+            None,
+            None,
+        );
+        ctx.block_timestamp = MILI_SECOND * 3;
+        testing_env!(ctx);
+        match ctr.on_human_verifed(
+            vec![],
+            false,
+            alice(),
+            poll_id,
+            vec![
+                Some(Answer::OpinionRange(10)),
+                Some(Answer::OpinionRange(10)),
+            ],
+        ) {
+            Err(err) => {
+                println!("Received error: {:?}", err);
+                match err {
+                    PollError::IncorrectAnswerVector => {
+                        println!("Expected error: PollError::IncorrectAnswerVector")
+                    }
+                    _ => panic!("Unexpected error: {:?}", err),
+                }
+            }
+            Ok(_) => panic!("Received Ok result, but expected an error"),
+        }
     }
 
     #[test]
@@ -693,7 +945,7 @@ mod tests {
 
     #[test]
     fn result_text_answers() {
-        let (mut ctx, mut ctr) = setup(&alice());
+        let (_, mut ctr) = setup(&alice());
         let poll_id = ctr.create_poll(
             false,
             vec![question_text_answers(true)],
@@ -705,7 +957,78 @@ mod tests {
             None,
         );
         mk_batch_text_answers(&mut ctr, alice(), poll_id, 50);
+        // depending on the lenght of the answers the limit decreases rappidly
         let text_answers = ctr._result_text_answers(poll_id, 0, 0, 30);
         assert!(!text_answers.0);
+    }
+
+    #[test]
+    fn respond_iah_only_not_human() {
+        let (mut ctx, mut ctr) = setup(&alice());
+        let poll_id = ctr.create_poll(
+            true,
+            vec![question_opinion_range(false)],
+            2,
+            100,
+            String::from("Multiple questions test!"),
+            tags(),
+            None,
+            None,
+        );
+        ctx.block_timestamp = MILI_SECOND * 3;
+        testing_env!(ctx);
+        match ctr.on_human_verifed(
+            vec![],
+            true,
+            alice(),
+            poll_id,
+            vec![Some(Answer::OpinionRange(10))],
+        ) {
+            Err(err) => {
+                println!("Received error: {:?}", err);
+                match err {
+                    PollError::NoSBTs => {
+                        println!("Expected error: PollError::NoSBTs")
+                    }
+                    _ => panic!("Unexpected error: {:?}", err),
+                }
+            }
+            Ok(_) => panic!("Received Ok result, but expected an error"),
+        }
+    }
+
+    #[test]
+    fn respond_required_answer_not_provided() {
+        let (mut ctx, mut ctr) = setup(&alice());
+        let poll_id = ctr.create_poll(
+            true,
+            vec![question_opinion_range(false), question_opinion_range(true)],
+            2,
+            100,
+            String::from("Multiple questions test!"),
+            tags(),
+            None,
+            None,
+        );
+        ctx.block_timestamp = MILI_SECOND * 3;
+        testing_env!(ctx);
+        match ctr.on_human_verifed(
+            vec![],
+            false,
+            alice(),
+            poll_id,
+            vec![Some(Answer::OpinionRange(10)), None],
+        ) {
+            Err(err) => {
+                println!("Received error: {:?}", err);
+                match err {
+                    PollError::RequiredAnswer => {
+                        println!("Expected error: PollError::RequiredAnswer")
+                    }
+                    _ => panic!("Unexpected error: {:?}", err),
+                }
+            }
+            Ok(_) => panic!("Received Ok result, but expected an error"),
+        }
     }
 }
