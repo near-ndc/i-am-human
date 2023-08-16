@@ -173,7 +173,7 @@ pub struct Nep171Mint<'a> {
 }
 
 impl Nep171Mint<'_> {
-    pub fn many_to_json_event_string(data: &[Nep171Mint<'_>]) -> String {
+    pub fn emit_many(data: &[Nep171Mint<'_>]) {
         NearEvent {
             standard: "nep171",
             version: "1.0.0",
@@ -182,20 +182,11 @@ impl Nep171Mint<'_> {
                 data,
             },
         }
-        .to_json_event_string()
-    }
-
-    pub fn emit_many(data: &[Nep171Mint<'_>]) {
-        env::log_str(&Nep171Mint::many_to_json_event_string(data));
-    }
-
-    /// creates a string compatible NEP-171 NftMint event standard.
-    pub fn to_json_event_string(self) -> String {
-        Nep171Mint::many_to_json_event_string(&[self])
+        .emit()
     }
 
     pub fn emit(self) {
-        env::log_str(&self.to_json_event_string());
+        Nep171Mint::emit_many(&[self])
     }
 }
 
@@ -252,8 +243,6 @@ mod tests {
         assert_eq!(expected, test_utils::get_logs()[0]);
 
         let sbt_log: Vec<Nep171Mint> = nft_log.iter().map(from_nftmint).collect();
-        assert_eq!(expected, Nep171Mint::many_to_json_event_string(&sbt_log));
-
         Nep171Mint::emit_many(&sbt_log);
         assert_eq!(2, test_utils::get_logs().len());
         assert_eq!(test_utils::get_logs()[1], expected);
@@ -275,9 +264,10 @@ mod tests {
         assert_eq!(expected, test_utils::get_logs()[2]);
 
         log.emit();
-        assert_eq!(4, test_utils::get_logs().len());
+        log2.emit();
+        assert_eq!(5, test_utils::get_logs().len());
         assert_eq!(expected, test_utils::get_logs()[3]);
-        assert_eq!(expected, log2.to_json_event_string());
+        assert_eq!(expected, test_utils::get_logs()[4]);
     }
 
     #[test]
