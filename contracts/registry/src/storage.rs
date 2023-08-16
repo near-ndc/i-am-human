@@ -1,5 +1,5 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::serde::Serialize;
+use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::serde_json::value::RawValue;
 use near_sdk::{AccountId, BorshStorageKey};
 use sbt::{ClassId, SBTs, TokenId};
@@ -24,9 +24,13 @@ pub enum StorageKey {
     AdminsFlagged,
 }
 
-#[derive(BorshSerialize, BorshStorageKey)]
+#[derive(BorshSerialize, BorshDeserialize, BorshStorageKey, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 pub enum AccountFlag {
+    /// Account is "Black" when it was marked as a scam or braking the IAH rules.
     Black,
+    /// Account is "White" when it is known to be a trusted account.
     White,
 }
 

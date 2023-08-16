@@ -110,9 +110,9 @@ impl Contract {
         self.banlist.contains(account)
     }
 
-    /// Returns true if an account is blacklisted.
-    pub fn is_blacklisted(&self, account: AccountId) -> SBTs {
-        self._is_human(&account)
+    /// Returns account status if it was flagged. Returns None if the account was not flagged.
+    pub fn account_flagged(&self, account: AccountId) -> Option<AccountFlag> {
+        self.flagged.get(&account)
     }
 
     /// Returns empty list if the account is NOT a human according to the IAH protocol.
@@ -124,6 +124,9 @@ impl Contract {
 
     fn _is_human(&self, account: &AccountId) -> SBTs {
         if self._is_banned(&account) {
+            return vec![];
+        }
+        if let Some(AccountFlag::Black) = self.flagged.get(&account) {
             return vec![];
         }
         let issuer = Some(self.iah_sbts.0.clone());
@@ -522,6 +525,20 @@ impl Contract {
     pub fn change_admin(&mut self, new_admin: AccountId) {
         self.assert_authority();
         self.authority = new_admin;
+    }
+
+    /// flag an account, returns the previous flag or None if the account was not flagged.
+    pub fn admin_flag_account(
+        &mut self,
+        account: AccountId,
+        flag: AccountFlag,
+    ) -> Option<AccountFlag> {
+        let caller = env::predecessor_account_id();
+        let a = self.admins_flagged.get();
+        if a.is_none() || !a.unwrap().contains(&caller) {
+            env::panic_str("not authorized");
+        }
+        self.flagged.insert(&account, &flag)
     }
 
     //
