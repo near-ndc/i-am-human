@@ -35,7 +35,7 @@ pub struct Contract {
     /// whitelist).
     pub(crate) flagged: LookupMap<AccountId, AccountFlag>,
     /// list of admins that can manage flagged accounts map.
-    pub(crate) admins_flagged: LazyOption<Vec<AccountId>>,
+    pub(crate) authorized_flaggers: LazyOption<Vec<AccountId>>,
 
     pub(crate) supply_by_owner: LookupMap<(AccountId, IssuerId), u64>,
     pub(crate) supply_by_class: LookupMap<(IssuerId, ClassId), u64>,
@@ -65,7 +65,7 @@ impl Contract {
         authority: AccountId,
         iah_issuer: AccountId,
         iah_classes: Vec<ClassId>,
-        admins_flagged: Vec<AccountId>,
+        authorized_flaggers: Vec<AccountId>,
     ) -> Self {
         require!(
             iah_classes.len() > 0,
@@ -86,7 +86,10 @@ impl Contract {
             ongoing_soul_tx: LookupMap::new(StorageKey::OngoingSoultTx),
             iah_sbts: (iah_issuer.clone(), iah_classes),
             flagged: LookupMap::new(StorageKey::Flagged),
-            admins_flagged: LazyOption::new(StorageKey::AdminsFlagged, Some(&admins_flagged)),
+            authorized_flaggers: LazyOption::new(
+                StorageKey::AdminsFlagged,
+                Some(&authorized_flaggers),
+            ),
         };
         contract._add_sbt_issuer(&iah_issuer);
         contract
@@ -528,6 +531,11 @@ impl Contract {
         self.authority = new_admin;
     }
 
+    pub fn admin_set_authorized_flaggers(&mut self, authorized_flaggers: Vec<AccountId>) {
+        self.assert_authority();
+        self.authorized_flaggers.set(&authorized_flaggers)
+    }
+
     /// flag an account, returns the previous flag or None if the account was not flagged.
     pub fn admin_flag_account(
         &mut self,
@@ -535,7 +543,7 @@ impl Contract {
         flag: AccountFlag,
     ) -> Option<AccountFlag> {
         let caller = env::predecessor_account_id();
-        let a = self.admins_flagged.get();
+        let a = self.authorized_flaggers.get();
         if a.is_none() || !a.unwrap().contains(&caller) {
             env::panic_str("not authorized");
         }

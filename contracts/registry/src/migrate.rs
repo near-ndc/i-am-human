@@ -22,7 +22,7 @@ pub struct OldState {
 impl Contract {
     #[private]
     #[init(ignore_state)]
-    pub fn migrate(admins_flagged: Vec<AccountId>) -> Self {
+    pub fn migrate(authorized_flaggers: Vec<AccountId>) -> Self {
         let old_state: OldState = env::state_read().expect("failed");
         // new field in the smart contract :
         // + flagged: LookupMap<AccountId, AccountFlag>
@@ -43,7 +43,10 @@ impl Contract {
             ongoing_soul_tx: old_state.ongoing_soul_tx,
             iah_sbts: old_state.iah_sbts,
             flagged: LookupMap::new(StorageKey::Flagged),
-            admins_flagged: LazyOption::new(StorageKey::AdminsFlagged, Some(&admins_flagged)),
+            authorized_flaggers: LazyOption::new(
+                StorageKey::AdminsFlagged,
+                Some(&authorized_flaggers),
+            ),
         }
     }
 }
