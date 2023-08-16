@@ -19,7 +19,7 @@ pub fn renew_gas(num_tokens: usize) -> Gas {
 }
 
 pub fn calculate_mint_gas(num_tokens: usize) -> Balance {
-    (num_tokens as u128 + 1) * MINT_COST
+    (num_tokens as u128 + 1) * (MINT_GAS.0 as u128)
 }
 
 pub fn mint_deposit(num_tokens: usize) -> Balance {
