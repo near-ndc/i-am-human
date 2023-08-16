@@ -157,8 +157,8 @@ pub fn emit_soul_transfer(from: &AccountId, to: &AccountId) {
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct EventWrapper<T: Serialize> {
-    event: &'static str,
-    data: T,
+    pub event: &'static str,
+    pub data: T,
 }
 
 /// NEP-171 compatible Mint event structure. A light version of the Mint event from the
