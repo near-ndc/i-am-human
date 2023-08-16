@@ -151,9 +151,22 @@ pub fn emit_soul_transfer(from: &AccountId, to: &AccountId) {
 /// Helper function to be used with `NearEvent` to construct NAER Event compatible payload
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
-struct EventWrapper<T: Serialize> {
+pub struct EventWrapper<T: Serialize> {
     event: &'static str,
     data: T,
+}
+
+impl EventWrapper<'_> {
+    pub fn to_json_event_string(&self) -> String {
+        let s = serde_json::to_string(self)
+            .ok()
+            .unwrap_or_else(|| env::abort());
+        format!("EVENT_JSON:{}", s)
+    }
+
+    pub fn emit(self) {
+        env::log_str(&self.to_json_event_string());
+    }
 }
 
 /// NEP-171 compatible Mint event structure. A light version of the Mint event from the
@@ -169,18 +182,15 @@ pub struct Nep171Mint<'a> {
 
 impl Nep171Mint<'_> {
     pub fn many_to_json_event_string(data: &[Nep171Mint<'_>]) -> String {
-        let e = NearEvent {
+        NearEvent {
             standard: "nep171",
             version: "1.0.0",
             event: EventWrapper {
                 event: "nft_mint",
                 data,
             },
-        };
-        let s = serde_json::to_string(&e)
-            .ok()
-            .unwrap_or_else(|| env::abort());
-        format!("EVENT_JSON:{}", s)
+        }
+        .to_json_event_string()
     }
 
     pub fn emit_many(data: &[Nep171Mint<'_>]) {

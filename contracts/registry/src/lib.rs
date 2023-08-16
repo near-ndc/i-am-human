@@ -10,6 +10,7 @@ use sbt::*;
 
 use crate::storage::*;
 
+pub mod events;
 pub mod migrate;
 pub mod registry;
 pub mod storage;
