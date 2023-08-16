@@ -153,12 +153,25 @@ pub fn emit_soul_transfer(from: &AccountId, to: &AccountId) {
     SoulTransfer { from, to }.emit();
 }
 
-/// Helper function to be used with `NearEvent` to construct NAER Event compatible payload
+/// Helper struct to be used in `NearEvent.event` to construct NEAR Event compatible payload
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
-pub struct EventWrapper<T: Serialize> {
+pub struct EventPayload<T: Serialize> {
+    /// event name
     pub event: &'static str,
+    /// event payload
     pub data: T,
+}
+
+impl<T: Serialize> EventPayload<T> {
+    pub fn emit(self, standard: &'static str, version: &'static str) {
+        NearEvent {
+            standard,
+            version,
+            event: self,
+        }
+        .emit()
+    }
 }
 
 /// NEP-171 compatible Mint event structure. A light version of the Mint event from the
@@ -177,7 +190,7 @@ impl Nep171Mint<'_> {
         NearEvent {
             standard: "nep171",
             version: "1.0.0",
-            event: EventWrapper {
+            event: EventPayload {
                 event: "nft_mint",
                 data,
             },
