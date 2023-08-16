@@ -1,18 +1,20 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, TreeMap, UnorderedMap, UnorderedSet};
-use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
+use near_sdk::serde_json::value::RawValue;
+use near_sdk::{env, near_bindgen, require, serde_json, AccountId, Gas, PanicOnDefault, Promise};
 
-use sbt::{
-    emit_soul_transfer, ClassId, Nep393Event, SBTRegistry, SbtRecover, SbtTokensEvent, TokenData,
-    TokenId,
-};
+use cost::MILI_NEAR;
+use sbt::*;
 
 use crate::storage::*;
 
-mod registry;
-mod storage;
+pub mod migrate;
+pub mod registry;
+pub mod storage;
+
+const IS_HUMAN_GAS: Gas = Gas(12 * Gas::ONE_TERA.0);
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -39,14 +41,25 @@ pub struct Contract {
     /// map of SBT contract -> next available token_id
     pub(crate) next_token_ids: LookupMap<IssuerId, TokenId>,
     pub(crate) next_issuer_id: IssuerId,
+
+    /// tuple of (required issuer for IAH, [required list of classes for IAH])
+    /// represents mandatory requirements to be verified as human by using is_human and is_human_call methods.
+    pub(crate) iah_sbts: (AccountId, Vec<ClassId>),
 }
 
 // Implement the contract structure
 #[near_bindgen]
 impl Contract {
+    /// Contract constructor.
+    /// `iah_issuer`: required issuer for is_human check.
+    /// `iah_classes`: required list of classes for is_human check.
     #[init]
-    pub fn new(authority: AccountId) -> Self {
-        Self {
+    pub fn new(authority: AccountId, iah_issuer: AccountId, iah_classes: Vec<ClassId>) -> Self {
+        require!(
+            iah_classes.len() > 0,
+            "iah_classes must be a non empty list"
+        );
+        let mut contract = Self {
             authority,
             sbt_issuers: UnorderedMap::new(StorageKey::SbtIssuers),
             issuer_id_map: LookupMap::new(StorageKey::SbtIssuersRev),
@@ -59,15 +72,24 @@ impl Contract {
             next_token_ids: LookupMap::new(StorageKey::NextTokenId),
             next_issuer_id: 1,
             ongoing_soul_tx: LookupMap::new(StorageKey::OngoingSoultTx),
-        }
+            iah_sbts: (iah_issuer.clone(), iah_classes),
+        };
+        contract._add_sbt_issuer(&iah_issuer);
+        contract
     }
 
     //
     // Queries
     //
 
-    pub fn sbt_contracts(&self) -> Vec<AccountId> {
+    pub fn sbt_issuers(&self) -> Vec<AccountId> {
         self.sbt_issuers.keys().collect()
+    }
+
+    /// Returns IAH class set: required token classes to be approved as a human by the
+    /// `is_human`.
+    pub fn iah_class_set(&self) -> ClassSet {
+        vec![self.iah_sbts.clone()]
     }
 
     #[inline]
@@ -75,20 +97,70 @@ impl Contract {
         self.banlist.contains(account)
     }
 
+    /// Returns empty list if the account is NOT a human.
+    /// Otherwise returns list of SBTs (identifed by issuer and list of token IDs) proving
+    /// the `account` humanity.
+    pub fn is_human(&self, account: AccountId) -> SBTs {
+        self._is_human(&account)
+    }
+
+    fn _is_human(&self, account: &AccountId) -> SBTs {
+        if self._is_banned(&account) {
+            return vec![];
+        }
+        let issuer = Some(self.iah_sbts.0.clone());
+        let mut proof: Vec<TokenId> = Vec::new();
+        // check if user has tokens from all classes
+        for cls in &self.iah_sbts.1 {
+            let tokens = self.sbt_tokens_by_owner(
+                account.clone(),
+                issuer.clone(),
+                Some(*cls),
+                Some(1),
+                None,
+            );
+            // we need to check class, because the query can return a "next" token if a user
+            // doesn't have the token of requested class.
+            if !(tokens.len() > 0 && tokens[0].1[0].metadata.class == *cls) {
+                return vec![];
+            }
+            proof.push(tokens[0].1[0].token)
+        }
+        vec![(self.iah_sbts.0.clone(), proof)]
+    }
+
     //
     // Transactions
     //
 
+    /// sbt_mint_iah is a wrapper around `sbt_mint` and `is_human`. It mints SBTs only when
+    /// all recipients are humans. Panics if one of the recipients is not a human.
+    #[payable]
+    pub fn sbt_mint_iah(
+        &mut self,
+        token_spec: Vec<(AccountId, Vec<TokenMetadata>)>,
+    ) -> Vec<TokenId> {
+        let issuer = &env::predecessor_account_id();
+        for ts in &token_spec {
+            require!(
+                !self._is_human(&ts.0).is_empty(),
+                format!("{} is not a human", &ts.0)
+            );
+        }
+        self._sbt_mint(issuer, token_spec)
+    }
+
     /// Transfers atomically all SBT tokens from one account to another account.
-    /// + The caller must be an SBT holder and the `to` must not be a banned account.
-    /// + Returns the amount of tokens transferred and a boolean: `true` if the whole
-    ///   process has finished, `false` when the process has not finished and should be
-    ///   continued by a subsequent call.
+    /// The caller must be an SBT holder and the `recipient` must not be a banned account.
+    /// Returns the amount of tokens transferred and a boolean: `true` if the whole
+    /// process has finished, `false` when the process has not finished and should be
+    /// continued by a subsequent call.
+    /// Emits `Ban` event for the caller at the beginning of the process.
+    /// Emits `SoulTransfer` event only once all the tokens from the caller were transferred
+    /// and at least one token was trasnfered (caller had at least 1 sbt).
     /// + User must keep calling the `sbt_soul_transfer` until `true` is returned.
-    /// + Emits `SoulTransfer` event only once all the tokens that user was in possesion
-    ///   of were transfered and at least one token was trasnfered (caller had at least 1 sbt)
     /// + If caller does not have any tokens, nothing will be transfered, the caller
-    ///    will be banned and Ban even will be emitted
+    ///   will be banned and `Ban` event will be emitted.
     #[payable]
     pub fn sbt_soul_transfer(
         &mut self,
@@ -104,7 +176,7 @@ impl Contract {
     pub(crate) fn _sbt_soul_transfer(&mut self, recipient: AccountId, limit: usize) -> (u32, bool) {
         let owner = env::predecessor_account_id();
 
-        let (resumed, start) = self.get_transfer_continuation(&owner, &recipient);
+        let (resumed, start) = self.transfer_continuation(&owner, &recipient, true);
 
         let batch: Vec<(BalanceKey, TokenId)> = self
             .balances
@@ -182,21 +254,53 @@ impl Contract {
         (token_counter as u32, completed)
     }
 
+    /// Checks if the `predecessor_account_id` is human. If yes, then calls:
+    ///
+    ///    ctr.function({caller: predecessor_account_id(),
+    ///                 iah_proof: SBTs,
+    ///                 payload: payload})
+    ///
+    /// `payload` must be a JSON string, and it will be passed through the default interface,
+    /// hence it will be JSON deserialized when using SDK.
+    /// Panics if the predecessor is not a human.
+    #[payable]
+    pub fn is_human_call(&mut self, ctr: AccountId, function: String, payload: String) -> Promise {
+        let caller = env::predecessor_account_id();
+        let iah_proof = self._is_human(&caller);
+        require!(!iah_proof.is_empty(), "caller not a human");
+
+        let args = IsHumanCallbackArgs {
+            caller,
+            iah_proof,
+            payload: &RawValue::from_string(payload).unwrap(),
+        };
+        Promise::new(ctr).function_call(
+            function,
+            serde_json::to_vec(&args).unwrap(),
+            env::attached_deposit(),
+            env::prepaid_gas() - IS_HUMAN_GAS,
+        )
+    }
+
     pub(crate) fn start_transfer_with_continuation(
         &mut self,
         owner: &AccountId,
         recipient: &AccountId,
+        ban_owner: bool,
     ) -> IssuerTokenId {
         require!(
             !self._is_banned(recipient),
             "receiver account is banned. Cannot start the transfer"
         );
-        // insert into banlist and assure the owner is not already banned.
-        require!(
-            self.banlist.insert(owner),
-            "from account is banned. Cannot start the transfer"
-        );
-        Nep393Event::Ban(vec![owner]).emit();
+        if ban_owner {
+            // we only ban the source account in the soul transfer
+            // insert into banlist and assure the owner is not already banned.
+            require!(
+                self.banlist.insert(owner),
+                "from account is banned. Cannot start the transfer"
+            );
+            Nep393Event::Ban(vec![owner]).emit();
+        }
 
         IssuerTokenId {
             issuer_id: 0,
@@ -204,15 +308,19 @@ impl Contract {
         }
     }
 
-    // If it is the first iteration of the transfer, bans the source account, otherwise returns the last transfered token
-    fn get_transfer_continuation(
+    // If it is the first iteration of the soul transfer, bans the source account, otherwise returns the last transfered token
+    fn transfer_continuation(
         &mut self,
         from: &AccountId,
         to: &AccountId,
+        ban_owner: bool,
     ) -> (bool, IssuerTokenId) {
         match self.ongoing_soul_tx.get(from) {
             // starting the process
-            None => (false, self.start_transfer_with_continuation(from, to)),
+            None => (
+                false,
+                self.start_transfer_with_continuation(from, to, ban_owner),
+            ),
             // resuming sbt_recover process
             Some(s) => (true, s),
         }
@@ -225,8 +333,8 @@ impl Contract {
         let issuer = env::predecessor_account_id();
         let issuer_id = self.assert_issuer(&issuer);
         self.assert_not_banned(&to);
-        // if first execution ban the source account, othwerwise get the last transfered token
-        let (resumed, start) = self.get_transfer_continuation(&from, &to);
+        // get the last transfered token and don't ban the owner.
+        let (resumed, start) = self.transfer_continuation(&from, &to, false);
 
         let mut tokens_recovered = 0;
         let mut class_ids = Vec::new();
@@ -393,10 +501,7 @@ impl Contract {
     /// returns false if the `issuer` contract was already registered.
     pub fn admin_add_sbt_issuer(&mut self, issuer: AccountId) -> bool {
         self.assert_authority();
-        let previous = self.sbt_issuers.insert(&issuer, &self.next_issuer_id);
-        self.issuer_id_map.insert(&self.next_issuer_id, &issuer);
-        self.next_issuer_id += 1;
-        previous.is_none()
+        self._add_sbt_issuer(&issuer)
     }
 
     pub fn change_admin(&mut self, new_admin: AccountId) {
@@ -451,6 +556,197 @@ impl Contract {
             "not an admin"
         )
     }
+
+    fn _add_sbt_issuer(&mut self, issuer: &AccountId) -> bool {
+        if self.sbt_issuers.get(issuer).is_some() {
+            return false;
+        }
+        self.sbt_issuers.insert(issuer, &self.next_issuer_id);
+        self.issuer_id_map.insert(&self.next_issuer_id, issuer);
+        self.next_issuer_id += 1;
+        true
+    }
+
+    fn _sbt_renew(&mut self, issuer: AccountId, tokens: Vec<TokenId>, expires_at: u64) {
+        let issuer_id = self.assert_issuer(&issuer);
+        for token in &tokens {
+            let token = *token;
+            let mut t = self.get_token(issuer_id, token);
+            self.assert_not_banned(&t.owner);
+            let mut m = t.metadata.v1();
+            m.expires_at = Some(expires_at);
+            t.metadata = m.into();
+            self.issuer_tokens
+                .insert(&IssuerTokenId { issuer_id, token }, &t);
+        }
+        SbtTokensEvent { issuer, tokens }.emit_renew();
+    }
+
+    fn _sbt_mint(
+        &mut self,
+        issuer: &AccountId,
+        token_spec: Vec<(AccountId, Vec<TokenMetadata>)>,
+    ) -> Vec<TokenId> {
+        let storage_start = env::storage_usage();
+        let storage_deposit = env::attached_deposit();
+        require!(
+            storage_deposit >= 9 * MILI_NEAR,
+            "min required storage deposit: 0.009 NEAR"
+        );
+
+        let issuer_id = self.assert_issuer(issuer);
+        let mut num_tokens = 0;
+        for el in token_spec.iter() {
+            num_tokens += el.1.len() as u64;
+        }
+        let mut token = self.next_token_id(issuer_id, num_tokens);
+        let ret_token_ids = (token..token + num_tokens).collect();
+        let mut supply_by_class = HashMap::new();
+        let mut per_recipient: HashMap<AccountId, Vec<TokenId>> = HashMap::new();
+
+        for (owner, metadatas) in token_spec {
+            // no need to check ongoing_soult_tx, because it will automatically ban the source account
+            self.assert_not_banned(&owner);
+
+            let recipient_tokens = per_recipient.entry(owner.clone()).or_default();
+            let metadatas_len = metadatas.len();
+
+            for metadata in metadatas {
+                require!(metadata.class > 0, "Class must be > 0");
+                let prev = self.balances.insert(
+                    &balance_key(owner.clone(), issuer_id, metadata.class),
+                    &token,
+                );
+                require!(
+                    prev.is_none(),
+                    format! {"{} already has SBT of class {}", owner, metadata.class}
+                );
+
+                // update supply by class
+                match supply_by_class.get_mut(&metadata.class) {
+                    None => {
+                        supply_by_class.insert(metadata.class, 1);
+                    }
+                    Some(s) => *s += 1,
+                };
+
+                self.issuer_tokens.insert(
+                    &IssuerTokenId { issuer_id, token },
+                    &TokenData {
+                        owner: owner.clone(),
+                        metadata: metadata.into(),
+                    },
+                );
+                recipient_tokens.push(token);
+
+                token += 1;
+            }
+
+            // update supply by owner
+            let skey = (owner, issuer_id);
+            let sowner = self.supply_by_owner.get(&skey).unwrap_or(0) + metadatas_len as u64;
+            self.supply_by_owner.insert(&skey, &sowner);
+        }
+
+        for (cls, new_supply) in supply_by_class {
+            let key = (issuer_id, cls);
+            let s = self.supply_by_class.get(&key).unwrap_or(0) + new_supply;
+            self.supply_by_class.insert(&key, &s);
+        }
+
+        let new_supply = self.supply_by_issuer.get(&issuer_id).unwrap_or(0) + num_tokens;
+        self.supply_by_issuer.insert(&issuer_id, &new_supply);
+
+        let mut minted: Vec<(&AccountId, &Vec<TokenId>)> = per_recipient.iter().collect();
+        minted.sort_by(|a, b| a.0.cmp(b.0));
+        SbtMint {
+            issuer,
+            tokens: minted,
+        }
+        .emit();
+
+        let required_deposit =
+            (env::storage_usage() - storage_start) as u128 * env::storage_byte_cost();
+        require!(
+            storage_deposit >= required_deposit,
+            format!(
+                "not enough NEAR storage deposit, required: {}",
+                required_deposit
+            )
+        );
+
+        ret_token_ids
+    }
+
+    /// Method to burn all caller tokens (from all issuers).
+    /// The burn event is emitted for all the tokens burned.
+    /// The method must be called repeatedly until true is returned.
+    /// Not all tokens may be burned in a single
+    /// call due to the gas limitation - in that case `false` is returned.
+    pub fn sbt_burn_all(&mut self) -> bool {
+        self._sbt_burn_all(25)
+    }
+
+    /// Method to help parametrize the sbt_burn_all.
+    /// limit indicates the number of tokens that will be burned in one call
+    pub(crate) fn _sbt_burn_all(&mut self, limit: u32) -> bool {
+        let owner = env::predecessor_account_id();
+        require!(
+            !self.ongoing_soul_tx.contains_key(&owner),
+            "can't burn tokens while in soul_transfer"
+        );
+        let mut tokens_burned: u32 = 0;
+
+        let issuer_token_pair_vec =
+            self.sbt_tokens_by_owner(owner.clone(), None, None, Some(limit), Some(true));
+        for (issuer, tokens) in issuer_token_pair_vec.iter() {
+            let mut token_ids = Vec::new();
+            let issuer_id = self.assert_issuer(issuer);
+            let mut tokens_burned_per_issuer: u64 = 0;
+            for t in tokens.iter() {
+                token_ids.push(t.token);
+                self.issuer_tokens.remove(&IssuerTokenId {
+                    issuer_id,
+                    token: t.token,
+                });
+                let class_id = t.metadata.class;
+                self.balances
+                    .remove(&balance_key(owner.clone(), issuer_id, class_id));
+
+                // update supply by class
+                let key = (issuer_id, class_id);
+                let mut supply = self.supply_by_class.get(&key).unwrap();
+                supply -= 1;
+                self.supply_by_class.insert(&key, &supply);
+                tokens_burned_per_issuer += 1;
+                tokens_burned += 1;
+                if tokens_burned >= limit {
+                    break;
+                }
+            }
+
+            // update supply by owner
+            let key = (owner.clone(), issuer_id);
+            let mut supply = self.supply_by_owner.get(&key).unwrap();
+            supply -= tokens_burned_per_issuer;
+            self.supply_by_owner.insert(&key, &supply);
+
+            // update total supply by issuer
+            let mut supply = self.supply_by_issuer.get(&issuer_id).unwrap();
+            supply -= tokens_burned_per_issuer;
+            self.supply_by_issuer.insert(&issuer_id, &supply);
+
+            SbtTokensEvent {
+                issuer: issuer.to_owned(),
+                tokens: token_ids.clone(),
+            }
+            .emit_burn();
+            if tokens_burned >= limit {
+                return false;
+            }
+        }
+        true
+    }
 }
 
 #[cfg(test)]
@@ -502,6 +798,11 @@ mod tests {
         AccountId::new_unchecked("sbt4.near".to_string())
     }
 
+    #[inline]
+    fn fractal_mainnet() -> AccountId {
+        AccountId::new_unchecked("fractal.i-am-human.near".to_string())
+    }
+
     fn admin() -> AccountId {
         AccountId::new_unchecked("sbt.near".to_string())
     }
@@ -538,7 +839,7 @@ mod tests {
 
     fn mk_batch_metadata(n: u64) -> Vec<TokenMetadata> {
         let mut batch_metadata: Vec<TokenMetadata> = Vec::new();
-        for i in 0..n {
+        for i in 1..=n {
             batch_metadata.push(mk_metadata(i, Some(START + i)))
         }
         batch_metadata
@@ -548,27 +849,70 @@ mod tests {
         return Gas::ONE_TERA.mul(300);
     }
 
+    const MILI_SECOND: u64 = 1_000_000; // milisecond in ns
     const START: u64 = 10;
-    const MINT_DEPOSIT: Balance = 6 * MILI_NEAR;
+    const MINT_DEPOSIT: Balance = 9 * MILI_NEAR;
 
     fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
-            // .attached_deposit(deposit_dec.into())
-            .block_timestamp(START)
+            .block_timestamp(START * MILI_SECOND) // multiplying by mili seconds for easier testing
             .is_view(false)
             .build();
         if deposit > 0 {
             ctx.attached_deposit = deposit
         }
         testing_env!(ctx.clone());
-        let mut ctr = Contract::new(admin());
+        let mut ctr = Contract::new(admin(), fractal_mainnet(), vec![1]);
         ctr.admin_add_sbt_issuer(issuer1());
         ctr.admin_add_sbt_issuer(issuer2());
         ctr.admin_add_sbt_issuer(issuer3());
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
+    }
+
+    #[test]
+    fn init_method() {
+        let ctr = Contract::new(admin(), fractal_mainnet(), vec![1]);
+        // make sure the iah_issuer has been set as an issuer
+        assert_eq!(1, ctr.assert_issuer(&fractal_mainnet()));
+    }
+
+    #[test]
+    fn iah_class_set() {
+        let (_, ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+        assert_eq!(ctr.iah_class_set(), vec![ctr.iah_sbts]);
+    }
+
+    #[test]
+    fn add_sbt_issuer() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+        // in setup we add 4 issuers, so the next id will be 5.
+        assert_eq!(5, ctr.next_issuer_id);
+        assert_eq!(1, ctr.assert_issuer(&fractal_mainnet()));
+        assert_eq!(2, ctr.assert_issuer(&issuer1()));
+        assert_eq!(3, ctr.assert_issuer(&issuer2()));
+        assert_eq!(4, ctr.assert_issuer(&issuer3()));
+
+        assert_eq!(fractal_mainnet(), ctr.issuer_by_id(1));
+        assert_eq!(issuer1(), ctr.issuer_by_id(2));
+        assert_eq!(issuer2(), ctr.issuer_by_id(3));
+        assert_eq!(issuer3(), ctr.issuer_by_id(4));
+
+        ctx.predecessor_account_id = admin();
+        testing_env!(ctx.clone());
+        let ok = ctr.admin_add_sbt_issuer(issuer1());
+        assert!(
+            !ok,
+            "isser1 should be already added, so it should return false"
+        );
+        assert_eq!(5, ctr.next_issuer_id, "next_issuer_id should not change");
+        assert_eq!(
+            2,
+            ctr.assert_issuer(&issuer1()),
+            "issuer1 id should not change"
+        );
     }
 
     #[test]
@@ -585,11 +929,30 @@ mod tests {
         assert_eq!(0, ctr.sbt_supply(issuer2()));
 
         let sbt1_1 = ctr.sbt(issuer1(), 1).unwrap();
-        assert_eq!(sbt1_1, mk_token(1, alice(), m1_1.clone()));
+        let sbt1_1_e = mk_token(1, alice(), m1_1.clone());
+        let sbt1_2_e = mk_token(2, bob(), m1_1.clone());
+        assert_eq!(sbt1_1, sbt1_1_e);
         let sbt1_2 = ctr.sbt(issuer1(), 2).unwrap();
-        assert_eq!(sbt1_2, mk_token(2, bob(), m1_1.clone()));
+        assert_eq!(sbt1_2, sbt1_2_e);
         assert!(ctr.sbt(issuer2(), 1).is_none());
         assert!(ctr.sbt(issuer1(), 3).is_none());
+
+        let sbts = ctr.sbts(issuer1(), vec![1, 2]);
+        assert_eq!(sbts, vec![Some(sbt1_1_e.clone()), Some(sbt1_2_e.clone())]);
+        assert_eq!(
+            ctr.sbt_classes(issuer1(), vec![1, 1]),
+            vec![Some(1), Some(1)]
+        );
+
+        let sbts = ctr.sbts(issuer1(), vec![2, 10, 3, 1]);
+        assert_eq!(
+            sbts,
+            vec![Some(sbt1_2_e.clone()), None, None, Some(sbt1_1_e.clone())]
+        );
+        assert_eq!(
+            ctr.sbt_classes(issuer1(), vec![2, 10, 3, 1]),
+            vec![Some(1), None, None, Some(1)]
+        );
 
         assert_eq!(1, ctr.sbt_supply_by_owner(alice(), issuer1(), None));
         assert_eq!(1, ctr.sbt_supply_by_owner(alice(), issuer1(), Some(1)));
@@ -599,11 +962,11 @@ mod tests {
         assert_eq!(1, ctr.sbt_supply_by_owner(bob(), issuer1(), Some(1)));
         assert_eq!(0, ctr.sbt_supply_by_owner(bob(), issuer1(), Some(2)));
 
-        let alice_sbts = ctr.sbt_tokens_by_owner(alice(), None, None, None);
+        let alice_sbts = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
         let expected = vec![(issuer1(), vec![mk_owned_token(1, m1_1.clone())])];
         assert_eq!(alice_sbts, expected);
 
-        let bob_sbts = ctr.sbt_tokens_by_owner(bob(), None, None, None);
+        let bob_sbts = ctr.sbt_tokens_by_owner(bob(), None, None, None, None);
         let expected = vec![(issuer1(), vec![mk_owned_token(2, m1_1.clone())])];
         assert_eq!(bob_sbts, expected);
     }
@@ -713,15 +1076,15 @@ mod tests {
             (issuer2(), vec![mk_owned_token(3, m1_1.clone())]),
         ];
         assert_eq!(
-            &ctr.sbt_tokens_by_owner(alice2(), None, None, None),
+            &ctr.sbt_tokens_by_owner(alice2(), None, None, None, None),
             &a_tokens
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice2(), Some(issuer1()), None, None),
+            ctr.sbt_tokens_by_owner(alice2(), Some(issuer1()), None, None, None),
             vec![a_tokens[0].clone()],
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice2(), Some(issuer2()), None, None),
+            ctr.sbt_tokens_by_owner(alice2(), Some(issuer2()), None, None, None),
             vec![a_tokens[1].clone()]
         );
 
@@ -741,51 +1104,57 @@ mod tests {
             ],
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), None, None, None),
+            ctr.sbt_tokens_by_owner(alice(), None, None, None, None),
             vec![alice_issuer2.clone(), alice_issuer3.clone()]
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None, None),
             vec![alice_issuer2.clone()]
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer3()), None, None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer3()), None, None, None),
             vec![alice_issuer3.clone()]
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), Some(1), None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), Some(1), None, None),
             vec![alice_issuer2]
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), Some(4), None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), Some(4), None, None),
             vec![(issuer2(), vec![mk_owned_token(5, m4_1.clone())])]
         );
 
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), Some(5), None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), Some(5), None, None),
             vec![]
         );
 
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), Some(5), None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), Some(5), None, None),
             vec![]
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer3()), Some(1), None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer3()), Some(1), None, None),
             vec![alice_issuer3.clone()]
         );
 
         // check by all tokens
         assert_eq!(
-            ctr.sbt_tokens(issuer1(), Some(1), None),
+            ctr.sbt_tokens(issuer1(), Some(1), None, None),
             vec![mk_token(1, alice2(), m1_1.clone())]
         );
-        assert_eq!(ctr.sbt_tokens(issuer2(), None, None), t2_all,);
-        assert_eq!(ctr.sbt_tokens(issuer2(), None, Some(1)), t2_all[..1]);
-        assert_eq!(ctr.sbt_tokens(issuer2(), None, Some(2)), t2_all[..2]);
-        assert_eq!(ctr.sbt_tokens(issuer2(), Some(2), Some(2)), t2_all[1..3]);
-        assert_eq!(ctr.sbt_tokens(issuer2(), Some(5), Some(5)), t2_all[4..5]);
-        assert_eq!(ctr.sbt_tokens(issuer2(), Some(6), Some(2)), vec![]);
+        assert_eq!(ctr.sbt_tokens(issuer2(), None, None, None), t2_all,);
+        assert_eq!(ctr.sbt_tokens(issuer2(), None, Some(1), None), t2_all[..1]);
+        assert_eq!(ctr.sbt_tokens(issuer2(), None, Some(2), None), t2_all[..2]);
+        assert_eq!(
+            ctr.sbt_tokens(issuer2(), Some(2), Some(2), None),
+            t2_all[1..3]
+        );
+        assert_eq!(
+            ctr.sbt_tokens(issuer2(), Some(5), Some(5), None),
+            t2_all[4..5]
+        );
+        assert_eq!(ctr.sbt_tokens(issuer2(), Some(6), Some(2), None), vec![]);
 
         //
         // now let's test buring
@@ -817,13 +1186,32 @@ mod tests {
 
         let alice_issuer2 = (issuer2(), vec![mk_owned_token(4, m2_1.clone())]);
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), None, None, None),
+            ctr.sbt_tokens_by_owner(alice(), None, None, None, None),
             vec![alice_issuer2.clone(), alice_issuer3.clone()]
         );
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None, None),
             vec![alice_issuer2.clone()]
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "bob.near is not a human")]
+    fn mint_iah() {
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+        // issue IAH SBTs for alice
+        let m1_1 = mk_metadata(1, Some(START)); // class=1 is IAH
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+
+        ctx.predecessor_account_id = issuer1();
+        testing_env!(ctx.clone());
+
+        // alice is IAH verified, so mint_iah by issuer1 should work
+        let sbts = ctr.sbt_mint_iah(vec![(alice(), vec![m1_1.clone()])]);
+        assert!(!sbts.is_empty());
+
+        // bob doesn't have IAH SBTs -> the mint below panics.
+        ctr.sbt_mint_iah(vec![(bob(), vec![m1_1])]);
     }
 
     #[test]
@@ -859,9 +1247,12 @@ mod tests {
         assert!(ctr.is_banned(alice()));
         assert!(!ctr.is_banned(alice2()));
 
-        assert_eq!(ctr.sbt_tokens_by_owner(alice(), None, None, None), vec![]);
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice2(), None, None, None),
+            ctr.sbt_tokens_by_owner(alice(), None, None, None, None),
+            vec![]
+        );
+        assert_eq!(
+            ctr.sbt_tokens_by_owner(alice2(), None, None, None, None),
             vec![
                 (
                     issuer1(),
@@ -1155,7 +1546,7 @@ mod tests {
 
         // assert the two tokens have been renewed (new expire_at)
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None, None),
             vec![(
                 issuer1(),
                 vec![
@@ -1192,7 +1583,7 @@ mod tests {
 
         // assert tokens issued by issuer2 has been renewed (new expire_at)
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None, None),
             vec![(
                 issuer2(),
                 vec![
@@ -1204,7 +1595,7 @@ mod tests {
 
         // assert tokens issued by issuer1 has not been renewed (new expire_at)
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None, None),
             vec![(
                 issuer1(),
                 vec![
@@ -1278,15 +1669,15 @@ mod tests {
                 bob()
             ),
         );
-        assert_eq!(test_utils::get_logs().len(), 3);
-        assert_eq!(test_utils::get_logs()[2], recover_log[0]);
-        assert!(ctr.is_banned(alice()));
+        assert_eq!(test_utils::get_logs().len(), 2);
+        assert_eq!(test_utils::get_logs()[1], recover_log[0]);
+        assert!(!ctr.is_banned(alice()));
         assert!(!ctr.is_banned(bob()));
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
         assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer1(), None), 2);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 1); //check if alice still holds the tokens issued by a different issuer
         assert_eq!(
-            ctr.sbt_tokens_by_owner(bob(), Some(issuer1()), None, None),
+            ctr.sbt_tokens_by_owner(bob(), Some(issuer1()), None, None, None),
             vec![(
                 issuer1(),
                 vec![
@@ -1302,7 +1693,7 @@ mod tests {
         assert_eq!(ctr.sbt_supply_by_class(issuer1(), 2), 1);
 
         assert_eq!(
-            ctr.sbt_tokens(issuer1(), None, None),
+            ctr.sbt_tokens(issuer1(), None, None, None),
             vec![
                 mk_token(1, bob(), m1_1.clone()),
                 mk_token(2, bob(), m2_1.clone())
@@ -1327,18 +1718,23 @@ mod tests {
     fn sbt_recover_growing_storage_desposit_fail() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
         let m1_1 = mk_metadata(1, Some(START + 10));
+        let m1_2 = mk_metadata(2, Some(START + 10));
+        let m1_3 = mk_metadata(3, Some(START + 10));
         ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 1);
 
         ctx.predecessor_account_id = issuer2();
         testing_env!(ctx.clone());
-        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
-        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 1);
+        ctr.sbt_mint(vec![(
+            alice(),
+            vec![m1_1.clone(), m1_2.clone(), m1_3.clone()],
+        )]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 3);
 
-        //set attached deposit to zero, should fails since the storage grows and we do not cover it
+        //set attached deposit to zero, should fail since the storage grows and we do not cover it
         ctx.attached_deposit = 0;
         testing_env!(ctx.clone());
-        ctr.sbt_recover(alice(), bob());
+        ctr._sbt_recover(alice(), bob(), 1);
     }
 
     #[test]
@@ -1376,10 +1772,10 @@ mod tests {
         let mut result = ctr._sbt_recover(alice(), alice2(), 3);
         assert_eq!((3, false), result);
         assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 3);
-        assert!(test_utils::get_logs().len() == 2);
+        assert!(test_utils::get_logs().len() == 1);
         result = ctr._sbt_recover(alice(), alice2(), 3);
         assert_eq!((1, true), result);
-        assert!(test_utils::get_logs().len() == 3);
+        assert!(test_utils::get_logs().len() == 2);
 
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
         assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 4);
@@ -1393,7 +1789,7 @@ mod tests {
         let m2_1 = mk_metadata(2, Some(START + 11));
         let m3_1 = mk_metadata(3, Some(START + 21));
 
-        let current_timestamp = ctx.block_timestamp;
+        let current_timestamp = ctx.block_timestamp / MILI_SECOND; // convert nano to mili seconds
 
         let m1_1_revoked = mk_metadata(1, Some(current_timestamp));
         let m2_1_revoked = mk_metadata(2, Some(current_timestamp));
@@ -1429,7 +1825,7 @@ mod tests {
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 3);
         assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer2(), None), 2);
         assert_eq!(
-            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None),
+            ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None, None),
             vec![(
                 issuer1(),
                 vec![
@@ -1440,7 +1836,7 @@ mod tests {
             ),]
         );
         assert_eq!(
-            ctr.sbt_tokens(issuer1(), None, None),
+            ctr.sbt_tokens(issuer1(), None, None, None),
             vec![
                 mk_token(1, alice(), m1_1_revoked.clone()),
                 mk_token(2, alice(), m2_1_revoked.clone()),
@@ -1448,7 +1844,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            ctr.sbt_tokens(issuer2(), None, None),
+            ctr.sbt_tokens(issuer2(), None, None, None),
             vec![
                 mk_token(1, bob(), m1_1.clone()),
                 mk_token(2, bob(), m2_1.clone()),
@@ -1491,7 +1887,7 @@ mod tests {
             "burn",
             &format!(r#"{{"issuer":"{}","tokens":[1,2,3]}}"#, issuer1()),
         );
-        assert_eq!(test_utils::get_logs().len(), 1);
+        assert_eq!(test_utils::get_logs().len(), 2);
         assert_eq!(test_utils::get_logs()[0], log_burn[0]);
         assert_eq!(ctr.sbt_supply(issuer1()), 1);
         assert_eq!(ctr.sbt_supply(issuer2()), 3);
@@ -1506,11 +1902,11 @@ mod tests {
         assert_eq!(ctr.sbt_supply_by_class(issuer2(), 3), 1);
 
         assert_eq!(
-            ctr.sbt_tokens(issuer1(), None, None),
+            ctr.sbt_tokens(issuer1(), None, None, None),
             vec![mk_token(4, alice(), m3_1.clone())],
         );
         assert_eq!(
-            ctr.sbt_tokens(issuer2(), None, None),
+            ctr.sbt_tokens(issuer2(), None, None, None),
             vec![
                 mk_token(1, bob(), m1_1.clone()),
                 mk_token(2, bob(), m2_1.clone()),
@@ -1720,7 +2116,8 @@ mod tests {
         ctx.predecessor_account_id = issuer1();
         testing_env!(ctx.clone());
         ctr.sbt_recover(alice(), alice2());
-        assert!(ctr.is_banned(alice()));
+        // sbt_recover should not ban the source account
+        assert!(!ctr.is_banned(alice()));
         assert!(!ctr.is_banned(alice2()));
     }
 
@@ -1736,5 +2133,554 @@ mod tests {
 
         //try to mint to a banned account
         ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+    }
+
+    #[test]
+    fn sbt_tokens_by_owner_non_expired() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 4 * MINT_DEPOSIT);
+        ctx.block_timestamp = START * MILI_SECOND; // 11 seconds
+        testing_env!(ctx.clone());
+
+        let m1_1 = mk_metadata(1, Some(START));
+        let m1_2 = mk_metadata(2, Some(START));
+        let m1_3 = mk_metadata(3, Some(START + 100));
+        let m1_4 = mk_metadata(4, Some(START + 100));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1, m1_2, m1_3, m1_4])]);
+
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, Some(true));
+        assert_eq!(res[0].1.len(), 4);
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 4);
+
+        let res = ctr.sbt_tokens(issuer1(), None, None, Some(true));
+        assert_eq!(res.len(), 4);
+        let res = ctr.sbt_tokens(issuer1(), None, None, Some(false));
+        assert_eq!(res.len(), 4);
+        let res = ctr.sbt_tokens(issuer1(), None, None, None);
+        assert_eq!(res.len(), 4);
+
+        // fast forward so the first two sbts are expired
+        ctx.block_timestamp = (START + 50) * MILI_SECOND;
+        testing_env!(ctx.clone());
+
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, Some(true));
+        assert_eq!(res[0].1.len(), 4);
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, Some(false));
+        assert_eq!(res[0].1.len(), 2);
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 2);
+
+        let res = ctr.sbt_tokens(issuer1(), None, None, Some(true));
+        assert_eq!(res.len(), 4);
+        let res = ctr.sbt_tokens(issuer1(), None, None, Some(false));
+        assert_eq!(res.len(), 2);
+        let res = ctr.sbt_tokens(issuer1(), None, None, None);
+        assert_eq!(res.len(), 2);
+    }
+
+    #[test]
+    fn sbt_revoke_by_owner_basics() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+
+        let m1_1 = mk_metadata(1, Some(START + 100));
+        let m1_2 = mk_metadata(2, Some(START + 100));
+        let m1_1_expired = mk_metadata(1, Some(START));
+        let m1_2_expired = mk_metadata(2, Some(START));
+
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m1_2.clone()])]);
+
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m1_2.clone()])]);
+
+        // revoke (burn) tokens minted for alice from issuer2
+        ctr.sbt_revoke_by_owner(alice(), true);
+
+        let log_burn = mk_log_str(
+            "burn",
+            &format!(r#"{{"issuer":"{}","tokens":[1,2]}}"#, issuer2()),
+        );
+        let log_revoke = mk_log_str(
+            "revoke",
+            &format!(r#"{{"issuer":"{}","tokens":[1,2]}}"#, issuer2()),
+        );
+        assert_eq!(test_utils::get_logs().len(), 3);
+        assert_eq!(test_utils::get_logs()[1], log_burn[0]);
+        assert_eq!(test_utils::get_logs()[2], log_revoke[0]);
+
+        // make sure the balances are updated correctly
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert!(res.len() == 1);
+        assert_eq!(res[0].1.len(), 2);
+        assert_eq!(ctr.sbt_supply(issuer1()), 2);
+        assert_eq!(ctr.sbt_supply(issuer2()), 0);
+        assert_eq!(ctr.sbt_supply_by_class(issuer1(), 1), 1);
+        assert_eq!(ctr.sbt_supply_by_class(issuer1(), 2), 1);
+        assert_eq!(ctr.sbt_supply_by_class(issuer2(), 1), 0);
+        assert_eq!(ctr.sbt_supply_by_class(issuer2(), 2), 0);
+
+        assert_eq!(
+            ctr.sbt_tokens(issuer1(), None, None, None),
+            vec![
+                mk_token(1, alice(), m1_1.clone()),
+                mk_token(2, alice(), m1_2.clone()),
+            ],
+        );
+        assert!(ctr.sbt_tokens(issuer2(), None, None, None).len() == 0);
+
+        // revoke (not burn) tokens minted for alice from issuer1
+        ctx.predecessor_account_id = issuer1();
+        testing_env!(ctx.clone());
+        assert_eq!(test_utils::get_logs().len(), 0);
+        ctr.sbt_revoke_by_owner(alice(), false);
+
+        let log_revoke = mk_log_str(
+            "revoke",
+            &format!(r#"{{"issuer":"{}","tokens":[1,2]}}"#, issuer1()),
+        );
+        assert_eq!(test_utils::get_logs().len(), 1);
+        assert_eq!(test_utils::get_logs()[0], log_revoke[0]);
+
+        // fast forward
+        ctx.block_timestamp = (START + 50) * MILI_SECOND;
+        testing_env!(ctx.clone());
+
+        // make sure the balances are updated correctly
+        let res_with_expired = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert!(res_with_expired.len() == 0);
+        let res_without_expired = ctr.sbt_tokens_by_owner(alice(), None, None, None, Some(true));
+        assert!(res_without_expired.len() == 1);
+        assert_eq!(res[0].1.len(), 2);
+        assert_eq!(ctr.sbt_supply(issuer1()), 2);
+        assert_eq!(ctr.sbt_supply(issuer2()), 0);
+        assert_eq!(ctr.sbt_supply_by_class(issuer1(), 1), 1);
+        assert_eq!(ctr.sbt_supply_by_class(issuer1(), 2), 1);
+        assert_eq!(ctr.sbt_supply_by_class(issuer2(), 1), 0);
+        assert_eq!(ctr.sbt_supply_by_class(issuer2(), 2), 0);
+
+        assert_eq!(
+            ctr.sbt_tokens(issuer1(), None, None, Some(true)),
+            vec![
+                mk_token(1, alice(), m1_1_expired.clone()),
+                mk_token(2, alice(), m1_2_expired.clone()),
+            ],
+        );
+        assert!(ctr.sbt_tokens(issuer1(), None, None, None).len() == 0);
+        assert!(ctr.sbt_tokens(issuer2(), None, None, None).len() == 0);
+    }
+
+    #[test]
+    fn sbt_revoke_by_owner_batch() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 20 * MINT_DEPOSIT);
+
+        // mint tokens to alice and bob from issuer1
+        let batch_metadata = mk_batch_metadata(20);
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata[10..].to_vec())]);
+
+        // mint tokens to alice and bob from issuer2
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata[11..].to_vec())]);
+
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 10);
+        assert_eq!(res[1].1.len(), 10);
+
+        let res = ctr.sbt_tokens_by_owner(bob(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 10);
+        assert_eq!(res[1].1.len(), 9);
+
+        assert_eq!(ctr.sbt_supply(issuer1()), 20);
+        assert_eq!(ctr.sbt_supply(issuer2()), 19);
+
+        // revoke (burn) tokens minted for alice from issuer2
+        ctr.sbt_revoke_by_owner(alice(), true);
+
+        // make sure the balances are updated correctly
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 10);
+        // assert_eq!(res[1].1.len(), 0);
+
+        let res = ctr.sbt_tokens_by_owner(bob(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 10);
+        assert_eq!(res[1].1.len(), 9);
+
+        assert_eq!(ctr.sbt_supply(issuer1()), 20);
+        assert_eq!(ctr.sbt_supply(issuer2()), 9);
+    }
+
+    #[test]
+    fn is_human() {
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+        ctx.current_account_id = AccountId::new_unchecked("registry.i-am-human.near".to_string());
+        testing_env!(ctx.clone());
+
+        let m1_1 = mk_metadata(1, Some(START));
+        let m1_2 = mk_metadata(2, Some(START));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
+        ctr.sbt_mint(vec![(bob(), vec![m1_2])]);
+
+        assert_eq!(ctr.is_human(alice()), vec![(fractal_mainnet(), vec![1])]);
+        assert_eq!(ctr.is_human(bob()), vec![]);
+
+        // step forward, so the tokens will expire
+        ctx.block_timestamp = (START + 1) * MILI_SECOND;
+        testing_env!(ctx.clone());
+        assert_eq!(ctr.is_human(alice()), vec![]);
+        assert_eq!(ctr.is_human(bob()), vec![]);
+    }
+
+    #[test]
+    fn is_human_expires_at_none() {
+        let (_, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+
+        // make sure is_human works as expected when the expiratoin date is set to None (the token never expires).
+        let m1_1 = mk_metadata(1, None);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
+
+        assert_eq!(ctr.is_human(alice()), vec![(fractal_mainnet(), vec![1])]);
+    }
+
+    #[test]
+    fn is_human_multiple_classes() {
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+        ctr.iah_sbts.1 = vec![1, 3];
+        ctx.current_account_id = AccountId::new_unchecked("registry.i-am-human.near".to_string());
+        testing_env!(ctx.clone());
+
+        let m1_1 = mk_metadata(1, Some(START));
+        let m1_2 = mk_metadata(2, Some(START));
+        let m1_3 = mk_metadata(3, Some(START));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        ctr.sbt_mint(vec![(bob(), vec![m1_2.clone()])]);
+        ctr.sbt_mint(vec![(carol(), vec![m1_2, m1_1.clone()])]);
+        ctr.sbt_mint(vec![(dan(), vec![m1_3, m1_1])]);
+
+        assert_eq!(ctr.is_human(alice()), vec![]);
+        assert_eq!(ctr.is_human(bob()), vec![]);
+        assert_eq!(ctr.is_human(carol()), vec![]);
+        assert_eq!(ctr.is_human(dan()), vec![(fractal_mainnet(), vec![6, 5])]);
+    }
+
+    #[test]
+    fn sbt_tokens_by_owner_per_issuer() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 20 * MINT_DEPOSIT);
+        let batch_metadata = mk_batch_metadata(30);
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+
+        ctx.predecessor_account_id = issuer3();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[10..20].to_vec())]);
+
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[20..].to_vec())]);
+
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert_eq!(res.len(), 3);
+        assert_eq!(res[0].1.len(), 10);
+        assert_eq!(res[1].1.len(), 10);
+        assert_eq!(res[2].1.len(), 10);
+        // assert that returns always in the ascending order (not minting order)
+        assert_eq!(res[0].0, issuer1());
+        assert_eq!(res[1].0, issuer2());
+        assert_eq!(res[2].0, issuer3());
+
+        let expected_tokens: Vec<u64> = (1..=10).collect();
+
+        let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None, None);
+        assert_eq!(res.len(), 1);
+        assert_eq!(
+            res[0].1.iter().map(|t| t.token).collect::<Vec<u64>>(),
+            expected_tokens,
+        );
+        let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None, None);
+        assert_eq!(res.len(), 1);
+        assert_eq!(
+            res[0].1.iter().map(|t| t.token).collect::<Vec<u64>>(),
+            expected_tokens,
+        );
+        let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer3()), None, None, None);
+        assert_eq!(res.len(), 1);
+        assert_eq!(
+            res[0].1.iter().map(|t| t.token).collect::<Vec<u64>>(),
+            expected_tokens,
+        );
+
+        // mint more tokens for issuer1()
+        ctx.predecessor_account_id = issuer1();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[20..30].to_vec())]);
+        let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None, None);
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].0, issuer1());
+        assert_eq!(
+            res[0].1.iter().map(|t| t.token).collect::<Vec<u64>>(),
+            (1..=20).collect::<Vec<u64>>()
+        );
+    }
+
+    #[test]
+    fn is_human_multiple_classes_with_expired_tokens() {
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+        ctr.iah_sbts.1 = vec![1, 3];
+        ctx.current_account_id = AccountId::new_unchecked("registry.i-am-human.near".to_string());
+        testing_env!(ctx.clone());
+
+        let m1_1 = mk_metadata(1, Some(START + 100));
+        let m1_2 = mk_metadata(2, Some(START + 100));
+        let m1_3 = mk_metadata(3, Some(START));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1, m1_2, m1_3])]);
+
+        assert_eq!(ctr.is_human(alice()), vec![(fractal_mainnet(), vec![1, 3])]);
+        // step forward, so token class==3 will expire
+        ctx.block_timestamp = (START + 1) * MILI_SECOND;
+        testing_env!(ctx.clone());
+        assert_eq!(ctr.is_human(alice()), vec![]);
+    }
+
+    #[test]
+    fn sbt_revoke_events() {
+        let (ctx, mut ctr) = setup(&fractal_mainnet(), 2 * MINT_DEPOSIT);
+        let m1_1 = mk_metadata(1, Some(START));
+        let tokens = ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
+
+        // clear the events
+        testing_env!(ctx.clone());
+
+        // revoke (burn == false)
+        ctr.sbt_revoke(vec![tokens[0]], false);
+
+        let log_revoke = mk_log_str(
+            "revoke",
+            &format!(r#"{{"issuer":"{}","tokens":[1]}}"#, fractal_mainnet()),
+        );
+        let log_burn = mk_log_str(
+            "burn",
+            &format!(r#"{{"issuer":"{}","tokens":[1]}}"#, fractal_mainnet()),
+        );
+
+        // check only revoke event is emitted
+        assert_eq!(test_utils::get_logs().len(), 1);
+        assert_eq!(test_utils::get_logs(), log_revoke);
+
+        // clear the events
+        testing_env!(ctx.clone());
+
+        // revoke (burn == true)
+        ctr.sbt_revoke(tokens, true);
+
+        // check both burn and revoke events are emitted
+        assert_eq!(test_utils::get_logs().len(), 2); // -> only 1 event is emmited
+        assert_eq!(test_utils::get_logs(), vec![log_burn, log_revoke].concat());
+        // -> missing revoke event
+    }
+
+    #[test]
+    fn sbt_burn_all_more_users() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 20 * MINT_DEPOSIT);
+
+        // mint tokens to alice and bob from issuer1
+        let batch_metadata = mk_batch_metadata(20);
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata[10..].to_vec())]);
+
+        // mint tokens to alice and bob from issuer2
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata[11..].to_vec())]);
+
+        // mint tokens to alice and bob from issuer3
+        ctx.predecessor_account_id = issuer3();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata[10..].to_vec())]);
+
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 10);
+        assert_eq!(res[1].1.len(), 10);
+        assert_eq!(res[2].1.len(), 10);
+
+        let res = ctr.sbt_tokens_by_owner(bob(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 10);
+        assert_eq!(res[1].1.len(), 9);
+        assert_eq!(res[2].1.len(), 10);
+
+        assert_eq!(ctr.sbt_supply(issuer1()), 20);
+        assert_eq!(ctr.sbt_supply(issuer2()), 19);
+        assert_eq!(ctr.sbt_supply(issuer3()), 20);
+
+        // alice burn all her tokens from all the issuers
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        let res = ctr._sbt_burn_all(20);
+        assert!(!res);
+        let res = ctr._sbt_burn_all(20);
+        assert!(res); // make sure that after the second call true is returned (all tokens have been burned)
+
+        // make sure the balances are updated correctly
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert!(res.is_empty());
+
+        let res = ctr.sbt_tokens_by_owner(bob(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 10);
+        assert_eq!(res[1].1.len(), 9);
+        assert_eq!(res[2].1.len(), 10);
+
+        assert_eq!(ctr.sbt_supply(issuer1()), 10);
+        assert_eq!(ctr.sbt_supply(issuer2()), 9);
+        assert_eq!(ctr.sbt_supply(issuer3()), 10);
+    }
+
+    #[test]
+    fn sbt_burn_all_basics() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 20 * MINT_DEPOSIT);
+
+        // mint tokens to alice and bob from issuer1
+        let batch_metadata = mk_batch_metadata(20);
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+
+        // mint tokens to alice and bob from issuer2
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+
+        // mint tokens to alice and bob from issuer3
+        ctx.predecessor_account_id = issuer3();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+
+        // alice burn all her tokens from all the issuers
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        loop {
+            if ctr._sbt_burn_all(10) {
+                break;
+            }
+        }
+
+        // check if the logs are correct
+        assert_eq!(test_utils::get_logs().len(), 3);
+
+        let log_burn_issuer_1 = mk_log_str(
+            "burn",
+            &format!(
+                r#"{{"issuer":"{}","tokens":[1,2,3,4,5,6,7,8,9,10]}}"#,
+                issuer1()
+            ),
+        );
+
+        let log_burn_issuer_2 = mk_log_str(
+            "burn",
+            &format!(
+                r#"{{"issuer":"{}","tokens":[1,2,3,4,5,6,7,8,9,10]}}"#,
+                issuer2()
+            ),
+        );
+
+        let log_burn_issuer_3 = mk_log_str(
+            "burn",
+            &format!(
+                r#"{{"issuer":"{}","tokens":[1,2,3,4,5,6,7,8,9,10]}}"#,
+                issuer3()
+            ),
+        );
+
+        assert_eq!(test_utils::get_logs()[0], log_burn_issuer_1[0]);
+        assert_eq!(test_utils::get_logs()[1], log_burn_issuer_2[0]);
+        assert_eq!(test_utils::get_logs()[2], log_burn_issuer_3[0]);
+
+        // make sure the balances are updated correctly
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert!(res.is_empty());
+
+        assert_eq!(ctr.sbt_supply(issuer1()), 0);
+        assert_eq!(ctr.sbt_supply(issuer2()), 0);
+        assert_eq!(ctr.sbt_supply(issuer3()), 0);
+        for i in 1..=10 {
+            print!("{}", i);
+            assert_eq!(ctr.sbt_supply_by_class(issuer1(), i), 0);
+        }
+        for i in 1..=10 {
+            assert_eq!(ctr.sbt_supply_by_class(issuer2(), i), 0);
+        }
+        for i in 1..=10 {
+            assert_eq!(ctr.sbt_supply_by_class(issuer3(), i), 0);
+        }
+    }
+    #[test]
+    fn sbt_burn_all_limit() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 60 * MINT_DEPOSIT);
+
+        // mint tokens to alice and bob from issuer1
+        let batch_metadata = mk_batch_metadata(40);
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..20].to_vec())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata[20..].to_vec())]);
+
+        // mint tokens to alice and bob from issuer2
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..20].to_vec())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata[20..].to_vec())]);
+
+        // mint tokens to alice and bob from issuer3
+        ctx.predecessor_account_id = issuer3();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..20].to_vec())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata[20..].to_vec())]);
+
+        assert_eq!(ctr.sbt_supply(issuer1()), 40);
+        assert_eq!(ctr.sbt_supply(issuer2()), 40);
+        assert_eq!(ctr.sbt_supply(issuer3()), 40);
+
+        // alice burn all her tokens from all the issuers
+        ctx.predecessor_account_id = alice();
+        loop {
+            ctx.prepaid_gas = max_gas();
+            testing_env!(ctx.clone());
+            if ctr._sbt_burn_all(41) {
+                //anything above 41 fails due to MaxGasLimitExceeded error
+                break;
+            }
+        }
+
+        // make sure the balances are updated correctly
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert!(res.is_empty());
+
+        let res = ctr.sbt_tokens_by_owner(bob(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 20);
+        assert_eq!(res[1].1.len(), 20);
+        assert_eq!(res[2].1.len(), 20);
+
+        assert_eq!(ctr.sbt_supply(issuer1()), 20);
+        assert_eq!(ctr.sbt_supply(issuer2()), 20);
+        assert_eq!(ctr.sbt_supply(issuer3()), 20);
+    }
+
+    #[test]
+    fn is_human_call() {
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), MINT_DEPOSIT);
+
+        let m1_1 = mk_metadata(1, Some(START));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
+        assert_eq!(ctr.is_human(alice()), vec![(fractal_mainnet(), vec![1])]);
+
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+
+        ctr.is_human_call(AccountId::new_unchecked("registry.i-am-human.near".to_string()), "function_name".to_string(), "{}".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "caller not a human")]
+    fn is_human_call_fail() {
+        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctr.is_human_call(AccountId::new_unchecked("registry.i-am-human.near".to_string()), "function_name".to_string(), "{}".to_string());
     }
 }
