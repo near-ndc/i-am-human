@@ -830,6 +830,10 @@ mod tests {
         AccountId::new_unchecked("sbt4.near".to_string())
     }
 
+    fn admins_flagged() -> Vec<AccountId> {
+        vec![AccountId::new_unchecked("admin_flagged.near".to_string())]
+    }
+
     #[inline]
     fn fractal_mainnet() -> AccountId {
         AccountId::new_unchecked("fractal.i-am-human.near".to_string())
@@ -895,7 +899,7 @@ mod tests {
             ctx.attached_deposit = deposit
         }
         testing_env!(ctx.clone());
-        let mut ctr = Contract::new(admin(), fractal_mainnet(), vec![1]);
+        let mut ctr = Contract::new(admin(), fractal_mainnet(), vec![1], admins_flagged());
         ctr.admin_add_sbt_issuer(issuer1());
         ctr.admin_add_sbt_issuer(issuer2());
         ctr.admin_add_sbt_issuer(issuer3());
@@ -906,7 +910,7 @@ mod tests {
 
     #[test]
     fn init_method() {
-        let ctr = Contract::new(admin(), fractal_mainnet(), vec![1]);
+        let ctr = Contract::new(admin(), fractal_mainnet(), vec![1], vec![]);
         // make sure the iah_issuer has been set as an issuer
         assert_eq!(1, ctr.assert_issuer(&fractal_mainnet()));
     }

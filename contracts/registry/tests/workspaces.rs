@@ -116,7 +116,7 @@ async fn init(
     // init the contract
     let res = registry_contract
         .call("new")
-        .args_json(json!({"authority": authority_acc.id(), }))
+        .args_json(json!({"authority": authority_acc.id() }))
         .max_gas()
         .transact()
         .await?;
