@@ -130,7 +130,7 @@ impl Contract {
         if self._is_banned(&account) {
             return vec![];
         }
-        if let Some(AccountFlag::Scam) = self.flagged.get(&account) {
+        if let Some(AccountFlag::Blacklisted) = self.flagged.get(&account) {
             return vec![];
         }
         let issuer = Some(self.iah_sbts.0.clone());
@@ -533,7 +533,7 @@ impl Contract {
 
     pub fn admin_set_authorized_flaggers(&mut self, authorized_flaggers: Vec<AccountId>) {
         self.assert_authority();
-        self.authorized_flaggers.set(&authorized_flaggers)
+        self.authorized_flaggers.set(&authorized_flaggers);
     }
 
     /// flag an account, returns the previous flag or None if the account was not flagged.

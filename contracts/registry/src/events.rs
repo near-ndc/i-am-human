@@ -5,8 +5,8 @@ use crate::storage::AccountFlag;
 
 pub fn emit_iah_flag_account(flag: crate::AccountFlag, accounts: Vec<AccountId>) {
     let event = match flag {
-        AccountFlag::Scam => "flag_scam",
-        AccountFlag::Trusted => "flag_trusted",
+        AccountFlag::Blacklisted => "flag_blacklisted",
+        AccountFlag::Verified => "flag_verified",
     };
     let e = NearEvent {
         standard: "iah",
@@ -33,7 +33,7 @@ mod tests {
     fn log_flag_account() {
         let accounts = vec![alice()];
         let expected1 = r#"EVENT_JSON:{"standard":"iah","version":"1.0.0","event":"flag_fake","data":["alice.near"]}"#;
-        emit_iah_flag_account(AccountFlag::Scam, accounts);
+        emit_iah_flag_account(AccountFlag::Blacklisted, accounts);
         assert_eq!(vec![expected1], test_utils::get_logs());
     }
 }
