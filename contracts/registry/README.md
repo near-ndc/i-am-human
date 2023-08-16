@@ -24,7 +24,7 @@ The IAH Registry supports the following extra queries, which are not part of the
 - `is_human(account: AccountId) -> Proof`, where proof is list of SBTs (represented as a list of issuers and issuer minted tokens). The registry has a property `iah_sbts` that specifies which tokens from which issuers are required from an account to be considered a human. In case the account is missing any of the required tokens, or is considered a fake account (through the registry `blacklist`) an empty proof will be returned (empty list).
   For example, if `alice` is a human because she has `fractal: class 1` token with `tokenID=24`, then the function returns `["<fractal issuer account>", [24]]`. If the account is not a human, then an empty proof is returned (empty list). If the `iah_sbts` property contains more tokens, for example `fratcal: [1,2]` the `is_human` will return the proof with the tokens only if the account has both of the sbts. Otherwise an empty proof will be returned. eg. for `alice` with two tokens `class=1, tokenID=24` and `class=2, tokenID=40` the method will return `["<fractal issuer account>", [24, 40]]`. for `bob` with one token `class=1, tokenID=26` the method will return an empty list.
 
-- `is_blacklisted(account: AccountId) -> bool`
+- `account_flagged(account: AccountId) -> Option<AccountFlag>` - returns account status if it was flagged. Returns None if the account was not flagged.
 
 - `iah_class_set() -> ClassSet` - returns IAH class set: required token classes to be approved as a human by the `is_human`.
 

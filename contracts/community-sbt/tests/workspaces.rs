@@ -51,7 +51,9 @@ async fn init(
     // init the registry
     let res = registry_contract
         .call("new")
-        .args_json(json!({"authority": authority.id(), "iah_issuer": iah_issuer.id(), "iah_classes": [1], "authorized_flaggers": vec![auth_flagger.id()] }))
+        .args_json(json!({"authority": authority.id(),
+                          "iah_issuer": iah_issuer.id(), "iah_classes": [1],
+                          "authorized_flaggers": vec![auth_flagger.id()] }))
         .max_gas()
         .transact()
         .await?;
