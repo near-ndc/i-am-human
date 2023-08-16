@@ -3,7 +3,6 @@ use near_sdk::collections::{LazyOption, UnorderedSet};
 use near_sdk::serde::Serialize;
 use near_sdk::{
     env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
-    ONE_YOCTO,
 };
 
 #[allow(unused_imports)]
@@ -196,7 +195,7 @@ impl Contract {
 
         let result = ext_registry::ext(self.registry.clone())
             .with_attached_deposit(storage_deposit)
-            .with_static_gas(Gas(mint_gas(num_tokens) as u64))
+            .with_static_gas(Gas(calculate_mint_gas(num_tokens) as u64))
             .sbt_mint(vec![(claim.claimer, tokens_metadata)])
             .then(
                 Self::ext(env::current_account_id())
@@ -416,7 +415,7 @@ pub mod tests {
 
     #[test]
     #[should_panic(
-        expected = "Requires attached deposit at least 8000000000000000000000 yoctoNEAR"
+        expected = "Requires attached deposit at least 10000000000000000000000 yoctoNEAR"
     )]
     fn mint_not_enough_storage_deposit() {
         let signer = acc_claimer();
@@ -433,7 +432,7 @@ pub mod tests {
 
     #[test]
     #[should_panic(
-        expected = "Requires attached deposit at least 15000000000000000000000 yoctoNEAR"
+        expected = "Requires attached deposit at least 19000000000000000000000 yoctoNEAR"
     )]
     fn mint_with_kyc_not_enough_storage_deposit() {
         let signer = acc_claimer();
