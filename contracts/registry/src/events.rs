@@ -6,8 +6,8 @@ use crate::storage::AccountFlag;
 
 pub fn emit_iah_account_flag(flag: crate::AccountFlag, account: AccountId) {
     let event = match flag {
-        AccountFlag::Black => "flag_fake",
-        AccountFlag::White => "flag_trusted",
+        AccountFlag::Scam => "flag_fake",
+        AccountFlag::Trusted => "flag_trusted",
     };
     let e = NearEvent {
         standard: "iah",

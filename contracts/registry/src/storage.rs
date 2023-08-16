@@ -28,10 +28,10 @@ pub enum StorageKey {
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 pub enum AccountFlag {
-    /// Account is "Black" when it was marked as a scam or braking the IAH rules.
-    Black,
-    /// Account is "White" when it is known to be a trusted account.
-    White,
+    /// Account is "Scam" when it was marked as a scam or braking the IAH rules.
+    Scam,
+    /// Account is "Trusted" when it is known to be a trusted account.
+    Trusted,
 }
 
 /// Composition of issuer address and token id used for indexing

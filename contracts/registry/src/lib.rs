@@ -127,7 +127,7 @@ impl Contract {
         if self._is_banned(&account) {
             return vec![];
         }
-        if let Some(AccountFlag::Black) = self.flagged.get(&account) {
+        if let Some(AccountFlag::Scam) = self.flagged.get(&account) {
             return vec![];
         }
         let issuer = Some(self.iah_sbts.0.clone());
