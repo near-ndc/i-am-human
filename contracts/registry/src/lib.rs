@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LookupMap, TreeMap, UnorderedMap, UnorderedSet};
+use near_sdk::collections::{LazyOption, LookupMap, TreeMap, UnorderedMap, UnorderedSet};
 use near_sdk::serde_json::value::RawValue;
 use near_sdk::{env, near_bindgen, require, serde_json, AccountId, Gas, PanicOnDefault, Promise};
 
@@ -25,10 +25,16 @@ pub struct Contract {
     /// registry of approved SBT contracts to issue tokens
     pub sbt_issuers: UnorderedMap<AccountId, IssuerId>,
     pub issuer_id_map: LookupMap<IssuerId, AccountId>, // reverse index
-    /// registry of blacklisted accounts by issuer
-    pub(crate) banlist: UnorderedSet<AccountId>,
     /// store ongoing soul transfers by "old owner"
     pub(crate) ongoing_soul_tx: LookupMap<AccountId, IssuerTokenId>,
+
+    /// registry of banned accounts created through `Nep393Event::Ban` (eg: soul transfer).
+    pub(crate) banlist: UnorderedSet<AccountId>,
+    /// Map of accounts that are marked by a committee to have a special status (eg: blacklist,
+    /// whitelist).
+    pub(crate) flagged: LookupMap<AccountId, AccountFlag>,
+    /// list of admins that can managed flagged accounts map.
+    pub(crate) admins_flagged: LazyOption<Vec<AccountId>>,
 
     pub(crate) supply_by_owner: LookupMap<(AccountId, IssuerId), u64>,
     pub(crate) supply_by_class: LookupMap<(IssuerId, ClassId), u64>,
@@ -54,7 +60,12 @@ impl Contract {
     /// `iah_issuer`: required issuer for is_human check.
     /// `iah_classes`: required list of classes for is_human check.
     #[init]
-    pub fn new(authority: AccountId, iah_issuer: AccountId, iah_classes: Vec<ClassId>) -> Self {
+    pub fn new(
+        authority: AccountId,
+        iah_issuer: AccountId,
+        iah_classes: Vec<ClassId>,
+        admins_flagged: Vec<AccountId>,
+    ) -> Self {
         require!(
             iah_classes.len() > 0,
             "iah_classes must be a non empty list"
@@ -73,6 +84,8 @@ impl Contract {
             next_issuer_id: 1,
             ongoing_soul_tx: LookupMap::new(StorageKey::OngoingSoultTx),
             iah_sbts: (iah_issuer.clone(), iah_classes),
+            flagged: LookupMap::new(StorageKey::Flagged),
+            admins_flagged: LazyOption::new(StorageKey::AdminsFlagged, Some(&admins_flagged)),
         };
         contract._add_sbt_issuer(&iah_issuer);
         contract
@@ -97,7 +110,12 @@ impl Contract {
         self.banlist.contains(account)
     }
 
-    /// Returns empty list if the account is NOT a human.
+    /// Returns true if an account is blacklisted.
+    pub fn is_blacklisted(&self, account: AccountId) -> SBTs {
+        self._is_human(&account)
+    }
+
+    /// Returns empty list if the account is NOT a human according to the IAH protocol.
     /// Otherwise returns list of SBTs (identifed by issuer and list of token IDs) proving
     /// the `account` humanity.
     pub fn is_human(&self, account: AccountId) -> SBTs {
@@ -288,10 +306,7 @@ impl Contract {
         recipient: &AccountId,
         ban_owner: bool,
     ) -> IssuerTokenId {
-        require!(
-            !self._is_banned(recipient),
-            "receiver account is banned. Cannot start the transfer"
-        );
+        self.assert_not_banned(recipient);
         if ban_owner {
             // we only ban the source account in the soul transfer
             // insert into banlist and assure the owner is not already banned.
@@ -2062,7 +2077,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "receiver account is banned. Cannot start the transfer")]
+    #[should_panic(expected = "account alice.nea is banned")]
     fn sbt_soul_transfer_to_banned_account() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 1 * MINT_DEPOSIT);
         let m1_1 = mk_metadata(1, Some(START + 10));
@@ -2673,7 +2688,11 @@ mod tests {
         ctx.predecessor_account_id = alice();
         testing_env!(ctx.clone());
 
-        ctr.is_human_call(AccountId::new_unchecked("registry.i-am-human.near".to_string()), "function_name".to_string(), "{}".to_string());
+        ctr.is_human_call(
+            AccountId::new_unchecked("registry.i-am-human.near".to_string()),
+            "function_name".to_string(),
+            "{}".to_string(),
+        );
     }
 
     #[test]
@@ -2681,6 +2700,10 @@ mod tests {
     fn is_human_call_fail() {
         let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
 
-        ctr.is_human_call(AccountId::new_unchecked("registry.i-am-human.near".to_string()), "function_name".to_string(), "{}".to_string());
+        ctr.is_human_call(
+            AccountId::new_unchecked("registry.i-am-human.near".to_string()),
+            "function_name".to_string(),
+            "{}".to_string(),
+        );
     }
 }

@@ -20,6 +20,14 @@ pub enum StorageKey {
     IssuerTokens,
     NextTokenId,
     OngoingSoultTx,
+    Flagged,
+    AdminsFlagged,
+}
+
+#[derive(BorshSerialize, BorshStorageKey)]
+pub enum AccountFlag {
+    Black,
+    White,
 }
 
 /// Composition of issuer address and token id used for indexing
