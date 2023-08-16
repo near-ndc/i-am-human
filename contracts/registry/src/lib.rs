@@ -34,7 +34,7 @@ pub struct Contract {
     /// Map of accounts that are marked by a committee to have a special status (eg: blacklist,
     /// whitelist).
     pub(crate) flagged: LookupMap<AccountId, AccountFlag>,
-    /// list of admins that can managed flagged accounts map.
+    /// list of admins that can manage flagged accounts map.
     pub(crate) admins_flagged: LazyOption<Vec<AccountId>>,
 
     pub(crate) supply_by_owner: LookupMap<(AccountId, IssuerId), u64>,
