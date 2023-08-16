@@ -536,18 +536,17 @@ impl Contract {
         self.authorized_flaggers.set(&authorized_flaggers);
     }
 
-    /// flag an account, returns the previous flag or None if the account was not flagged.
-    pub fn admin_flag_account(
-        &mut self,
-        account: AccountId,
-        flag: AccountFlag,
-    ) -> Option<AccountFlag> {
+    /// flag an account
+    pub fn admin_flag_accounts(&mut self, flag: AccountFlag, accounts: Vec<AccountId>) {
         let caller = env::predecessor_account_id();
         let a = self.authorized_flaggers.get();
         if a.is_none() || !a.unwrap().contains(&caller) {
             env::panic_str("not authorized");
         }
-        self.flagged.insert(&account, &flag)
+        for a in &accounts {
+            self.flagged.insert(a, &flag);
+        }
+        events::emit_iah_flag_account(flag, accounts);
     }
 
     //

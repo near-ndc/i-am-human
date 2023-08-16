@@ -41,16 +41,17 @@ async fn init(
 
     let registry_mainnet = registry_contract.as_account();
     let community_mainnet = community_contract.as_account();
-    let authority_acc = worker.dev_create_account().await?;
-    let minter_acc = worker.dev_create_account().await?;
+    let authority = worker.dev_create_account().await?;
+    let auth_flagger = worker.dev_create_account().await?;
+    let minter = worker.dev_create_account().await?;
     let iah_issuer = worker.dev_create_account().await?;
-    let alice_acc = worker.dev_create_account().await?;
-    let bob_acc = worker.dev_create_account().await?;
+    let alice = worker.dev_create_account().await?;
+    let bob = worker.dev_create_account().await?;
 
     // init the registry
     let res = registry_contract
         .call("new")
-        .args_json(json!({"authority": authority_acc.id(), "iah_issuer": iah_issuer.id(), "iah_classes": [1] }))
+        .args_json(json!({"authority": authority.id(), "iah_issuer": iah_issuer.id(), "iah_classes": [1], "authorized_flaggers": vec![auth_flagger.id()] }))
         .max_gas()
         .transact()
         .await?;
@@ -60,7 +61,7 @@ async fn init(
     let res = community_contract
         .call("new")
         .args_json(
-            json!({"registry": registry_mainnet.id(), "admin": authority_acc.id(), "metadata": {
+            json!({"registry": registry_mainnet.id(), "admin": authority.id(), "metadata": {
             "spec": "sbt-1.0.0",
             "name": "Community SBT",
             "symbol": "CoSBT"
@@ -72,7 +73,7 @@ async fn init(
     assert!(res.is_success());
 
     // add iah_issuer
-    let res = authority_acc
+    let res = authority
         .call(registry_mainnet.id(), "admin_add_sbt_issuer")
         .args_json(json!({"issuer": iah_issuer.id()}))
         .max_gas()
@@ -81,7 +82,7 @@ async fn init(
     assert!(res.is_success());
 
     // add community_issuer
-    let res = authority_acc
+    let res = authority
         .call(registry_mainnet.id(), "admin_add_sbt_issuer")
         .args_json(json!({"issuer": community_mainnet.id()}))
         .max_gas()
@@ -91,17 +92,17 @@ async fn init(
 
     if migration {
         // authorize authority to mint tokens
-        let res = authority_acc
+        let res = authority
             .call(community_mainnet.id(), "enable_next_class")
-            .args_json(json!({"requires_iah": false, "minter": minter_acc.id(), "memo": "test"}))
+            .args_json(json!({"requires_iah": false, "minter": minter.id(), "memo": "test"}))
             .max_gas()
             .transact()
             .await?;
         assert!(res.is_success());
     } else {
-        let res = authority_acc
+        let res = authority
             .call(community_mainnet.id(), "enable_next_class")
-            .args_json(json!({"requires_iah": false, "minter": minter_acc.id(),"max_ttl": 100000000, "memo": "test"}))
+            .args_json(json!({"requires_iah": false, "minter": minter.id(),"max_ttl": 100000000, "memo": "test"}))
             .max_gas()
             .transact()
             .await?;
@@ -117,18 +118,18 @@ async fn init(
         reference_hash: None,
     };
 
-    let res = minter_acc
+    let res = minter
         .call(community_mainnet.id(), "sbt_mint")
-        .args_json(json!({"receiver": alice_acc.id(), "metadata": token_metadata, "memo": "test"}))
+        .args_json(json!({"receiver": alice.id(), "metadata": token_metadata, "memo": "test"}))
         .deposit(parse_near!("0.01 N"))
         .max_gas()
         .transact()
         .await?;
     assert!(res.is_success());
 
-    let res = minter_acc
+    let res = minter
         .call(community_mainnet.id(), "sbt_mint")
-        .args_json(json!({"receiver": bob_acc.id(), "metadata": token_metadata, "memo": "test"}))
+        .args_json(json!({"receiver": bob.id(), "metadata": token_metadata, "memo": "test"}))
         .deposit(parse_near!("0.01 N"))
         .max_gas()
         .transact()
@@ -139,8 +140,8 @@ async fn init(
         registry_mainnet.clone(),
         community_mainnet.clone(),
         community_contract,
-        authority_acc.clone(),
-        minter_acc.clone(),
+        authority.clone(),
+        minter.clone(),
     ));
 }
 
