@@ -18,7 +18,7 @@ pub fn renew_gas(num_tokens: usize) -> Gas {
     Gas(2 * Gas::ONE_TERA.0 + num_tokens as u64 * 200_000_000_000)
 }
 
-pub fn mint_gas(num_tokens: usize) -> Balance {
+pub fn calculate_mint_gas(num_tokens: usize) -> Balance {
     (num_tokens as u128 + 1) * MINT_COST
 }
 
