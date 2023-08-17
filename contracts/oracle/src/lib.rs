@@ -27,8 +27,8 @@ pub const CLASS_FV_SBT: ClassId = 1;
 pub const CLASS_KYC_SBT: ClassId = 2;
 
 // Total storage deposit cost without KYC
-pub const MINT_TOTAL_COST: Balance = MINT_COST + MILI_NEAR;
-pub const MINT_TOTAL_COST_WITH_KYC: Balance = 2 * MINT_COST + MILI_NEAR;
+pub const MINT_TOTAL_COST: Balance = mint_deposit(1);
+pub const MINT_TOTAL_COST_WITH_KYC: Balance = mint_deposit(2);
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -95,14 +95,6 @@ impl Contract {
         self.used_identities.contains(&normalised_id)
     }
 
-    #[inline]
-    pub fn get_required_sbt_mint_deposit(is_verified_kyc: bool) -> Balance {
-        if is_verified_kyc {
-            return MINT_TOTAL_COST_WITH_KYC;
-        };
-        MINT_TOTAL_COST
-    }
-
     // all SBT queries should be done through registry
 
     /**********
@@ -136,17 +128,15 @@ impl Contract {
         let signature = b64_decode("claim_sig", claim_sig)?;
         verify_claim(&signature, &claim_bytes, &self.authority_pubkey)?;
 
-        if claim.verified_kyc {
-            require!(
-                env::attached_deposit() == MINT_TOTAL_COST_WITH_KYC,
-                "Requires attached deposit of exactly 0.015 NEAR"
-            );
-        } else {
-            require!(
-                env::attached_deposit() == MINT_TOTAL_COST,
-                "Requires attached deposit of exactly 0.008 NEAR"
-            );
-        }
+        let storage_deposit = required_sbt_mint_deposit(claim.verified_kyc);
+        require!(
+            env::attached_deposit() >= storage_deposit,
+            format!(
+                "Requires attached deposit at least {} yoctoNEAR",
+                storage_deposit
+            )
+        );
+        let num_tokens = if claim.verified_kyc { 2 } else { 1 };
 
         let now_ms = env::block_timestamp_ms();
         let now = now_ms / 1000;
@@ -196,8 +186,8 @@ impl Contract {
         }
 
         let result = ext_registry::ext(self.registry.clone())
-            .with_attached_deposit(Self::get_required_sbt_mint_deposit(claim.verified_kyc))
-            .with_static_gas(MINT_GAS)
+            .with_attached_deposit(storage_deposit)
+            .with_static_gas(calculate_mint_gas(num_tokens))
             .sbt_mint(vec![(claim.claimer, tokens_metadata)])
             .then(
                 Self::ext(env::current_account_id())
@@ -298,6 +288,14 @@ impl Contract {
     // - fn sbt_renew
 }
 
+#[inline]
+fn required_sbt_mint_deposit(is_verified_kyc: bool) -> Balance {
+    if is_verified_kyc {
+        return MINT_TOTAL_COST_WITH_KYC;
+    };
+    MINT_TOTAL_COST
+}
+
 #[near_bindgen]
 impl SBTContract for Contract {
     fn sbt_metadata(&self) -> ContractMetadata {
@@ -363,7 +361,7 @@ pub mod tests {
         let ctx = VMContextBuilder::new()
             .signer_account_id(signer.clone())
             .predecessor_account_id(predecessor.clone())
-            .attached_deposit(MINT_TOTAL_COST)
+            .attached_deposit(MINT_TOTAL_COST * 5)
             .block_timestamp(start())
             .current_account_id("oracle.near".parse().unwrap())
             .is_view(false)
@@ -416,7 +414,9 @@ pub mod tests {
     */
 
     #[test]
-    #[should_panic(expected = "Requires attached deposit of exactly 0.008 NEAR")]
+    #[should_panic(
+        expected = "Requires attached deposit at least 10000000000000000000000 yoctoNEAR"
+    )]
     fn mint_not_enough_storage_deposit() {
         let signer = acc_claimer();
         let (mut ctx, mut ctr, k) = setup(&signer, &acc_u1());
@@ -431,7 +431,9 @@ pub mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Requires attached deposit of exactly 0.015 NEAR")]
+    #[should_panic(
+        expected = "Requires attached deposit at least 19000000000000000000000 yoctoNEAR"
+    )]
     fn mint_with_kyc_not_enough_storage_deposit() {
         let signer = acc_claimer();
         let (mut ctx, mut ctr, k) = setup(&signer, &acc_u1());
