@@ -27,8 +27,8 @@ pub const CLASS_FV_SBT: ClassId = 1;
 pub const CLASS_KYC_SBT: ClassId = 2;
 
 // Total storage deposit cost without KYC
-pub const MINT_TOTAL_COST: Balance = MINT_COST + MILI_NEAR;
-pub const MINT_TOTAL_COST_WITH_KYC: Balance = 2 * MINT_COST + MILI_NEAR;
+pub const MINT_TOTAL_COST: Balance = mint_deposit(1);
+pub const MINT_TOTAL_COST_WITH_KYC: Balance = mint_deposit(2);
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -95,14 +95,6 @@ impl Contract {
         self.used_identities.contains(&normalised_id)
     }
 
-    #[inline]
-    pub fn get_required_sbt_mint_deposit(is_verified_kyc: bool) -> Balance {
-        if is_verified_kyc {
-            return MINT_TOTAL_COST_WITH_KYC;
-        };
-        MINT_TOTAL_COST
-    }
-
     // all SBT queries should be done through registry
 
     /**********
@@ -136,7 +128,7 @@ impl Contract {
         let signature = b64_decode("claim_sig", claim_sig)?;
         verify_claim(&signature, &claim_bytes, &self.authority_pubkey)?;
 
-        let storage_deposit = Self::get_required_sbt_mint_deposit(claim.verified_kyc);
+        let storage_deposit = required_sbt_mint_deposit(claim.verified_kyc);
         require!(
             env::attached_deposit() >= storage_deposit,
             format!(
@@ -195,7 +187,7 @@ impl Contract {
 
         let result = ext_registry::ext(self.registry.clone())
             .with_attached_deposit(storage_deposit)
-            .with_static_gas(Gas(calculate_mint_gas(num_tokens) as u64))
+            .with_static_gas(calculate_mint_gas(num_tokens))
             .sbt_mint(vec![(claim.claimer, tokens_metadata)])
             .then(
                 Self::ext(env::current_account_id())
@@ -294,6 +286,14 @@ impl Contract {
 
     // TODO:
     // - fn sbt_renew
+}
+
+#[inline]
+fn required_sbt_mint_deposit(is_verified_kyc: bool) -> Balance {
+    if is_verified_kyc {
+        return MINT_TOTAL_COST_WITH_KYC;
+    };
+    MINT_TOTAL_COST
 }
 
 #[near_bindgen]
