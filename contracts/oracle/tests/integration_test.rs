@@ -18,6 +18,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<(Contract, Acc
 
     let alice = worker.dev_create_account().await?;
     let admin = worker.dev_create_account().await?;
+    let auth_flagger = worker.dev_create_account().await?;
 
     //
     // we are usign same setup as in claim_sig_and_sbt_mint unit test
@@ -39,9 +40,8 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<(Contract, Acc
         .call("new")
         .args_json(json!({
             "authority": admin.id(),
-            "iah_issuer": oracle.id(),
-            "iah_classes": (1,),
-        }))
+            "iah_issuer": oracle.id(), "iah_classes": (1),
+            "authorized_flaggers": vec![auth_flagger.id()]}))
         .max_gas()
         .transact();
 
