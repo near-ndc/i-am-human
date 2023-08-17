@@ -537,7 +537,12 @@ impl Contract {
     }
 
     /// flag accounts
-    pub fn admin_flag_accounts(&mut self, flag: AccountFlag, accounts: Vec<AccountId>) {
+    pub fn admin_flag_accounts(
+        &mut self,
+        flag: AccountFlag,
+        accounts: Vec<AccountId>,
+        #[allow(unused_variables)] memo: String,
+    ) {
         self.assert_authorized_flagger();
         for a in &accounts {
             self.flagged.insert(a, &flag);
@@ -547,7 +552,11 @@ impl Contract {
 
     /// removes flag from the provided account list.
     /// Panics if an account is not currently flagged.
-    pub fn admin_unflag_accounts(&mut self, accounts: Vec<AccountId>) {
+    pub fn admin_unflag_accounts(
+        &mut self,
+        accounts: Vec<AccountId>,
+        #[allow(unused_variables)] memo: String,
+    ) {
         self.assert_authorized_flagger();
         for a in &accounts {
             require!(self.flagged.remove(a).is_some());
