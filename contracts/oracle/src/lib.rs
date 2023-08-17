@@ -89,6 +89,14 @@ impl Contract {
      * QUERIES
      **********/
 
+    #[inline]
+    pub fn required_sbt_mint_deposit(is_verified_kyc: bool) -> Balance {
+        if is_verified_kyc {
+            return MINT_TOTAL_COST_WITH_KYC;
+        };
+        MINT_TOTAL_COST
+    }
+
     /// Checks if the given id was already used to mint an sbt
     pub fn is_used_identity(&self, external_id: String) -> bool {
         let normalised_id = normalize_external_id(external_id).expect("failed to normalize id");
@@ -128,7 +136,7 @@ impl Contract {
         let signature = b64_decode("claim_sig", claim_sig)?;
         verify_claim(&signature, &claim_bytes, &self.authority_pubkey)?;
 
-        let storage_deposit = required_sbt_mint_deposit(claim.verified_kyc);
+        let storage_deposit = Self::required_sbt_mint_deposit(claim.verified_kyc);
         require!(
             env::attached_deposit() >= storage_deposit,
             format!(
@@ -286,14 +294,6 @@ impl Contract {
 
     // TODO:
     // - fn sbt_renew
-}
-
-#[inline]
-fn required_sbt_mint_deposit(is_verified_kyc: bool) -> Balance {
-    if is_verified_kyc {
-        return MINT_TOTAL_COST_WITH_KYC;
-    };
-    MINT_TOTAL_COST
 }
 
 #[near_bindgen]
