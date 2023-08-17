@@ -19,14 +19,14 @@ pub(crate) fn emit_iah_flag_accounts(flag: crate::AccountFlag, accounts: Vec<Acc
     };
     emit_iah_event(EventPayload {
         event,
-        data: accounts, // data is a simple list of accounts to ban
+        data: accounts, // data is a simple list of accounts to flag (Verify or Blacklist)
     });
 }
 
 pub(crate) fn emit_iah_unflag_accounts(accounts: Vec<AccountId>) {
     emit_iah_event(EventPayload {
         event: "unflag",
-        data: accounts, // data is a simple list of accounts to ban
+        data: accounts, // data is a simple list of accounts to unflag
     });
 }
 
