@@ -33,7 +33,7 @@ Actors:
 - issuer: a contract or an account which can issue SBTs and is whitelisted in a registry. Issuer is usually an entity which makes validation to mint a specific class of SBTs.
 - registry: a contract which keeps balance of SBTs.
 
-Whenever a new issuer is created, it needs a registry to mint tokens. Today, IAH registry is permissioned: the IAH Registry admin has to add a new issuer willing to mint tokens within IAH registry. In the future this may change and the process can be permissionless (any issuer will be able to mint tokens in the IAH registry).
+Whenever a new issuer is created, it needs a registry to mint tokens. Today, IAH registry is permissioned: the IAH Registry admin has to add a new issuer willing to mint tokens within IAH registry. In the future this may change and the process can be permission-less (any issuer will be able to mint tokens in the IAH registry).
 
 Issuer calls `registry.sbt_mint` to mint new tokens. Each token must have specified class in it's metadata. See NEP-393 to learn more about SBT classes. The mint call panics, if a recipient already holds a token with a same class of a given issuer.
 
@@ -55,14 +55,14 @@ Production:
 - **Fractal**: `fractal.i-am-human.near` @ oracle/v1.0.1
   - verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
 - **Community SBTs**: `community.i-am-human.near` @ community-sbt/v4.1.0
-  classes: OG=1
   Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
+  classes: 1=OG, 2=NDC_Contributor, 3=NDC_Core_Contributors, 4=NDC_Champion
 - **Regens SBTs**: `issuer.regens.near` @ community-sbt/v4.1.0
+  Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
   classes: ProofOfRegen=1
-  Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
 - **Proof of Vibes**: `issuer.proofofvibes.near` @ community-sbt/v4.1.0
-  classes: Vibes=1
   Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
+  classes: Vibes=1
 
 Mainnet Testing:
 
