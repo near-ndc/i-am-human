@@ -536,17 +536,23 @@ impl Contract {
         self.authorized_flaggers.set(&authorized_flaggers);
     }
 
-    /// flag an account
+    /// flag accounts
     pub fn admin_flag_accounts(&mut self, flag: AccountFlag, accounts: Vec<AccountId>) {
-        let caller = env::predecessor_account_id();
-        let a = self.authorized_flaggers.get();
-        if a.is_none() || !a.unwrap().contains(&caller) {
-            env::panic_str("not authorized");
-        }
+        self.assert_authorized_flagger();
         for a in &accounts {
             self.flagged.insert(a, &flag);
         }
-        events::emit_iah_flag_account(flag, accounts);
+        events::emit_iah_flag_accounts(flag, accounts);
+    }
+
+    /// removes flag from the provided account list.
+    /// Panics if an account is not currently flagged.
+    pub fn admin_unflag_accounts(&mut self, accounts: Vec<AccountId>) {
+        self.assert_authorized_flagger();
+        for a in &accounts {
+            require!(self.flagged.remove(a).is_some());
+        }
+        events::emit_iah_unflag_accounts(accounts);
     }
 
     //
@@ -566,6 +572,15 @@ impl Contract {
         let tid = self.next_token_ids.get(&issuer_id).unwrap_or(0);
         self.next_token_ids.insert(&issuer_id, &(tid + num));
         tid + 1
+    }
+
+    #[inline]
+    pub(crate) fn assert_authorized_flagger(&self) {
+        let caller = env::predecessor_account_id();
+        let a = self.authorized_flaggers.get();
+        if a.is_none() || !a.unwrap().contains(&caller) {
+            env::panic_str("not authorized");
+        }
     }
 
     #[inline]
