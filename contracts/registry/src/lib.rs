@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LookupMap, TreeMap, UnorderedMap, UnorderedSet};
+use near_sdk::collections::{LazyOption, LookupMap, TreeMap, UnorderedMap, UnorderedSet};
 use near_sdk::serde_json::value::RawValue;
 use near_sdk::{env, near_bindgen, require, serde_json, AccountId, Gas, PanicOnDefault, Promise};
 
@@ -10,6 +10,7 @@ use sbt::*;
 
 use crate::storage::*;
 
+pub mod events;
 pub mod migrate;
 pub mod registry;
 pub mod storage;
@@ -25,10 +26,16 @@ pub struct Contract {
     /// registry of approved SBT contracts to issue tokens
     pub sbt_issuers: UnorderedMap<AccountId, IssuerId>,
     pub issuer_id_map: LookupMap<IssuerId, AccountId>, // reverse index
-    /// registry of blacklisted accounts by issuer
-    pub(crate) banlist: UnorderedSet<AccountId>,
     /// store ongoing soul transfers by "old owner"
     pub(crate) ongoing_soul_tx: LookupMap<AccountId, IssuerTokenId>,
+
+    /// registry of banned accounts created through `Nep393Event::Ban` (eg: soul transfer).
+    pub(crate) banlist: UnorderedSet<AccountId>,
+    /// Map of accounts that are marked by a committee to have a special status (eg: blacklist,
+    /// whitelist).
+    pub(crate) flagged: LookupMap<AccountId, AccountFlag>,
+    /// list of admins that can manage flagged accounts map.
+    pub(crate) authorized_flaggers: LazyOption<Vec<AccountId>>,
 
     pub(crate) supply_by_owner: LookupMap<(AccountId, IssuerId), u64>,
     pub(crate) supply_by_class: LookupMap<(IssuerId, ClassId), u64>,
@@ -54,7 +61,12 @@ impl Contract {
     /// `iah_issuer`: required issuer for is_human check.
     /// `iah_classes`: required list of classes for is_human check.
     #[init]
-    pub fn new(authority: AccountId, iah_issuer: AccountId, iah_classes: Vec<ClassId>) -> Self {
+    pub fn new(
+        authority: AccountId,
+        iah_issuer: AccountId,
+        iah_classes: Vec<ClassId>,
+        authorized_flaggers: Vec<AccountId>,
+    ) -> Self {
         require!(
             iah_classes.len() > 0,
             "iah_classes must be a non empty list"
@@ -73,6 +85,11 @@ impl Contract {
             next_issuer_id: 1,
             ongoing_soul_tx: LookupMap::new(StorageKey::OngoingSoultTx),
             iah_sbts: (iah_issuer.clone(), iah_classes),
+            flagged: LookupMap::new(StorageKey::Flagged),
+            authorized_flaggers: LazyOption::new(
+                StorageKey::AdminsFlagged,
+                Some(&authorized_flaggers),
+            ),
         };
         contract._add_sbt_issuer(&iah_issuer);
         contract
@@ -97,7 +114,12 @@ impl Contract {
         self.banlist.contains(account)
     }
 
-    /// Returns empty list if the account is NOT a human.
+    /// Returns account status if it was flagged. Returns None if the account was not flagged.
+    pub fn account_flagged(&self, account: AccountId) -> Option<AccountFlag> {
+        self.flagged.get(&account)
+    }
+
+    /// Returns empty list if the account is NOT a human according to the IAH protocol.
     /// Otherwise returns list of SBTs (identifed by issuer and list of token IDs) proving
     /// the `account` humanity.
     pub fn is_human(&self, account: AccountId) -> SBTs {
@@ -106,6 +128,9 @@ impl Contract {
 
     fn _is_human(&self, account: &AccountId) -> SBTs {
         if self._is_banned(&account) {
+            return vec![];
+        }
+        if let Some(AccountFlag::Blacklisted) = self.flagged.get(&account) {
             return vec![];
         }
         let issuer = Some(self.iah_sbts.0.clone());
@@ -288,10 +313,7 @@ impl Contract {
         recipient: &AccountId,
         ban_owner: bool,
     ) -> IssuerTokenId {
-        require!(
-            !self._is_banned(recipient),
-            "receiver account is banned. Cannot start the transfer"
-        );
+        self.assert_not_banned(recipient);
         if ban_owner {
             // we only ban the source account in the soul transfer
             // insert into banlist and assure the owner is not already banned.
@@ -509,6 +531,39 @@ impl Contract {
         self.authority = new_admin;
     }
 
+    pub fn admin_set_authorized_flaggers(&mut self, authorized_flaggers: Vec<AccountId>) {
+        self.assert_authority();
+        self.authorized_flaggers.set(&authorized_flaggers);
+    }
+
+    /// flag accounts
+    pub fn admin_flag_accounts(
+        &mut self,
+        flag: AccountFlag,
+        accounts: Vec<AccountId>,
+        #[allow(unused_variables)] memo: String,
+    ) {
+        self.assert_authorized_flagger();
+        for a in &accounts {
+            self.flagged.insert(a, &flag);
+        }
+        events::emit_iah_flag_accounts(flag, accounts);
+    }
+
+    /// removes flag from the provided account list.
+    /// Panics if an account is not currently flagged.
+    pub fn admin_unflag_accounts(
+        &mut self,
+        accounts: Vec<AccountId>,
+        #[allow(unused_variables)] memo: String,
+    ) {
+        self.assert_authorized_flagger();
+        for a in &accounts {
+            require!(self.flagged.remove(a).is_some());
+        }
+        events::emit_iah_unflag_accounts(accounts);
+    }
+
     //
     // Internal
     //
@@ -526,6 +581,15 @@ impl Contract {
         let tid = self.next_token_ids.get(&issuer_id).unwrap_or(0);
         self.next_token_ids.insert(&issuer_id, &(tid + num));
         tid + 1
+    }
+
+    #[inline]
+    pub(crate) fn assert_authorized_flagger(&self) {
+        let caller = env::predecessor_account_id();
+        let a = self.authorized_flaggers.get();
+        if a.is_none() || !a.unwrap().contains(&caller) {
+            env::panic_str("not authorized");
+        }
     }
 
     #[inline]
@@ -798,6 +862,10 @@ mod tests {
         AccountId::new_unchecked("sbt4.near".to_string())
     }
 
+    fn admins_flagged() -> Vec<AccountId> {
+        vec![AccountId::new_unchecked("admin_flagged.near".to_string())]
+    }
+
     #[inline]
     fn fractal_mainnet() -> AccountId {
         AccountId::new_unchecked("fractal.i-am-human.near".to_string())
@@ -863,7 +931,7 @@ mod tests {
             ctx.attached_deposit = deposit
         }
         testing_env!(ctx.clone());
-        let mut ctr = Contract::new(admin(), fractal_mainnet(), vec![1]);
+        let mut ctr = Contract::new(admin(), fractal_mainnet(), vec![1], admins_flagged());
         ctr.admin_add_sbt_issuer(issuer1());
         ctr.admin_add_sbt_issuer(issuer2());
         ctr.admin_add_sbt_issuer(issuer3());
@@ -874,7 +942,7 @@ mod tests {
 
     #[test]
     fn init_method() {
-        let ctr = Contract::new(admin(), fractal_mainnet(), vec![1]);
+        let ctr = Contract::new(admin(), fractal_mainnet(), vec![1], vec![]);
         // make sure the iah_issuer has been set as an issuer
         assert_eq!(1, ctr.assert_issuer(&fractal_mainnet()));
     }
@@ -2062,7 +2130,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "receiver account is banned. Cannot start the transfer")]
+    #[should_panic(expected = "account alice.nea is banned")]
     fn sbt_soul_transfer_to_banned_account() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 1 * MINT_DEPOSIT);
         let m1_1 = mk_metadata(1, Some(START + 10));
@@ -2673,7 +2741,11 @@ mod tests {
         ctx.predecessor_account_id = alice();
         testing_env!(ctx.clone());
 
-        ctr.is_human_call(AccountId::new_unchecked("registry.i-am-human.near".to_string()), "function_name".to_string(), "{}".to_string());
+        ctr.is_human_call(
+            AccountId::new_unchecked("registry.i-am-human.near".to_string()),
+            "function_name".to_string(),
+            "{}".to_string(),
+        );
     }
 
     #[test]
@@ -2681,6 +2753,10 @@ mod tests {
     fn is_human_call_fail() {
         let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
 
-        ctr.is_human_call(AccountId::new_unchecked("registry.i-am-human.near".to_string()), "function_name".to_string(), "{}".to_string());
+        ctr.is_human_call(
+            AccountId::new_unchecked("registry.i-am-human.near".to_string()),
+            "function_name".to_string(),
+            "{}".to_string(),
+        );
     }
 }
