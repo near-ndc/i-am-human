@@ -1,7 +1,7 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{env, near_bindgen, require, AccountId, Balance, NearSchema, PanicOnDefault};
+use near_sdk::{env, near_bindgen, require, AccountId, Balance, PanicOnDefault};
 
 use sbt::*;
 

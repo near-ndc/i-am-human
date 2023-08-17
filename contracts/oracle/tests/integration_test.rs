@@ -40,7 +40,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<(Contract, Acc
         .call("new")
         .args_json(json!({
             "authority": admin.id(),
-            "iah_issuer": oracle.id(), "iah_classes": (1),
+            "iah_issuer": oracle.id(), "iah_classes": [1],
             "authorized_flaggers": vec![auth_flagger.id()]}))
         .max_gas()
         .transact();
