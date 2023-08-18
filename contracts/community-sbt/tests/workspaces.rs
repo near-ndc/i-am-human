@@ -1,6 +1,6 @@
 use anyhow::Ok;
 use near_units::parse_near;
-use sbt::{Token, TokenMetadata};
+use sbt::{ClassMetadata, Token, TokenMetadata};
 use serde_json::json;
 use workspaces::{network::Sandbox, Account, AccountId, Contract, Worker};
 
@@ -104,11 +104,20 @@ async fn init(
     } else {
         let res = authority
             .call(community_mainnet.id(), "enable_next_class")
-            .args_json(json!({"requires_iah": false, "minter": minter.id(),"max_ttl": 100000000, "memo": "test"}))
+            .args_json(
+                json!({"requires_iah": false, "minter": minter.id(),"max_ttl": 100000000,
+                       "metadata": ClassMetadata {
+                           name: "cls-1".to_string(),
+                           symbol: None,
+                           icon: None,
+                           reference: None,
+                           reference_hash: None},
+                       "memo": "test"}),
+            )
             .max_gas()
             .transact()
             .await?;
-        assert!(res.is_success());
+        assert!(res.is_success(), "{:?}", res.receipt_failures());
     }
 
     // mint mocked community tokens
@@ -188,7 +197,14 @@ async fn migration_mainnet() -> anyhow::Result<()> {
     let res = admin
         .call(new_community_contract.id(), "enable_next_class")
         .args_json(
-            json!({"requires_iah": true, "minter": admin.id(),"max_ttl": 2147483647, "memo": "test"}),
+            json!({"requires_iah": true, "minter": admin.id(),"max_ttl": 2147483647,
+                   "metadata": ClassMetadata {
+                       name: "cls-1".to_string(),
+                       symbol: None,
+                       icon: None,
+                       reference: None,
+                       reference_hash: None},
+                   "memo": "test"}),
         )
         .max_gas()
         .transact()
