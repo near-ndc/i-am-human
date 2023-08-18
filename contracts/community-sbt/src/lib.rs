@@ -28,6 +28,7 @@ pub struct Contract {
     pub registry: AccountId,
     /// contract metadata
     pub metadata: LazyOption<ContractMetadata>,
+    pub class_metadata: LookupMap<ClassId, ClassMetadata>,
 }
 
 // Implement the contract structure
@@ -42,6 +43,7 @@ impl Contract {
             next_class: 1,
             registry,
             metadata: LazyOption::new(StorageKey::ContractMetadata, Some(&metadata)),
+            class_metadata: LookupMap::new(StorageKey::ClassMetadata),
         }
     }
 
@@ -49,13 +51,17 @@ impl Contract {
      * QUERIES
      **********/
 
-    /// Returns minting authorities by class.
-    /// If the `class` is enabled, returns class minter, otherwise returns None.
+    /// Returns `ClassMetadata` by class. Returns none if the class is not enabled.
+    pub fn class_metadata(&self, class: ClassId) -> Option<ClassMetadata> {
+        self.class_metadata.get(&class)
+    }
+
+    /// Returns minting authorities by class. Returns none if the class is not enabled.
     pub fn class_minter(&self, class: ClassId) -> Option<ClassMinters> {
         self.classes.get(&class)
     }
 
-    /// Returns registry address
+    /// Returns registry address.
     pub fn registry(&self) -> AccountId {
         self.registry.clone()
     }
@@ -101,7 +107,7 @@ impl Contract {
         Ok(promise)
     }
 
-    /// sbt_renew will update the expire time of provided tokens.
+    /// Updates the expire time of provided tokens.
     /// `ttl` is duration in milliseconds to set expire time: `now+ttl`.
     /// Panics if `ttl > self.minters[class].max_ttl` or ttl < `MIN_TTL` or `tokens` is an empty list.
     /// Only minters are allowed to renew the tokens.
@@ -114,7 +120,7 @@ impl Contract {
             .then(Self::ext(ctr).on_sbt_renew_callback(&caller, tokens, ttl, memo))
     }
 
-    /// callback for sbt_renew. Checks the return value from `sbts` and if any of the tokens
+    /// Callback for sbt_renew. Checks the return value from `sbts` and if any of the tokens
     /// does not exist, the ttl value is invalid or the caller is not a minter panics.
     #[private]
     pub fn on_sbt_renew_callback(
@@ -202,7 +208,7 @@ impl Contract {
         ext_registry::ext(self.registry.clone()).sbt_revoke(tokens, burn)
     }
 
-    /// admin: remove SBT from the given accounts.
+    /// Admin: remove SBT from the given accounts.
     /// Panics if `accounts` is an empty list.
     pub fn revoke_for(
         &mut self,
@@ -226,7 +232,7 @@ impl Contract {
      * Admin
      **********/
 
-    /// allows admin to change if the specific class requires IAH verification.
+    /// Allows admin to change if the specific class requires IAH verification.
     /// Panics if class is not found.
     pub fn set_requires_iah(&mut self, class: ClassId, requires_iah: bool) {
         self.assert_admin();
@@ -237,12 +243,20 @@ impl Contract {
         }
     }
 
-    /// allows admin to change Max TTL, expected time duration in miliseconds.
+    /// Allows admin to change Max TTL, expected time duration in miliseconds.
     pub fn set_max_ttl(&mut self, class: ClassId, max_ttl: u64) {
         self.assert_admin();
         let mut cm = self.classes.get(&class).expect("class not found");
         cm.max_ttl = max_ttl;
         self.classes.insert(&class, &cm);
+    }
+
+    /// Allows admin to update class metadata.
+    /// Panics if class is not enabled.
+    pub fn set_class_metadata(&mut self, class: ClassId, metadata: ClassMetadata) {
+        self.assert_admin();
+        require!(class < self.next_class, "class not found");
+        self.class_metadata.insert(&class, &metadata);
     }
 
     /// Enables a new, unused class and authorizes minter to issue SBTs of that class.
@@ -252,6 +266,7 @@ impl Contract {
         requires_iah: bool,
         minter: AccountId,
         max_ttl: u64,
+        metadata: ClassMetadata,
         #[allow(unused_variables)] memo: Option<String>,
     ) -> ClassId {
         self.assert_admin();
@@ -269,10 +284,11 @@ impl Contract {
                 max_ttl,
             },
         );
+        self.class_metadata.insert(&cls, &metadata);
         cls
     }
 
-    /// admin: authorize `minter` to mint tokens of a `class`.
+    /// Admin: authorize `minter` to mint tokens of a `class`.
     /// Must be called by admin, panics otherwise.
     pub fn authorize(
         &mut self,
@@ -377,7 +393,7 @@ mod tests {
         test_utils::{test_env::bob, VMContextBuilder},
         testing_env, AccountId, Balance, VMContext,
     };
-    use sbt::{ClassId, ContractMetadata, TokenMetadata};
+    use sbt::{ClassId, ClassMetadata, ContractMetadata, TokenMetadata};
 
     use crate::{required_sbt_mint_deposit, ClassMinters, Contract, MintError, MIN_TTL};
 
@@ -419,6 +435,16 @@ mod tests {
         }
     }
 
+    fn class_metadata(c: ClassId) -> ClassMetadata {
+        ClassMetadata {
+            name: format!("cls-{}", c),
+            symbol: None,
+            icon: None,
+            reference: None,
+            reference_hash: None,
+        }
+    }
+
     fn setup(predecessor: &AccountId, deposit: Option<Balance>) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
@@ -428,7 +454,8 @@ mod tests {
         ctx.attached_deposit = deposit.unwrap_or(required_sbt_mint_deposit(1));
         testing_env!(ctx.clone());
         let mut ctr = Contract::new(registry(), admin(), contract_metadata());
-        ctr.enable_next_class(true, authority(1), MIN_TTL, None);
+        let c = ctr.enable_next_class(true, authority(1), MIN_TTL, class_metadata(1), None);
+        assert_eq!(c, 1);
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
@@ -446,8 +473,9 @@ mod tests {
         // admin is not a minter
         expect_not_authorized(1, &ctr);
 
-        let new_cls = ctr.enable_next_class(true, authority(2), MIN_TTL, None);
-        let other_cls = ctr.enable_next_class(true, authority(10), MIN_TTL, None);
+        let new_cls = ctr.enable_next_class(true, authority(2), MIN_TTL, class_metadata(2), None);
+        let other_cls =
+            ctr.enable_next_class(true, authority(10), MIN_TTL, class_metadata(3), None);
         ctr.authorize(new_cls, authority(3), None);
 
         match ctr.class_info(new_cls) {
@@ -493,10 +521,20 @@ mod tests {
     #[test]
     fn authorize() {
         let (_, mut ctr) = setup(&admin(), None);
-        let cls = ctr.enable_next_class(false, authority(4), MIN_TTL, None);
+
+        assert_eq!(ctr.class_metadata(1), Some(class_metadata(1)));
+        assert_eq!(ctr.class_metadata(0), None);
+        assert_eq!(ctr.class_metadata(2), None);
+        assert_eq!(ctr.class_metadata(322), None);
+
+        assert_eq!(ctr.class_minter(0), None);
+        assert_eq!(ctr.class_minter(2), None);
+        assert_eq!(ctr.class_minter(2415), None);
+
+        let cls = ctr.enable_next_class(false, authority(4), MIN_TTL, class_metadata(2), None);
         assert_eq!(cls, 2);
         assert_eq!(ctr.next_class, cls + 1);
-        let cls = ctr.enable_next_class(false, authority(4), MIN_TTL, None);
+        let cls = ctr.enable_next_class(false, authority(4), MIN_TTL, class_metadata(3), None);
         assert_eq!(cls, 3);
         assert_eq!(ctr.next_class, 4);
 
@@ -504,6 +542,7 @@ mod tests {
         ctr.authorize(1, authority(2), None);
         ctr.authorize(2, authority(2), None);
 
+        // verify class minters
         assert_eq!(
             ctr.class_minter(1),
             Some(class_minter(
@@ -525,6 +564,15 @@ mod tests {
             Some(class_minter(false, vec![authority(4)], MIN_TTL))
         );
         assert_eq!(ctr.class_minter(4), None);
+
+        // verify class metadata
+        assert_eq!(ctr.class_metadata(1), Some(class_metadata(1)));
+        assert_eq!(ctr.class_metadata(2), Some(class_metadata(2)));
+        assert_eq!(ctr.class_metadata(3), Some(class_metadata(3)));
+        assert_eq!(ctr.class_minter(0), None);
+        assert_eq!(ctr.class_minter(4), None);
+        assert_eq!(ctr.class_minter(5), None);
+        assert_eq!(ctr.class_minter(2412), None);
     }
 
     #[test]
@@ -544,7 +592,7 @@ mod tests {
     #[test]
     fn unauthorize() {
         let (_, mut ctr) = setup(&admin(), None);
-        ctr.enable_next_class(false, authority(3), MIN_TTL, None);
+        ctr.enable_next_class(false, authority(3), MIN_TTL, class_metadata(2), None);
 
         ctr.authorize(1, authority(2), None);
         ctr.authorize(1, authority(3), None);
@@ -585,7 +633,7 @@ mod tests {
     fn mint() -> Result<(), MintError> {
         let (mut ctx, mut ctr) = setup(&admin(), None);
 
-        let cls2 = ctr.enable_next_class(true, authority(2), MIN_TTL, None);
+        let cls2 = ctr.enable_next_class(true, authority(2), MIN_TTL, class_metadata(2), None);
 
         ctx.predecessor_account_id = authority(1);
         testing_env!(ctx.clone());

@@ -8,6 +8,7 @@ pub enum StorageKey {
     Admins, // deprecated, required for migration
     ContractMetadata,
     MintingAuthority,
+    ClassMetadata,
 }
 
 /// Helper structure for keys of the persistent collections.
