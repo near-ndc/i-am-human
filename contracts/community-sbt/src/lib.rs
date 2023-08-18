@@ -51,13 +51,17 @@ impl Contract {
      * QUERIES
      **********/
 
-    /// Returns minting authorities by class.
-    /// If the `class` is enabled, returns class minter, otherwise returns None.
+    /// Returns `ClassMetadata` by class. Returns none if the class is not enabled.
+    pub fn class_metadata(&self, class: ClassId) -> Option<ClassMetadata> {
+        self.class_metadata.get(&class)
+    }
+
+    /// Returns minting authorities by class. Returns none if the class is not enabled.
     pub fn class_minter(&self, class: ClassId) -> Option<ClassMinters> {
         self.classes.get(&class)
     }
 
-    /// Returns registry address
+    /// Returns registry address.
     pub fn registry(&self) -> AccountId {
         self.registry.clone()
     }
@@ -389,7 +393,7 @@ mod tests {
         test_utils::{test_env::bob, VMContextBuilder},
         testing_env, AccountId, Balance, VMContext,
     };
-    use sbt::{ClassId, ContractMetadata, TokenMetadata};
+    use sbt::{ClassId, ClassMetadata, ContractMetadata, TokenMetadata};
 
     use crate::{required_sbt_mint_deposit, ClassMinters, Contract, MintError, MIN_TTL};
 
@@ -431,6 +435,16 @@ mod tests {
         }
     }
 
+    fn class_metadata(c: ClassId) -> ClassMetadata {
+        ClassMetadata {
+            name: format!("cls-{}", c),
+            symbol: None,
+            icon: None,
+            reference: None,
+            reference_hash: None,
+        }
+    }
+
     fn setup(predecessor: &AccountId, deposit: Option<Balance>) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
@@ -440,7 +454,8 @@ mod tests {
         ctx.attached_deposit = deposit.unwrap_or(required_sbt_mint_deposit(1));
         testing_env!(ctx.clone());
         let mut ctr = Contract::new(registry(), admin(), contract_metadata());
-        ctr.enable_next_class(true, authority(1), MIN_TTL, None);
+        let c = ctr.enable_next_class(true, authority(1), MIN_TTL, class_metadata(1), None);
+        assert_eq!(c, 1);
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
@@ -458,8 +473,9 @@ mod tests {
         // admin is not a minter
         expect_not_authorized(1, &ctr);
 
-        let new_cls = ctr.enable_next_class(true, authority(2), MIN_TTL, None);
-        let other_cls = ctr.enable_next_class(true, authority(10), MIN_TTL, None);
+        let new_cls = ctr.enable_next_class(true, authority(2), MIN_TTL, class_metadata(2), None);
+        let other_cls =
+            ctr.enable_next_class(true, authority(10), MIN_TTL, class_metadata(3), None);
         ctr.authorize(new_cls, authority(3), None);
 
         match ctr.class_info(new_cls) {
@@ -505,10 +521,20 @@ mod tests {
     #[test]
     fn authorize() {
         let (_, mut ctr) = setup(&admin(), None);
-        let cls = ctr.enable_next_class(false, authority(4), MIN_TTL, None);
+
+        assert_eq!(ctr.class_metadata(1), Some(class_metadata(1)));
+        assert_eq!(ctr.class_metadata(0), None);
+        assert_eq!(ctr.class_metadata(2), None);
+        assert_eq!(ctr.class_metadata(322), None);
+
+        assert_eq!(ctr.class_minter(0), None);
+        assert_eq!(ctr.class_minter(2), None);
+        assert_eq!(ctr.class_minter(2415), None);
+
+        let cls = ctr.enable_next_class(false, authority(4), MIN_TTL, class_metadata(2), None);
         assert_eq!(cls, 2);
         assert_eq!(ctr.next_class, cls + 1);
-        let cls = ctr.enable_next_class(false, authority(4), MIN_TTL, None);
+        let cls = ctr.enable_next_class(false, authority(4), MIN_TTL, class_metadata(3), None);
         assert_eq!(cls, 3);
         assert_eq!(ctr.next_class, 4);
 
@@ -516,6 +542,7 @@ mod tests {
         ctr.authorize(1, authority(2), None);
         ctr.authorize(2, authority(2), None);
 
+        // verify class minters
         assert_eq!(
             ctr.class_minter(1),
             Some(class_minter(
@@ -537,6 +564,15 @@ mod tests {
             Some(class_minter(false, vec![authority(4)], MIN_TTL))
         );
         assert_eq!(ctr.class_minter(4), None);
+
+        // verify class metadata
+        assert_eq!(ctr.class_metadata(1), Some(class_metadata(1)));
+        assert_eq!(ctr.class_metadata(2), Some(class_metadata(2)));
+        assert_eq!(ctr.class_metadata(3), Some(class_metadata(3)));
+        assert_eq!(ctr.class_minter(0), None);
+        assert_eq!(ctr.class_minter(4), None);
+        assert_eq!(ctr.class_minter(5), None);
+        assert_eq!(ctr.class_minter(2412), None);
     }
 
     #[test]
@@ -556,7 +592,7 @@ mod tests {
     #[test]
     fn unauthorize() {
         let (_, mut ctr) = setup(&admin(), None);
-        ctr.enable_next_class(false, authority(3), MIN_TTL, None);
+        ctr.enable_next_class(false, authority(3), MIN_TTL, class_metadata(2), None);
 
         ctr.authorize(1, authority(2), None);
         ctr.authorize(1, authority(3), None);
@@ -597,7 +633,7 @@ mod tests {
     fn mint() -> Result<(), MintError> {
         let (mut ctx, mut ctr) = setup(&admin(), None);
 
-        let cls2 = ctr.enable_next_class(true, authority(2), MIN_TTL, None);
+        let cls2 = ctr.enable_next_class(true, authority(2), MIN_TTL, class_metadata(2), None);
 
         ctx.predecessor_account_id = authority(1);
         testing_env!(ctx.clone());
