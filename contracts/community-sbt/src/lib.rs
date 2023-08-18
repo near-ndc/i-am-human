@@ -254,6 +254,7 @@ impl Contract {
         requires_iah: bool,
         minter: AccountId,
         max_ttl: u64,
+
         #[allow(unused_variables)] memo: Option<String>,
     ) -> ClassId {
         self.assert_admin();
