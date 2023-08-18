@@ -935,6 +935,7 @@ mod tests {
         ctr.admin_add_sbt_issuer(issuer1());
         ctr.admin_add_sbt_issuer(issuer2());
         ctr.admin_add_sbt_issuer(issuer3());
+        ctr.admin_set_authorized_flaggers([predecessor.clone()].to_vec());
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
@@ -2758,5 +2759,108 @@ mod tests {
             "function_name".to_string(),
             "{}".to_string(),
         );
+    }
+
+    #[test]
+    fn admin_set_authorized_flaggers() {
+        let (mut ctx, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctx.predecessor_account_id = admin();
+        testing_env!(ctx.clone());
+        let flaggers = [dan()].to_vec();
+        ctr.admin_set_authorized_flaggers(flaggers);
+       
+        ctx.predecessor_account_id = dan();
+        testing_env!(ctx.clone());
+        ctr.assert_authorized_flagger();
+    }
+
+    #[test]
+    fn admin_flag_accounts() {
+        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctr.admin_flag_accounts(AccountFlag::Blacklisted, [dan(), issuer1()].to_vec(), "memo".to_owned());
+        ctr.admin_flag_accounts(AccountFlag::Verified, [issuer2()].to_vec(), "memo".to_owned());
+
+
+        assert_eq!(ctr.account_flagged(dan()), Some(AccountFlag::Blacklisted));
+        assert_eq!(ctr.account_flagged(issuer1()), Some(AccountFlag::Blacklisted));
+        assert_eq!(ctr.account_flagged(issuer2()), Some(AccountFlag::Verified));
+    }
+
+    #[test]
+    #[should_panic(expected = "not authorized")]
+    fn admin_flag_accounts_non_authorized() {
+        let (mut ctx, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctx.predecessor_account_id = dan();
+        testing_env!(ctx.clone());
+        ctr.admin_flag_accounts(AccountFlag::Blacklisted, [dan()].to_vec(), "memo".to_owned());
+    }
+
+    #[test]
+    fn admin_unflag_accounts() {
+        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctr.admin_flag_accounts(AccountFlag::Blacklisted, [dan(), issuer1()].to_vec(), "memo".to_owned());
+        assert_eq!(ctr.account_flagged(dan()), Some(AccountFlag::Blacklisted));
+
+        ctr.admin_unflag_accounts([dan()].to_vec(), "memo".to_owned());
+
+        assert_eq!(ctr.account_flagged(dan()), None);
+        assert_eq!(ctr.account_flagged(issuer1()), Some(AccountFlag::Blacklisted));       
+    }
+
+    #[test]
+    #[should_panic(expected = "not authorized")]
+    fn admin_unflag_accounts_non_authorized() {
+        let (mut ctx, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctr.admin_flag_accounts(AccountFlag::Blacklisted, [dan(), issuer1()].to_vec(), "memo".to_owned());
+        assert_eq!(ctr.account_flagged(dan()), Some(AccountFlag::Blacklisted));
+
+        ctx.predecessor_account_id = dan();
+        testing_env!(ctx.clone());
+        ctr.admin_unflag_accounts([dan()].to_vec(), "memo".to_owned());
+    }
+
+    #[test]
+    fn is_human_with_verified_account() {
+        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctr.admin_set_authorized_flaggers([dan()].to_vec());
+       
+    }
+
+    #[test]
+    fn is_human_with_blacklisted_account() {
+        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctr.admin_set_authorized_flaggers([dan()].to_vec());
+       
+    }
+
+    #[test]
+    fn is_human_with_unflag_account() {
+        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctr.admin_set_authorized_flaggers([dan()].to_vec());
+       
+    }
+
+    #[test]
+    fn admin_unflag_accounts_events() {
+        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctr.admin_set_authorized_flaggers([dan()].to_vec());
+       
+    }
+
+    #[test]
+    fn admin_flag_accounts_events() {
+        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctr.admin_set_authorized_flaggers([dan()].to_vec());
+       
     }
 }
