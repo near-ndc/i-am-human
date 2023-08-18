@@ -32,7 +32,7 @@ pub struct ContractMetadata {
     pub reference_hash: Option<Base64VecU8>,
 }
 
-/// ClassMetadata defines contract wide attributes, which describes the issuer class.
+/// ClassMetadata defines describes an issuer class.
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(
@@ -68,11 +68,17 @@ pub enum VerTokenMetadata {
     derive(Debug, PartialEq, Clone, NearSchema)
 )]
 pub struct TokenMetadata {
-    pub class: ClassId,                      // token class
-    pub issued_at: Option<u64>, // When token was issued or minted, Unix epoch in milliseconds
-    pub expires_at: Option<u64>, // When token expires, Unix epoch in milliseconds
-    pub reference: Option<String>, // URL to an off-chain JSON file with more info.
-    pub reference_hash: Option<Base64VecU8>, // Base64-encoded sha256 hash of JSON from reference field. Required if `reference` is included.
+    /// token class
+    pub class: ClassId,
+    /// When the token was issued or minted, Unix time in milliseconds
+    pub issued_at: Option<u64>,
+    /// When the token expires, Unix time in milliseconds
+    pub expires_at: Option<u64>,
+    /// URL to a JSON file with more info. If it doesn't start with a scheme (eg: https://) then
+    /// base_uri should be prepended.
+    pub reference: Option<String>,
+    /// Base64-encoded sha256 hash of JSON from reference field. Required if `reference` is included.
+    pub reference_hash: Option<Base64VecU8>,
 }
 
 impl VerTokenMetadata {
