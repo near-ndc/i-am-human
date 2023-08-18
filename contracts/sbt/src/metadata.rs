@@ -16,13 +16,40 @@ use crate::*;
     derive(Debug, PartialEq, Clone, NearSchema)
 )]
 pub struct ContractMetadata {
-    pub spec: String,              // required, essentially a version like "sbt-1.0.0"
-    pub name: String,              // required, ex. "Mosaics"
-    pub symbol: String,            // required, ex. "MOSAIC"
-    pub icon: Option<String>,      // Data URL
-    pub base_uri: Option<String>, // Centralized gateway known to have reliable access to decentralized storage assets referenced by `reference` or `media` URLs
-    pub reference: Option<String>, // URL to a JSON file with more info
-    pub reference_hash: Option<Base64VecU8>, // Base64-encoded sha256 hash of JSON from reference field. Required if `reference` is included.
+    pub spec: String,   // required, essentially a version like "sbt-1.0.0"
+    pub name: String,   // required, ex. "Mosaics"
+    pub symbol: String, // required, ex. "MOSAIC"
+    /// Icon content (SVG) or a link to an Icon. If it doesn't start with a scheme (eg: https://)
+    /// then `base_uri` should be prepended.
+    pub icon: Option<String>,
+    /// URI prefix which will be prepended to other links which don't start with a scheme
+    /// (eg: ipfs:// or https:// ...).
+    pub base_uri: Option<String>,
+    /// URL to a JSON file with more info. If it doesn't start with a scheme (eg: https://) then
+    /// `base_uri` should be prepended.
+    pub reference: Option<String>,
+    /// Base64-encoded sha256 hash of JSON from reference field. Required if `reference` is included.
+    pub reference_hash: Option<Base64VecU8>,
+}
+
+/// ClassMetadata defines contract wide attributes, which describes the issuer class.
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    derive(Debug, PartialEq, Clone, NearSchema)
+)]
+pub struct ClassMetadata {
+    pub name: String, // required
+    pub symbol: Option<String>,
+    /// Icon content (SVG) or a link to an Icon. If it doesn't start with a scheme (eg: https://)
+    /// then `contract_metadata.base_uri` should be prepended.
+    pub icon: Option<String>,
+    /// URL to a JSON file with more info. If it doesn't start with a scheme (eg: https://) then
+    /// base_uri should be prepended.
+    pub reference: Option<String>,
+    /// Base64-encoded sha256 hash of JSON from reference field. Required if `reference` is included.
+    pub reference_hash: Option<Base64VecU8>,
 }
 
 /// Versioned token metadata
