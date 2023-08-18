@@ -88,7 +88,8 @@ Deprecated:
 - **Fractal**: `i-am-human-staging.testnet` @ oracle/v1.0.1
   registry: `registry-1.i-am-human.testnet`; Verification pubkey base64: `FGoAI6DXghOSK2ZaKVT/5lSP4X4JkoQQphv1FD4YRto=`, `claim_ttl`: 3600ms, FV class: 1
 - **Community-SBT**: `community-v1.i-am-human.testnet` @ community-sbt/v4.1.0
-  registry: `registry-1.i-am-human.testnet`; classes: OG=1, Vibes=2
+  registry: `registry-1.i-am-human.testnet`
+  classes: 1=OG, 2=NDC_Contributor, 3=NDC_Core_Contributors, 4=NDC_Champion
   Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
 
 Deprecated:
