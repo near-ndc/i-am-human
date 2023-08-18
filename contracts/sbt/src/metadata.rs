@@ -16,9 +16,12 @@ use crate::*;
     derive(Debug, PartialEq, Clone, NearSchema)
 )]
 pub struct ContractMetadata {
-    pub spec: String,   // required, essentially a version like "sbt-1.0.0"
-    pub name: String,   // required, ex. "Mosaics"
-    pub symbol: String, // required, ex. "MOSAIC"
+    /// Version with namespace, example: "sbt-1.0.0". Required.
+    pub spec: String,
+    /// Issuer Name, required, ex. "Mosaics"
+    pub name: String,
+    /// Issuer symbol which can be used as a token symbol, eg Ⓝ, ₿, BTC, MOSAIC ...
+    pub symbol: String,
     /// Icon content (SVG) or a link to an Icon. If it doesn't start with a scheme (eg: https://)
     /// then `base_uri` should be prepended.
     pub icon: Option<String>,
@@ -32,7 +35,7 @@ pub struct ContractMetadata {
     pub reference_hash: Option<Base64VecU8>,
 }
 
-/// ClassMetadata defines describes an issuer class.
+/// ClassMetadata describes an issuer class.
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(
@@ -40,7 +43,9 @@ pub struct ContractMetadata {
     derive(Debug, PartialEq, Clone, NearSchema)
 )]
 pub struct ClassMetadata {
-    pub name: String, // required
+    /// Issuer class name. Required.
+    pub name: String,
+    /// If defined, should be used instead of `contract_metadata.symbol`.
     pub symbol: Option<String>,
     /// Icon content (SVG) or a link to an Icon. If it doesn't start with a scheme (eg: https://)
     /// then `contract_metadata.base_uri` should be prepended.
