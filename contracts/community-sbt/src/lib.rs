@@ -103,7 +103,7 @@ impl Contract {
         Ok(promise)
     }
 
-    /// sbt_renew will update the expire time of provided tokens.
+    /// Updates the expire time of provided tokens.
     /// `ttl` is duration in milliseconds to set expire time: `now+ttl`.
     /// Panics if `ttl > self.minters[class].max_ttl` or ttl < `MIN_TTL` or `tokens` is an empty list.
     /// Only minters are allowed to renew the tokens.
@@ -116,7 +116,7 @@ impl Contract {
             .then(Self::ext(ctr).on_sbt_renew_callback(&caller, tokens, ttl, memo))
     }
 
-    /// callback for sbt_renew. Checks the return value from `sbts` and if any of the tokens
+    /// Callback for sbt_renew. Checks the return value from `sbts` and if any of the tokens
     /// does not exist, the ttl value is invalid or the caller is not a minter panics.
     #[private]
     pub fn on_sbt_renew_callback(
@@ -204,7 +204,7 @@ impl Contract {
         ext_registry::ext(self.registry.clone()).sbt_revoke(tokens, burn)
     }
 
-    /// admin: remove SBT from the given accounts.
+    /// Admin: remove SBT from the given accounts.
     /// Panics if `accounts` is an empty list.
     pub fn revoke_for(
         &mut self,
@@ -228,7 +228,7 @@ impl Contract {
      * Admin
      **********/
 
-    /// allows admin to change if the specific class requires IAH verification.
+    /// Allows admin to change if the specific class requires IAH verification.
     /// Panics if class is not found.
     pub fn set_requires_iah(&mut self, class: ClassId, requires_iah: bool) {
         self.assert_admin();
@@ -239,12 +239,20 @@ impl Contract {
         }
     }
 
-    /// allows admin to change Max TTL, expected time duration in miliseconds.
+    /// Allows admin to change Max TTL, expected time duration in miliseconds.
     pub fn set_max_ttl(&mut self, class: ClassId, max_ttl: u64) {
         self.assert_admin();
         let mut cm = self.classes.get(&class).expect("class not found");
         cm.max_ttl = max_ttl;
         self.classes.insert(&class, &cm);
+    }
+
+    /// Allows admin to update class metadata.
+    /// Panics if class is not enabled.
+    pub fn set_class_metadata(&mut self, class: ClassId, metadata: ClassMetadata) {
+        self.assert_admin();
+        require!(class < self.next_class, "class not found");
+        self.class_metadata.insert(&class, &metadata);
     }
 
     /// Enables a new, unused class and authorizes minter to issue SBTs of that class.
@@ -254,7 +262,7 @@ impl Contract {
         requires_iah: bool,
         minter: AccountId,
         max_ttl: u64,
-
+        metadata: ClassMetadata,
         #[allow(unused_variables)] memo: Option<String>,
     ) -> ClassId {
         self.assert_admin();
@@ -272,10 +280,11 @@ impl Contract {
                 max_ttl,
             },
         );
+        self.class_metadata.insert(&cls, &metadata);
         cls
     }
 
-    /// admin: authorize `minter` to mint tokens of a `class`.
+    /// Admin: authorize `minter` to mint tokens of a `class`.
     /// Must be called by admin, panics otherwise.
     pub fn authorize(
         &mut self,
