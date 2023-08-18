@@ -28,6 +28,7 @@ pub struct Contract {
     pub registry: AccountId,
     /// contract metadata
     pub metadata: LazyOption<ContractMetadata>,
+    pub class_metadata: LookupMap<ClassId, ClassMetadata>,
 }
 
 // Implement the contract structure
@@ -42,6 +43,7 @@ impl Contract {
             next_class: 1,
             registry,
             metadata: LazyOption::new(StorageKey::ContractMetadata, Some(&metadata)),
+            class_metadata: LookupMap::new(StorageKey::ClassMetadata),
         }
     }
 

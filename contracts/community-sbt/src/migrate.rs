@@ -1,41 +1,28 @@
 use crate::*;
 
-/// Helper structure for keys of the persistent collections.
-#[derive(BorshDeserialize, BorshSerialize)]
-pub struct OldClassMinters {
-    /// if true only iah verifed accounts can obrain the SBT
-    pub requires_iah: bool,
-    /// accounts allowed to mint the SBT
-    pub minters: Vec<AccountId>,
-}
-
+/*
+// community-sbt/v4.1.0
 #[derive(BorshDeserialize)]
 pub struct OldContract {
-    /// Account authorized to add new minting authority
     pub admin: AccountId,
-    /// map of classId -> to set of accounts authorized to mint
-    pub classes: LookupMap<ClassId, OldClassMinters>,
+    pub classes: LookupMap<ClassId, ClassMinters>,
     pub next_class: ClassId,
-
-    /// SBT registry.
     pub registry: AccountId,
-    /// contract metadata
     pub metadata: LazyOption<ContractMetadata>,
-    /// time to live in ms. Overwrites metadata.expire_at.
-    pub ttl: u64,
 }
+*/
 
 #[near_bindgen]
 impl Contract {
     #[private]
     #[init(ignore_state)]
     pub fn migrate() -> Self {
+        env::panic_str("not available in this upgrade");
+
+        /*
         let mut old_state: OldContract = env::state_read().expect("failed");
 
         // changed fields:
-        // ttl -- removed
-        // classes: LookupMap<ClassId, ClassMinters>,
-        //   -> LookupMap<ClassId, ClassMinters>, where ClassMinters has a new field: max_ttl:u64,
 
         let mut classes = LookupMap::new(StorageKey::MintingAuthority);
         let max_ttl = old_state.ttl;
@@ -58,6 +45,8 @@ impl Contract {
             next_class: old_state.next_class,
             registry: old_state.registry,
             metadata: old_state.metadata,
+            metadata_class: LookupMap::new(StorageKey::ClassMetadata);
         }
+         */
     }
 }
