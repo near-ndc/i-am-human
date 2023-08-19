@@ -1,11 +1,11 @@
 use anyhow::Ok;
 use near_sdk::serde_json::json;
 use near_units::parse_near;
-use sbt::TokenMetadata;
+use sbt::{TokenMetadata, ClassSet};
 use workspaces::{network::Sandbox, Account, AccountId, Contract, Worker};
 
 const MAINNET_REGISTRY_ID: &str = "registry.i-am-human.near";
-const BLOCK_HEIGHT: u64 = 90979963;
+const BLOCK_HEIGHT: u64 = 92042705;
 const IAH_CLASS: u64 = 1;
 const OG_CLASS: u64 = 2;
 
@@ -89,6 +89,17 @@ async fn assert_data_consistency(
         .json()?;
     assert_eq!(bob_og_supply, 0);
 
+    let iah_class_set: ClassSet = registry
+        .call("iah_class_set")
+        .args_json(json!({}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+
+    assert_eq!(iah_class_set[0].0.to_string(), iah_issuer.id().clone().to_string());
+    assert_eq!(iah_class_set[0].1[0], 1);
+
     Ok(())
 }
 
@@ -116,7 +127,7 @@ async fn init(
     // init the contract
     let res = registry_contract
         .call("new")
-        .args_json(json!({"authority": authority_acc.id() }))
+        .args_json(json!({"authority": authority_acc.id(), "iah_issuer": iah_issuer.id(), "iah_classes": [1]}))
         .max_gas()
         .transact()
         .await?;
@@ -190,7 +201,7 @@ async fn init(
     ));
 }
 
-#[ignore = "this test is not valid after the migration"]
+//#[ignore = "this test is not valid after the migration"]
 #[tokio::test]
 async fn migration_mainnet() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
@@ -216,7 +227,7 @@ async fn migration_mainnet() -> anyhow::Result<()> {
     // call the migrate method
     let res = new_registry_contract
         .call("migrate")
-        .args_json(json!({"iah_issuer": "iah-issuer.testnet", "iah_classes": [1]}))
+        .args_json(json!({"authorized_flaggers": ["alice.near"]}))
         .max_gas()
         .transact()
         .await?;
@@ -236,6 +247,8 @@ async fn migration_mainnet() -> anyhow::Result<()> {
 }
 
 #[ignore = "this test is not valid after the migration"]
+// handler error: [State of contract registry.i-am-human.near is too large to be viewed]
+// For current block 99,142,922
 #[tokio::test]
 async fn migration_mainnet_real_data() -> anyhow::Result<()> {
     // import the registry contract from mainnet with data
@@ -269,7 +282,7 @@ async fn migration_mainnet_real_data() -> anyhow::Result<()> {
     // call the migrate method
     let res = new_registry_mainnet
         .call("migrate")
-        .args_json(json!({"iah_issuer": "iah-issuer.testnet", "iah_classes": [1]}))
+        .args_json(json!({"authorized_flaggers": ["alice.near"]}))
         .max_gas()
         .transact()
         .await?;
