@@ -24,10 +24,9 @@ pub enum StorageKey {
     AdminsFlagged,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, BorshStorageKey, Serialize, Deserialize)]
+#[derive(BorshSerialize, BorshDeserialize, BorshStorageKey, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
-#[cfg_attr(test, derive(PartialEq))]
 pub enum AccountFlag {
     /// Account is "blacklisted" when it was marked as a scam or breaking the IAH rules.
     Blacklisted,

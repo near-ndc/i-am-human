@@ -200,6 +200,7 @@ impl Contract {
     // order to facilitate tests.
     pub(crate) fn _sbt_soul_transfer(&mut self, recipient: AccountId, limit: usize) -> (u32, bool) {
         let owner = env::predecessor_account_id();
+        self.assert_not_blacklisted(&owner);
 
         let (resumed, start) = self.transfer_continuation(&owner, &recipient, true);
 
@@ -598,6 +599,13 @@ impl Contract {
             !self.banlist.contains(owner),
             format!("account {} is banned", owner)
         );
+    }
+
+    #[inline]
+    pub(crate) fn assert_not_blacklisted(&self, owner: &AccountId) {
+        if self.flagged.get(owner) == Some(AccountFlag::Blacklisted) {
+            env::panic_str("account blacklisted");
+        }
     }
 
     /// note: use issuer_id() if you need issuer_id
@@ -2878,5 +2886,37 @@ mod tests {
 
         assert_eq!(test_utils::get_logs().len(), 2);
         assert_eq!(test_utils::get_logs()[1], exp);
+    }
+
+    #[test]
+    fn black_listed_soul_transfer() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+
+        // test1: simple case: alice has one token and she owns alice2 account as well. She
+        // will do transfer from alice -> alice2
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        //let m2_1 = mk_metadata(2, Some(START + 10));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+
+        ctr.admin_flag_accounts(AccountFlag::Blacklisted, [alice()].to_vec(), "memo".to_owned());
+
+        // make soul transfer
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        let ret = ctr.sbt_soul_transfer(alice2(), None);
+        assert_eq!((1, true), ret);
+
+        // let log1 = mk_log_str("ban", &format!(r#"["{}"]"#, alice()));
+        // let log2 = mk_log_str(
+        //     "soul_transfer",
+        //     &format!(r#"{{"from":"{}","to":"{}"}}"#, alice(), alice2()),
+        // );
+        // assert_eq!(test_utils::get_logs(), vec![log1, log2].concat());
+        // assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
+        // assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 2);
+        // assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer2(), None), 1);
+
+        // assert!(ctr.is_banned(alice()));
+        // assert!(!ctr.is_banned(alice2()));
     }
 }
