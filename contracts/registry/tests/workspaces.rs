@@ -97,7 +97,7 @@ async fn assert_data_consistency(
         .await?
         .json()?;
 
-    assert_eq!(iah_class_set[0].0.to_string(), iah_issuer.id().clone().to_string());
+    assert_eq!(iah_class_set[0].0.to_string(), iah_issuer.id().to_string());
     assert_eq!(iah_class_set[0].1[0], 1);
 
     Ok(())

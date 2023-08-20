@@ -2833,35 +2833,20 @@ mod tests {
     }
 
     #[test]
-    fn is_human_with_verified_account() {
+    fn is_human_flagged() {
         let (_, mut ctr) = setup(&fractal_mainnet(), MINT_DEPOSIT);
 
         let m1_1 = mk_metadata(1, Some(START));
         ctr.sbt_mint(vec![(dan(), vec![m1_1])]);
+        let human_proof =  vec![(fractal_mainnet(), vec![1])];
         ctr.admin_flag_accounts(AccountFlag::Verified, [dan()].to_vec(), "memo".to_owned());
-        assert_eq!(ctr.is_human(dan()), vec![(fractal_mainnet(), vec![1])]);
-    }
+        assert_eq!(ctr.is_human(dan()), human_proof.clone());
 
-    #[test]
-    fn is_human_with_blacklisted_account() {
-        let (_, mut ctr) = setup(&fractal_mainnet(), MINT_DEPOSIT);
-
-        let m1_1 = mk_metadata(1, Some(START));
-        ctr.sbt_mint(vec![(dan(), vec![m1_1])]);
         ctr.admin_flag_accounts(AccountFlag::Blacklisted, [dan()].to_vec(), "memo".to_owned());
         assert_eq!(ctr.is_human(dan()), vec![]);
-    }
-
-    #[test]
-    fn is_human_with_unflag_account() {
-        let (_, mut ctr) = setup(&fractal_mainnet(), MINT_DEPOSIT);
-
-        let m1_1 = mk_metadata(1, Some(START));
-        ctr.sbt_mint(vec![(dan(), vec![m1_1])]);
-        ctr.admin_flag_accounts(AccountFlag::Blacklisted, [dan()].to_vec(), "memo".to_owned());
+        
         ctr.admin_unflag_accounts([dan()].to_vec(), "memo".to_owned());
-
-        assert_eq!(ctr.is_human(dan()), vec![(fractal_mainnet(), vec![1])]);
+        assert_eq!(ctr.is_human(dan()), human_proof);
     }
 
     #[test]
