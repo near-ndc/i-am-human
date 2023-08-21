@@ -2771,15 +2771,13 @@ mod tests {
 
     #[test]
     fn admin_set_authorized_flaggers() {
-        let (mut ctx, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+        let (mut ctx, mut ctr) = setup(&admin(), MINT_DEPOSIT);
 
-        ctx.predecessor_account_id = admin();
-        testing_env!(ctx.clone());
         let flaggers = [dan()].to_vec();
         ctr.admin_set_authorized_flaggers(flaggers);
        
         ctx.predecessor_account_id = dan();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.assert_authorized_flagger();
     }
 
