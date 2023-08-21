@@ -2783,12 +2783,23 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "not an admin")]
+    fn admin_set_authorized_flaggers_fail() {
+        let (mut ctx, mut ctr) = setup(&admin(), MINT_DEPOSIT);
+
+        ctx.predecessor_account_id = dan();
+        testing_env!(ctx.clone());
+
+        let flaggers = [dan()].to_vec();
+        ctr.admin_set_authorized_flaggers(flaggers);
+    }
+
+    #[test]
     fn admin_flag_accounts() {
         let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
 
         ctr.admin_flag_accounts(AccountFlag::Blacklisted, [dan(), issuer1()].to_vec(), "memo".to_owned());
         ctr.admin_flag_accounts(AccountFlag::Verified, [issuer2()].to_vec(), "memo".to_owned());
-
 
         assert_eq!(ctr.account_flagged(dan()), Some(AccountFlag::Blacklisted));
         assert_eq!(ctr.account_flagged(issuer1()), Some(AccountFlag::Blacklisted));
@@ -2858,13 +2869,7 @@ mod tests {
         // check only flag event is emitted
         assert_eq!(test_utils::get_logs().len(), 1);
         assert_eq!(test_utils::get_logs(), vec![exp]);
-    }
-
-    #[test]
-    fn admin_unflag_accounts_events() {
-        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
-
-        ctr.admin_flag_accounts(AccountFlag::Blacklisted, [dan()].to_vec(), "memo".to_owned());
+        
         ctr.admin_unflag_accounts([dan()].to_vec(), "memo".to_owned());
         let exp = r#"EVENT_JSON:{"standard":"i_am_human","version":"1.0.0","event":"unflag","data":["dan.near"]}"#;
 
