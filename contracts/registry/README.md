@@ -47,5 +47,6 @@ The IAH Registry supports the following extra queries, which are not part of the
 - `sbt_burn(issuer: AccountId, tokens: Vec<TokenId>, memo: Option<String>)` - every holder can burn some of his tokens.
 
 ## Soul transfer
+
 - The registry enables atomic `soul_transfers`. It Transfers all SBT tokens from one account to another account.
 It will fail if owner is `blacklisted`.
