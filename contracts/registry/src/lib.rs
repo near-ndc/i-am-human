@@ -182,10 +182,11 @@ impl Contract {
     /// continued by a subsequent call.
     /// Emits `Ban` event for the caller at the beginning of the process.
     /// Emits `SoulTransfer` event only once all the tokens from the caller were transferred
-    /// and at least one token was trasnfered (caller had at least 1 sbt).
+    /// and at least one token was transferred (caller had at least 1 sbt).
     /// + User must keep calling the `sbt_soul_transfer` until `true` is returned.
     /// + If caller does not have any tokens, nothing will be transfered, the caller
     ///   will be banned and `Ban` event will be emitted.
+    /// Fails if owner is blacklisted.
     #[payable]
     pub fn sbt_soul_transfer(
         &mut self,
