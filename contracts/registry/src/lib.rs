@@ -171,7 +171,7 @@ impl Contract {
         let mut proof: SBTs = Vec::new();
         for (issuer, classes) in &self.community_verified_set {
             let issuer_proof = self._list_sbts_by_classes(account, issuer, classes);
-            if issuer_proof.is_empty() {
+            if !issuer_proof.is_empty() {
                 proof.push((issuer.clone(), issuer_proof));
             }
         }
