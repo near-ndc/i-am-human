@@ -186,9 +186,9 @@ impl Contract {
     /// + User must keep calling the `sbt_soul_transfer` until `true` is returned.
     /// + If caller does not have any tokens, nothing will be transfered, the caller
     ///   will be banned and `Ban` event will be emitted.
-// Transfers the account flag from the owner to the recipient.
-// Fails if there is a potential conflict between the caller's and recipient's flags,
-// specifically when one account is `Blacklisted` and the other is `Verified`.
+    // Transfers the account flag from the owner to the recipient.
+    // Fails if there is a potential conflict between the caller's and recipient's flags,
+    // specifically when one account is `Blacklisted` and the other is `Verified`.
     #[payable]
     pub fn sbt_soul_transfer(
         &mut self,
@@ -2938,5 +2938,22 @@ mod tests {
         ctx.predecessor_account_id = alice2();
         testing_env!(ctx.clone());
         ctr.sbt_soul_transfer(bob(), None);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "can't transfer soul from a verified account to a blacklisted account"
+    )]
+    fn flagged_soul_transfer2() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        ctr.admin_flag_accounts(AccountFlag::Verified, vec![alice()], "memo".to_owned());
+        ctr.admin_flag_accounts(AccountFlag::Blacklisted, vec![alice2()], "memo".to_owned());
+
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        ctr.sbt_soul_transfer(alice2(), None);
     }
 }
