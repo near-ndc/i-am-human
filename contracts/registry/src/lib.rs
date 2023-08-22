@@ -231,10 +231,11 @@ impl Contract {
     /// continued by a subsequent call.
     /// Emits `Ban` event for the caller at the beginning of the process.
     /// Emits `SoulTransfer` event only once all the tokens from the caller were transferred
-    /// and at least one token was trasnfered (caller had at least 1 sbt).
+    /// and at least one token was transferred (caller had at least 1 sbt).
     /// + User must keep calling the `sbt_soul_transfer` until `true` is returned.
     /// + If caller does not have any tokens, nothing will be transfered, the caller
     ///   will be banned and `Ban` event will be emitted.
+    /// Fails if owner is blacklisted.
     #[payable]
     pub fn sbt_soul_transfer(
         &mut self,
@@ -249,6 +250,7 @@ impl Contract {
     // order to facilitate tests.
     pub(crate) fn _sbt_soul_transfer(&mut self, recipient: AccountId, limit: usize) -> (u32, bool) {
         let owner = env::predecessor_account_id();
+        self.assert_not_blacklisted(&owner);
 
         let (resumed, start) = self.transfer_continuation(&owner, &recipient, true);
 
@@ -649,6 +651,13 @@ impl Contract {
         );
     }
 
+    #[inline]
+    pub(crate) fn assert_not_blacklisted(&self, owner: &AccountId) {
+        if self.flagged.get(owner) == Some(AccountFlag::Blacklisted) {
+            env::panic_str("account blacklisted");
+        }
+    }
+
     /// note: use issuer_id() if you need issuer_id
     pub(crate) fn assert_issuer(&self, issuer: &AccountId) -> IssuerId {
         // TODO: use Result rather than panic
@@ -984,6 +993,7 @@ mod tests {
         ctr.admin_add_sbt_issuer(issuer1());
         ctr.admin_add_sbt_issuer(issuer2());
         ctr.admin_add_sbt_issuer(issuer3());
+        ctr.admin_set_authorized_flaggers([predecessor.clone()].to_vec());
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
@@ -2807,5 +2817,111 @@ mod tests {
             "function_name".to_string(),
             "{}".to_string(),
         );
+    }
+
+    #[test]
+    fn admin_set_authorized_flaggers() {
+        let (mut ctx, mut ctr) = setup(&admin(), MINT_DEPOSIT);
+
+        let flaggers = [dan()].to_vec();
+        ctr.admin_set_authorized_flaggers(flaggers);
+       
+        ctx.predecessor_account_id = dan();
+        testing_env!(ctx);
+        ctr.assert_authorized_flagger();
+    }
+
+    #[test]
+    #[should_panic(expected = "not an admin")]
+    fn admin_set_authorized_flaggers_fail() {
+        let (mut ctx, mut ctr) = setup(&admin(), MINT_DEPOSIT);
+
+        ctx.predecessor_account_id = dan();
+        testing_env!(ctx.clone());
+
+        let flaggers = [dan()].to_vec();
+        ctr.admin_set_authorized_flaggers(flaggers);
+    }
+
+    #[test]
+    fn admin_flag_accounts() {
+        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctr.admin_flag_accounts(AccountFlag::Blacklisted, [dan(), issuer1()].to_vec(), "memo".to_owned());
+        ctr.admin_flag_accounts(AccountFlag::Verified, [issuer2()].to_vec(), "memo".to_owned());
+
+        let exp = r#"EVENT_JSON:{"standard":"i_am_human","version":"1.0.0","event":"flag_blacklisted","data":["dan.near","sbt.n"]}"#;
+        // check only flag event is emitted
+        assert_eq!(test_utils::get_logs().len(), 2);
+        assert_eq!(test_utils::get_logs()[0], exp);
+
+        assert_eq!(ctr.account_flagged(dan()), Some(AccountFlag::Blacklisted));
+        assert_eq!(ctr.account_flagged(issuer1()), Some(AccountFlag::Blacklisted));
+        assert_eq!(ctr.account_flagged(issuer2()), Some(AccountFlag::Verified));
+
+        ctr.admin_unflag_accounts([dan()].to_vec(), "memo".to_owned());
+
+        let exp = r#"EVENT_JSON:{"standard":"i_am_human","version":"1.0.0","event":"unflag","data":["dan.near"]}"#;
+        assert_eq!(test_utils::get_logs().len(), 3);
+        assert_eq!(test_utils::get_logs()[2], exp);
+
+        assert_eq!(ctr.account_flagged(dan()), None);
+        assert_eq!(ctr.account_flagged(issuer1()), Some(AccountFlag::Blacklisted));
+    }
+
+    #[test]
+    #[should_panic(expected = "not authorized")]
+    fn admin_flag_accounts_non_authorized() {
+        let (mut ctx, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctx.predecessor_account_id = dan();
+        testing_env!(ctx.clone());
+        ctr.admin_flag_accounts(AccountFlag::Blacklisted, [dan()].to_vec(), "memo".to_owned());
+    }
+
+    #[test]
+    #[should_panic(expected = "not authorized")]
+    fn admin_unflag_accounts_non_authorized() {
+        let (mut ctx, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctr.admin_flag_accounts(AccountFlag::Blacklisted, [dan(), issuer1()].to_vec(), "memo".to_owned());
+        assert_eq!(ctr.account_flagged(dan()), Some(AccountFlag::Blacklisted));
+
+        ctx.predecessor_account_id = dan();
+        testing_env!(ctx.clone());
+        ctr.admin_unflag_accounts([dan()].to_vec(), "memo".to_owned());
+    }
+
+    #[test]
+    fn is_human_flagged() {
+        let (_, mut ctr) = setup(&fractal_mainnet(), MINT_DEPOSIT);
+
+        let m1_1 = mk_metadata(1, Some(START));
+        ctr.sbt_mint(vec![(dan(), vec![m1_1])]);
+        let human_proof =  vec![(fractal_mainnet(), vec![1])];
+        ctr.admin_flag_accounts(AccountFlag::Verified, [dan()].to_vec(), "memo".to_owned());
+        assert_eq!(ctr.is_human(dan()), human_proof.clone());
+
+        ctr.admin_flag_accounts(AccountFlag::Blacklisted, [dan()].to_vec(), "memo".to_owned());
+        assert_eq!(ctr.is_human(dan()), vec![]);
+        
+        ctr.admin_unflag_accounts([dan()].to_vec(), "memo".to_owned());
+        assert_eq!(ctr.is_human(dan()), human_proof);
+    }
+
+    #[test]
+    #[should_panic(expected = "account blacklisted")]
+    fn black_listed_soul_transfer() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+
+        ctr.admin_flag_accounts(AccountFlag::Blacklisted, [alice()].to_vec(), "memo".to_owned());
+
+        // make soul transfer
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        ctr.sbt_soul_transfer(alice2(), None);
     }
 }
