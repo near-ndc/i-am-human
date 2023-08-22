@@ -186,7 +186,9 @@ impl Contract {
     /// + User must keep calling the `sbt_soul_transfer` until `true` is returned.
     /// + If caller does not have any tokens, nothing will be transfered, the caller
     ///   will be banned and `Ban` event will be emitted.
-    /// Fails if owner is blacklisted.
+    /// Transfers the account flag from the owner to the recipient. Fails if the flag
+    /// between the caller and the recipient will conflict, that is whenever
+    /// one account is `Blacklisted` and the other one is `Verified`.
     #[payable]
     pub fn sbt_soul_transfer(
         &mut self,

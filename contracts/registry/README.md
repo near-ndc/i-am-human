@@ -48,5 +48,4 @@ The IAH Registry supports the following extra queries, which are not part of the
 
 ## Soul transfer
 
-- The registry enables atomic `soul_transfers`. It Transfers all SBT tokens from one account to another account.
-It will fail if owner is `blacklisted`.
+- The registry enables atomic `soul_transfers`. It Transfers all SBT tokens from one account to another account. Moreover it will try to transfer the account flags and will fail if the flag between the caller and the recipient will conflict.
