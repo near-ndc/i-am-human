@@ -151,8 +151,8 @@ impl Contract {
 
     /// Returns tuple of community_verified proof and IAH proof.
     /// If `is_human` is false, then the `is_human` check is skipped and empty list is
-    /// returned. Otherwise `is_human` is assumed to be required and if the IAH check fails,
-    /// the community verification is skipped (so two empty lists are returned).
+    /// returned.
+    /// EXPERIMENTAL: the function API can change in the future.
     pub fn is_community_verified(&self, account: AccountId, is_human: bool) -> (SBTs, SBTs) {
         self._is_community_verified(&account, is_human)
     }
@@ -163,12 +163,7 @@ impl Contract {
             return (vec![], vec![]);
         }
         let iah_proof = if is_human {
-            let iah_proof = self._is_human(account, true);
-            // iah is required, but user is not human. Early return.
-            if iah_proof.is_empty() {
-                return (vec![], iah_proof);
-            }
-            iah_proof
+            self._is_human(account, true)
         } else {
             vec![]
         };
@@ -177,9 +172,8 @@ impl Contract {
         for (issuer, classes) in &self.community_verified_set {
             let issuer_proof = self._list_sbts_by_classes(account, issuer, classes);
             if issuer_proof.is_empty() {
-                return (vec![], iah_proof);
+                proof.push((issuer.clone(), issuer_proof));
             }
-            proof.push((issuer.clone(), issuer_proof));
         }
         (proof, iah_proof)
     }
