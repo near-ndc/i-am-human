@@ -569,6 +569,7 @@ impl Contract {
     ) {
         self.assert_authorized_flagger();
         for a in &accounts {
+            self.assert_not_banned(&a);
             self.flagged.insert(a, &flag);
         }
         events::emit_iah_flag_accounts(flag, accounts);
@@ -2856,9 +2857,18 @@ mod tests {
 
         ctx.predecessor_account_id = dan();
         testing_env!(ctx.clone());
+        ctr.admin_flag_accounts(AccountFlag::Blacklisted, vec![dan()], "memo".to_owned());
+    }
+
+    #[test]
+    #[should_panic(expected = "account bob.near is banned")]
+    fn admin_flag_accounts_banned() {
+        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctr.banlist.insert(&bob());
         ctr.admin_flag_accounts(
             AccountFlag::Blacklisted,
-            [dan()].to_vec(),
+            vec![dan(), bob()],
             "memo".to_owned(),
         );
     }
@@ -2870,14 +2880,14 @@ mod tests {
 
         ctr.admin_flag_accounts(
             AccountFlag::Blacklisted,
-            [dan(), issuer1()].to_vec(),
+            vec![dan(), issuer1()],
             "memo".to_owned(),
         );
         assert_eq!(ctr.account_flagged(dan()), Some(AccountFlag::Blacklisted));
 
         ctx.predecessor_account_id = dan();
         testing_env!(ctx.clone());
-        ctr.admin_unflag_accounts([dan()].to_vec(), "memo".to_owned());
+        ctr.admin_unflag_accounts(vec![dan()], "memo".to_owned());
     }
 
     #[test]
