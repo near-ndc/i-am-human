@@ -22,11 +22,12 @@ pub struct OldState {
 impl Contract {
     #[private]
     #[init(ignore_state)]
-    pub fn migrate(authorized_flaggers: Vec<AccountId>) -> Self {
+    pub fn migrate(community_verified_set: ClassSet, authorized_flaggers: Vec<AccountId>) -> Self {
         let old_state: OldState = env::state_read().expect("failed");
         // new field in the smart contract :
         // + flagged: LookupMap<AccountId, AccountFlag>
         // + admins_flagged: LazyOption<Vec<AccountId>>
+        // + community_verified_set
 
         Self {
             authority: old_state.authority.clone(),
@@ -47,6 +48,7 @@ impl Contract {
                 StorageKey::AdminsFlagged,
                 Some(&authorized_flaggers),
             ),
+            community_verified_set,
         }
     }
 }

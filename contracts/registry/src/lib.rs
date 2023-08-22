@@ -49,9 +49,12 @@ pub struct Contract {
     pub(crate) next_token_ids: LookupMap<IssuerId, TokenId>,
     pub(crate) next_issuer_id: IssuerId,
 
-    /// tuple of (required issuer for IAH, [required list of classes for IAH])
-    /// represents mandatory requirements to be verified as human by using is_human and is_human_call methods.
+    /// tuple of (required issuer, [required list of classes]) that represents mandatory
+    /// requirements to be verified as human for `is_human` and `is_human_call` methods.
     pub(crate) iah_sbts: (AccountId, Vec<ClassId>),
+    /// Class Set that that represents mandatory requirements to be community verified for using
+    /// `is_community_verified` and `is_community_verified_call` methods.
+    pub(crate) community_verified_set: ClassSet,
 }
 
 // Implement the contract structure
@@ -65,6 +68,7 @@ impl Contract {
         authority: AccountId,
         iah_issuer: AccountId,
         iah_classes: Vec<ClassId>,
+        community_verified_set: ClassSet,
         authorized_flaggers: Vec<AccountId>,
     ) -> Self {
         require!(
@@ -90,6 +94,7 @@ impl Contract {
                 StorageKey::AdminsFlagged,
                 Some(&authorized_flaggers),
             ),
+            community_verified_set,
         };
         contract._add_sbt_issuer(&iah_issuer);
         contract
@@ -109,6 +114,11 @@ impl Contract {
         vec![self.iah_sbts.clone()]
     }
 
+    /// Returns Community Verified class set.
+    pub fn community_verified_class_set(&self) -> ClassSet {
+        self.community_verified_set.clone()
+    }
+
     #[inline]
     fn _is_banned(&self, account: &AccountId) -> bool {
         self.banlist.contains(account)
@@ -123,35 +133,80 @@ impl Contract {
     /// Otherwise returns list of SBTs (identifed by issuer and list of token IDs) proving
     /// the `account` humanity.
     pub fn is_human(&self, account: AccountId) -> SBTs {
-        self._is_human(&account)
+        self._is_human(&account, false)
     }
 
-    fn _is_human(&self, account: &AccountId) -> SBTs {
-        if self._is_banned(&account) {
-            return vec![];
+    fn _is_human(&self, account: &AccountId, no_skip_ban: bool) -> SBTs {
+        if no_skip_ban {
+            if self.flagged.get(&account) == Some(AccountFlag::Blacklisted)
+                || self._is_banned(&account)
+            {
+                return vec![];
+            }
         }
-        if let Some(AccountFlag::Blacklisted) = self.flagged.get(&account) {
-            return vec![];
+
+        let proof = self._list_sbts_by_classes(account, &self.iah_sbts.0, &self.iah_sbts.1);
+        vec![(self.iah_sbts.0.clone(), proof)]
+    }
+
+    /// Returns tuple of community_verified proof and IAH proof.
+    /// If `is_human` is false, then the `is_human` check is skipped and empty list is
+    /// returned. Otherwise `is_human` is assumed to be required and if the IAH check fails,
+    /// the community verification is skipped (so two empty lists are returned).
+    pub fn is_community_verified(&self, account: AccountId, is_human: bool) -> (SBTs, SBTs) {
+        self._is_community_verified(&account, is_human)
+    }
+
+    fn _is_community_verified(&self, account: &AccountId, is_human: bool) -> (SBTs, SBTs) {
+        if self.flagged.get(&account) == Some(AccountFlag::Blacklisted) || self._is_banned(&account)
+        {
+            return (vec![], vec![]);
         }
-        let issuer = Some(self.iah_sbts.0.clone());
-        let mut proof: Vec<TokenId> = Vec::new();
-        // check if user has tokens from all classes
-        for cls in &self.iah_sbts.1 {
+        let iah_proof = if is_human {
+            let iah_proof = self._is_human(account, true);
+            // iah is required, but user is not human. Early return.
+            if iah_proof.is_empty() {
+                return (vec![], iah_proof);
+            }
+            iah_proof
+        } else {
+            vec![]
+        };
+
+        let mut proof: SBTs = Vec::new();
+        for (issuer, classes) in &self.community_verified_set {
+            let issuer_proof = self._list_sbts_by_classes(account, issuer, classes);
+            if issuer_proof.is_empty() {
+                return (vec![], iah_proof);
+            }
+            proof.push((issuer.clone(), issuer_proof));
+        }
+        (proof, iah_proof)
+    }
+
+    fn _list_sbts_by_classes(
+        &self,
+        acc: &AccountId,
+        issuer: &AccountId,
+        cls: &Vec<ClassId>,
+    ) -> Vec<TokenId> {
+        let mut cls_sbts: Vec<TokenId> = Vec::new();
+        for c in cls {
             let tokens = self.sbt_tokens_by_owner(
-                account.clone(),
-                issuer.clone(),
-                Some(*cls),
+                acc.clone(),
+                Some(issuer.clone()),
+                Some(*c),
                 Some(1),
                 None,
             );
             // we need to check class, because the query can return a "next" token if a user
             // doesn't have the token of requested class.
-            if !(tokens.len() > 0 && tokens[0].1[0].metadata.class == *cls) {
+            if !(tokens.len() > 0 && tokens[0].1[0].metadata.class == *c) {
                 return vec![];
             }
-            proof.push(tokens[0].1[0].token)
+            cls_sbts.push(tokens[0].1[0].token)
         }
-        vec![(self.iah_sbts.0.clone(), proof)]
+        cls_sbts
     }
 
     //
@@ -168,7 +223,7 @@ impl Contract {
         let issuer = &env::predecessor_account_id();
         for ts in &token_spec {
             require!(
-                !self._is_human(&ts.0).is_empty(),
+                !self._is_human(&ts.0, false).is_empty(),
                 format!("{} is not a human", &ts.0)
             );
         }
@@ -291,7 +346,7 @@ impl Contract {
     #[payable]
     pub fn is_human_call(&mut self, ctr: AccountId, function: String, payload: String) -> Promise {
         let caller = env::predecessor_account_id();
-        let iah_proof = self._is_human(&caller);
+        let iah_proof = self._is_human(&caller, false);
         require!(!iah_proof.is_empty(), "caller not a human");
 
         let args = IsHumanCallbackArgs {
