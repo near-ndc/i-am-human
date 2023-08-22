@@ -2801,9 +2801,23 @@ mod tests {
         ctr.admin_flag_accounts(AccountFlag::Blacklisted, [dan(), issuer1()].to_vec(), "memo".to_owned());
         ctr.admin_flag_accounts(AccountFlag::Verified, [issuer2()].to_vec(), "memo".to_owned());
 
+        let exp = r#"EVENT_JSON:{"standard":"i_am_human","version":"1.0.0","event":"flag_blacklisted","data":["dan.near","sbt.n"]}"#;
+        // check only flag event is emitted
+        assert_eq!(test_utils::get_logs().len(), 2);
+        assert_eq!(test_utils::get_logs()[0], exp);
+
         assert_eq!(ctr.account_flagged(dan()), Some(AccountFlag::Blacklisted));
         assert_eq!(ctr.account_flagged(issuer1()), Some(AccountFlag::Blacklisted));
         assert_eq!(ctr.account_flagged(issuer2()), Some(AccountFlag::Verified));
+
+        ctr.admin_unflag_accounts([dan()].to_vec(), "memo".to_owned());
+
+        let exp = r#"EVENT_JSON:{"standard":"i_am_human","version":"1.0.0","event":"unflag","data":["dan.near"]}"#;
+        assert_eq!(test_utils::get_logs().len(), 3);
+        assert_eq!(test_utils::get_logs()[2], exp);
+
+        assert_eq!(ctr.account_flagged(dan()), None);
+        assert_eq!(ctr.account_flagged(issuer1()), Some(AccountFlag::Blacklisted));
     }
 
     #[test]
@@ -2814,19 +2828,6 @@ mod tests {
         ctx.predecessor_account_id = dan();
         testing_env!(ctx.clone());
         ctr.admin_flag_accounts(AccountFlag::Blacklisted, [dan()].to_vec(), "memo".to_owned());
-    }
-
-    #[test]
-    fn admin_unflag_accounts() {
-        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
-
-        ctr.admin_flag_accounts(AccountFlag::Blacklisted, [dan(), issuer1()].to_vec(), "memo".to_owned());
-        assert_eq!(ctr.account_flagged(dan()), Some(AccountFlag::Blacklisted));
-
-        ctr.admin_unflag_accounts([dan()].to_vec(), "memo".to_owned());
-
-        assert_eq!(ctr.account_flagged(dan()), None);
-        assert_eq!(ctr.account_flagged(issuer1()), Some(AccountFlag::Blacklisted));       
     }
 
     #[test]
@@ -2857,24 +2858,6 @@ mod tests {
         
         ctr.admin_unflag_accounts([dan()].to_vec(), "memo".to_owned());
         assert_eq!(ctr.is_human(dan()), human_proof);
-    }
-
-    #[test]
-    fn admin_flag_accounts_events() {
-        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
-
-        ctr.admin_flag_accounts(AccountFlag::Blacklisted, [dan()].to_vec(), "memo".to_owned());
-        let exp = r#"EVENT_JSON:{"standard":"i_am_human","version":"1.0.0","event":"flag_blacklisted","data":["dan.near"]}"#;
-
-        // check only flag event is emitted
-        assert_eq!(test_utils::get_logs().len(), 1);
-        assert_eq!(test_utils::get_logs(), vec![exp]);
-        
-        ctr.admin_unflag_accounts([dan()].to_vec(), "memo".to_owned());
-        let exp = r#"EVENT_JSON:{"standard":"i_am_human","version":"1.0.0","event":"unflag","data":["dan.near"]}"#;
-
-        assert_eq!(test_utils::get_logs().len(), 2);
-        assert_eq!(test_utils::get_logs()[1], exp);
     }
 
     #[test]
