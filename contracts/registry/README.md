@@ -48,4 +48,4 @@ The IAH Registry supports the following extra queries, which are not part of the
 
 ## Soul transfer
 
-- The registry enables atomic `soul_transfers`. It Transfers all SBT tokens from one account to another account. Moreover it will try to transfer the account flags and will fail if the flag between the caller and the recipient will conflict.
+- The registry enables atomic `soul_transfers`. It Transfers all SBT tokens from one account to another account. Additionally, it attempts to transfer the associated account flags. If a conflict arises between the caller's and recipient's flags, the transfer will fail.
