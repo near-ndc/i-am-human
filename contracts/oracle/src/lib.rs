@@ -1,4 +1,3 @@
-use ed25519_dalek::{PublicKey, Signature, Verifier, PUBLIC_KEY_LENGTH};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, UnorderedSet};
 use near_sdk::serde::Serialize;
@@ -28,8 +27,8 @@ pub const CLASS_FV_SBT: ClassId = 1;
 pub const CLASS_KYC_SBT: ClassId = 2;
 
 // Total storage deposit cost without KYC
-pub const MINT_TOTAL_COST: Balance = MINT_COST + MILI_NEAR;
-pub const MINT_TOTAL_COST_WITH_KYC: Balance = 2 * MINT_COST + MILI_NEAR;
+pub const MINT_TOTAL_COST: Balance = mint_deposit(1);
+pub const MINT_TOTAL_COST_WITH_KYC: Balance = mint_deposit(2);
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -45,7 +44,7 @@ pub struct Contract {
     /// SBT ttl until expire in miliseconds (expire=issue_time+sbt_ttl)
     pub sbt_ttl_ms: u64,
     /// ed25519 pub key (could be same as a NEAR pub key)
-    pub authority_pubkey: [u8; PUBLIC_KEY_LENGTH], // Vec<u8>,
+    pub authority_pubkey: [u8; PUBLIC_KEY_LEN], // Vec<u8>,
     pub used_identities: UnorderedSet<Vec<u8>>,
 
     /// used for backend key rotation
@@ -90,18 +89,18 @@ impl Contract {
      * QUERIES
      **********/
 
-    /// Checks if the given id was already used to mint an sbt
-    pub fn is_used_identity(&self, external_id: String) -> bool {
-        let normalised_id = normalize_external_id(external_id).expect("failed to normalize id");
-        self.used_identities.contains(&normalised_id)
-    }
-
     #[inline]
-    pub fn get_required_sbt_mint_deposit(is_verified_kyc: bool) -> Balance {
+    pub fn required_sbt_mint_deposit(is_verified_kyc: bool) -> Balance {
         if is_verified_kyc {
             return MINT_TOTAL_COST_WITH_KYC;
         };
         MINT_TOTAL_COST
+    }
+
+    /// Checks if the given id was already used to mint an sbt
+    pub fn is_used_identity(&self, external_id: String) -> bool {
+        let normalised_id = normalize_external_id(external_id).expect("failed to normalize id");
+        self.used_identities.contains(&normalised_id)
     }
 
     // all SBT queries should be done through registry
@@ -111,7 +110,8 @@ impl Contract {
      **********/
 
     /// Mints a new SBT for the transaction signer.
-    /// @claim_b64: standard base64 borsh serialized Claim (same bytes as used for the claim signature)
+    /// @claim_b64: standard base64 borsh serialized Claim (same bytes as used for the claim signature).
+    /// @claim_sig: standard base64 serialized ed25519 signature.
     /// If `metadata.expires_at` is None then we set it to ` now+self.ttl`.
     /// Panics if `metadata.expires_at > now+self.ttl`.
     // TODO: update result to return TokenId
@@ -130,27 +130,24 @@ impl Contract {
             ));
         }
 
-        let sig = b64_decode("claim_sig", claim_sig)?;
         let claim_bytes = b64_decode("claim_b64", claim_b64)?;
-        // let claim = Claim::deserialize(&mut &claim_bytes[..])
         let claim = Claim::try_from_slice(&claim_bytes)
             .map_err(|_| CtrError::Borsh("claim".to_string()))?;
+        let signature = b64_decode("claim_sig", claim_sig)?;
+        verify_claim(&signature, &claim_bytes, &self.authority_pubkey)?;
 
-        if claim.verified_kyc {
-            require!(
-                env::attached_deposit() == MINT_TOTAL_COST_WITH_KYC,
-                "Requires attached deposit of exactly 0.015 NEAR"
-            );
-        } else {
-            require!(
-                env::attached_deposit() == MINT_TOTAL_COST,
-                "Requires attached deposit of exactly 0.008 NEAR"
-            );
-        }
+        let storage_deposit = Self::required_sbt_mint_deposit(claim.verified_kyc);
+        require!(
+            env::attached_deposit() >= storage_deposit,
+            format!(
+                "Requires attached deposit at least {} yoctoNEAR",
+                storage_deposit
+            )
+        );
+        let num_tokens = if claim.verified_kyc { 2 } else { 1 };
 
-        verify_claim(&self.authority_pubkey, claim_bytes, sig)?;
-
-        let now = env::block_timestamp() / SECOND;
+        let now_ms = env::block_timestamp_ms();
+        let now = now_ms / 1000;
         if claim.timestamp > now {
             return Err(CtrError::BadRequest(
                 "claim.timestamp in the future".to_string(),
@@ -171,7 +168,6 @@ impl Contract {
             return Err(CtrError::DuplicatedID("external_id".to_string()));
         }
 
-        let now_ms = env::block_timestamp_ms();
         let mut tokens_metadata: Vec<TokenMetadata> = Vec::new();
         tokens_metadata.push(TokenMetadata {
             class: CLASS_FV_SBT,
@@ -198,8 +194,8 @@ impl Contract {
         }
 
         let result = ext_registry::ext(self.registry.clone())
-            .with_attached_deposit(Self::get_required_sbt_mint_deposit(claim.verified_kyc))
-            .with_static_gas(MINT_GAS)
+            .with_attached_deposit(storage_deposit)
+            .with_static_gas(calculate_mint_gas(num_tokens))
             .sbt_mint(vec![(claim.claimer, tokens_metadata)])
             .then(
                 Self::ext(env::current_account_id())
@@ -255,7 +251,7 @@ impl Contract {
 
     /* for testing the callback
         #[payable]
-        pub fn admin_mint(&mut self, receipient: AccountId, external_id: String) -> Promise {
+        pub fn admin_mint(&mut self, recipient: AccountId, external_id: String) -> Promise {
             let external_id = normalize_external_id(external_id).ok().unwrap();
             let now = env::block_timestamp_ms();
             let metadata = TokenMetadata {
@@ -268,7 +264,7 @@ impl Contract {
             ext_registry::ext(self.registry.clone())
                 .with_attached_deposit(MINT_COST)
                 .with_static_gas(MINT_GAS)
-                .sbt_mint(vec![(receipient, vec![metadata])])
+                .sbt_mint(vec![(recipient, vec![metadata])])
                 .then(
                     Self::ext(env::current_account_id())
                         .with_static_gas(Gas::ONE_TERA * 3)
@@ -300,20 +296,6 @@ impl Contract {
     // - fn sbt_renew
 }
 
-fn verify_claim(
-    pubkey: &[u8; PUBLIC_KEY_LENGTH],
-    claim: Vec<u8>,
-    claim_sig: Vec<u8>,
-) -> Result<(), CtrError> {
-    let pk = PublicKey::from_bytes(pubkey).unwrap();
-    let sig = match Signature::from_bytes(&claim_sig) {
-        Ok(sig) => sig,
-        Err(_) => return Err(CtrError::Signature("malformed signature".to_string())),
-    };
-    pk.verify(&claim, &sig)
-        .map_err(|_| CtrError::Signature("invalid signature".to_string()))
-}
-
 #[near_bindgen]
 impl SBTContract for Contract {
     fn sbt_metadata(&self) -> ContractMetadata {
@@ -335,24 +317,13 @@ pub enum CallbackResult<T, E> {
 mod checks;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
-mod tests {
-    extern crate ed25519_dalek;
-    extern crate rand;
-
+pub mod tests {
     use crate::*;
+    use ed25519_dalek::Keypair;
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::{testing_env, VMContext};
 
-    use ed25519_dalek::{Keypair, Signer};
-    use rand::rngs::OsRng;
-
-    fn b64_encode(data: Vec<u8>) -> String {
-        near_sdk::base64::encode(data)
-    }
-
-    fn acc_claimer() -> AccountId {
-        "user1.near".parse().unwrap()
-    }
+    use crate::util::tests::{acc_claimer, b64_encode, gen_key, mk_claim_sign};
 
     fn acc_u1() -> AccountId {
         "user2.near".parse().unwrap()
@@ -390,13 +361,13 @@ mod tests {
         let ctx = VMContextBuilder::new()
             .signer_account_id(signer.clone())
             .predecessor_account_id(predecessor.clone())
-            .attached_deposit(MINT_TOTAL_COST)
+            .attached_deposit(MINT_TOTAL_COST * 5)
             .block_timestamp(start())
+            .current_account_id("oracle.near".parse().unwrap())
             .is_view(false)
             .build();
 
-        let mut csprng = OsRng {};
-        let keypair: Keypair = Keypair::generate(&mut csprng);
+        let keypair = gen_key();
         let ctr = Contract::new(
             b64_encode(keypair.public.to_bytes().to_vec()),
             ContractMetadata {
@@ -415,35 +386,6 @@ mod tests {
         testing_env!(ctx.clone());
 
         return (ctx, ctr, keypair);
-    }
-
-    /// @timestamp: in seconds
-    fn mk_claim(timestamp: u64, external_id: &str, is_verified_kyc: bool) -> Claim {
-        Claim {
-            claimer: acc_claimer(),
-            external_id: external_id.to_string(),
-            timestamp,
-            verified_kyc: is_verified_kyc,
-        }
-    }
-
-    // returns b64 serialized claim and signature
-    fn sign_claim(c: &Claim, k: &Keypair) -> (String, String) {
-        let c_bz = c.try_to_vec().unwrap();
-        let sig = k.sign(&c_bz);
-        let sig_bz = sig.to_bytes();
-        (b64_encode(c_bz), b64_encode(sig_bz.to_vec()))
-    }
-
-    fn mk_claim_sign(
-        timestamp: u64,
-        external_id: &str,
-        k: &Keypair,
-        is_verified_kyc: bool,
-    ) -> (Claim, String, String) {
-        let c = mk_claim(timestamp, external_id, is_verified_kyc);
-        let (c_str, sig) = sign_claim(&c, &k);
-        return (c, c_str, sig);
     }
 
     fn assert_bad_request(resp: Result<Promise, CtrError>, expected_msg: &str) {
@@ -472,7 +414,9 @@ mod tests {
     */
 
     #[test]
-    #[should_panic(expected = "Requires attached deposit of exactly 0.008 NEAR")]
+    #[should_panic(
+        expected = "Requires attached deposit at least 10000000000000000000000 yoctoNEAR"
+    )]
     fn mint_not_enough_storage_deposit() {
         let signer = acc_claimer();
         let (mut ctx, mut ctr, k) = setup(&signer, &acc_u1());
@@ -487,7 +431,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Requires attached deposit of exactly 0.015 NEAR")]
+    #[should_panic(
+        expected = "Requires attached deposit at least 19000000000000000000000 yoctoNEAR"
+    )]
     fn mint_with_kyc_not_enough_storage_deposit() {
         let signer = acc_claimer();
         let (mut ctx, mut ctr, k) = setup(&signer, &acc_u1());
@@ -503,7 +449,7 @@ mod tests {
 
     #[test]
     fn mint_no_root_account() {
-        let signer: AccountId = "user1".parse().unwrap();
+        let signer: AccountId = "user1.near.org".parse().unwrap();
         let predecessor: AccountId = "some.other".parse().unwrap();
         let (mut ctx, mut ctr, k) = setup(&signer, &predecessor);
 
@@ -527,13 +473,6 @@ mod tests {
             "only root and implicit accounts are allowed to get SBT",
         );
 
-        ctx.signer_account_id = "a123".parse().unwrap();
-        testing_env!(ctx.clone());
-        assert_bad_request(
-            ctr.sbt_mint(c_str.clone(), sig.clone(), None),
-            "only root and implicit accounts are allowed to get SBT",
-        );
-
         ctx.signer_account_id = acc_bad_implicit();
         testing_env!(ctx.clone());
         assert_bad_request(
@@ -547,6 +486,34 @@ mod tests {
             ctr.sbt_mint(c_str.clone(), sig.clone(), None),
             "claimer is not the transaction signer",
         );
+    }
+
+    #[test]
+    fn claim_sig_and_sbt_mint() {
+        let signer = "myaccount123.testnet".parse().unwrap();
+        let (mut ctx, mut ctr, _) = setup(&signer, &signer);
+
+        // test case based on
+        // https://explorer.testnet.near.org/transactions/GobWuBgA9HLsUk4UTtVqrSiyy24P6B2cnywLfeh9mdtv
+
+        ctr.claim_ttl = 100;
+        ctx.block_timestamp = 1689675340 * SECOND;
+        ctr.authority_pubkey =
+            pubkey_from_b64("zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E=".to_owned());
+        testing_env!(ctx.clone());
+
+        let claim_b64 = "FAAAAG15YWNjb3VudDEyMy50ZXN0bmV0IAAAAGFmZWU5MmYwNzEyMjQ2NGU4MzEzYWFlMjI1Y2U1YTNmSGa2ZAAAAAAA".to_owned();
+        let claim_sig_b64 = "38X2TnWgc6moc4zReAJFQ7BjtOUlWZ+i3YQl9gSMOXwnm5gupfHV/YGmGPOek6SSkotT586d4zTTT2U8Qh3GBw==".to_owned();
+
+        let claim_bytes = b64_decode("claim_b64", claim_b64.clone()).unwrap();
+        let signature = b64_decode("sig_b64", claim_sig_b64.clone()).unwrap();
+        verify_claim(&signature, &claim_bytes, &ctr.authority_pubkey).unwrap();
+
+        let r = ctr.sbt_mint(claim_b64, claim_sig_b64, None);
+        match r {
+            Ok(_) => (),
+            Err(error) => panic!("expected BadRequest, got: {:?}", error),
+        }
     }
 
     #[test]
@@ -610,44 +577,5 @@ mod tests {
             Err(error) => panic!("expected DuplicatedID, got: {:?}", error),
             Ok(_) => panic!("expected DuplicatedID, got: Ok"),
         }
-    }
-
-    #[test]
-    fn test_pubkey() {
-        let pk_bytes = pubkey_from_b64("kSj7W/TdN9RGLgdJA8ac7i/WdQdm2lwQ1IPGlO1L3xc=".to_string());
-        assert_ne!(pk_bytes[0], 0);
-    }
-
-    #[test]
-    fn test_pubkey_sig() {
-        let mut csprng = OsRng {};
-        let k = Keypair::generate(&mut csprng);
-        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x12", &k, false);
-        let claim_bytes = b64_decode("claim_b64", c_str).unwrap();
-        let res = verify_claim(
-            &k.public.to_bytes(),
-            claim_bytes,
-            b64_decode("sig", sig).unwrap(),
-        );
-        assert!(res.is_ok(), "verification result: {:?}", res);
-    }
-
-    #[test]
-    fn claim_serialization() {
-        let c = mk_claim(1677621259142, "some_111#$!", false);
-        let claim_bz = c.try_to_vec().unwrap();
-        let claim_str = b64_encode(claim_bz);
-        let claim2 = checks::tests::deserialize_claim(&claim_str);
-        assert_eq!(c, claim2, "serialization should work");
-    }
-
-    #[allow(dead_code)]
-    // #[test]
-    fn sig_deserialization_check() {
-        let sig_b64 =
-            "o8MGudK9OrdNKVCMhjF7rEv9LangB+PdjxuQ0kgglCskZX7Al4JPrwf7tRlT252kiNpJaGPURgAvAA==";
-        let sig_bz = b64_decode("sig", sig_b64.to_string()).unwrap();
-        println!("sig len: {}", sig_bz.len());
-        Signature::from_bytes(&sig_bz).unwrap();
     }
 }

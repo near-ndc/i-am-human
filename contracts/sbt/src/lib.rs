@@ -32,6 +32,15 @@ pub type TokenId = u64;
 /// Minimum valid `ClassId` must be 1.
 pub type ClassId = u64;
 
+/// Collection of SBTs serialized as list of pairs: (Issuer Account, Vector of Token IDs).
+/// This is used for code size and processing efficiency.
+pub type SBTs = Vec<(AccountId, Vec<TokenId>)>;
+
+/// List of pairs: (Issuer Account, Vector of Class IDs).
+/// This is used to create class sets used to specify required token classes,
+/// like set of tokens required to be verified as IAH
+pub type ClassSet = Vec<(AccountId, Vec<ClassId>)>;
+
 /// SBTContract is the minimum required interface to be implemented by issuer.
 /// Other methods, such as a mint function, which requests the registry to proceed with token
 /// minting, is specific to an Issuer implementation (similarly, mint is not part of the FT
@@ -46,8 +55,16 @@ pub trait SBTRegistry {
      * QUERIES
      **********/
 
-    /// Get the information about specific token ID issued by `issuer` SBT contract.
+    /// Get the information about specific token ID issued by the `issuer` SBT contract.
     fn sbt(&self, issuer: AccountId, token: TokenId) -> Option<Token>;
+
+    /// Get the information about list of token IDs issued by the SBT `issuer`.
+    /// If token ID is not found, `None` is set in the specific return index.
+    fn sbts(&self, issuer: AccountId, token: Vec<TokenId>) -> Vec<Option<Token>>;
+
+    /// Query class ID for each token ID issued by the SBT `issuer`.
+    /// If token ID is not found, `None` is set in the specific return index.
+    fn sbt_classes(&self, issuer: AccountId, tokens: Vec<TokenId>) -> Vec<Option<ClassId>>;
 
     /// Returns total amount of tokens issued by `issuer` SBT contract, including expired
     /// tokens. Depending on the implementation, if a revoke removes a token, then it should
@@ -154,4 +171,7 @@ trait ExtRegistry {
     // queries
 
     fn is_human(&self, account: AccountId) -> Vec<(AccountId, Vec<TokenId>)>;
+    fn sbt(&self, issuer: AccountId, token: TokenId) -> Option<Token>;
+    fn sbts(&self, issuer: AccountId, tokens: Vec<TokenId>) -> Vec<Option<Token>>;
+    fn sbt_classes(&self, issuer: AccountId, tokens: Vec<TokenId>) -> Vec<Option<ClassId>>;
 }

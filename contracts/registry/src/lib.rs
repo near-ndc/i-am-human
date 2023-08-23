@@ -1,17 +1,16 @@
 use std::collections::{HashMap, HashSet};
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LookupMap, TreeMap, UnorderedMap, UnorderedSet};
-use near_sdk::json_types::Base64VecU8;
-use near_sdk::{
-    env, near_bindgen, require, AccountId, Gas, PanicOnDefault, Promise, PromiseOrValue,
-};
+use near_sdk::collections::{LazyOption, LookupMap, TreeMap, UnorderedMap, UnorderedSet};
+use near_sdk::serde_json::value::RawValue;
+use near_sdk::{env, near_bindgen, require, serde_json, AccountId, Gas, PanicOnDefault, Promise};
 
 use cost::MILI_NEAR;
 use sbt::*;
 
 use crate::storage::*;
 
+pub mod events;
 pub mod migrate;
 pub mod registry;
 pub mod storage;
@@ -27,10 +26,16 @@ pub struct Contract {
     /// registry of approved SBT contracts to issue tokens
     pub sbt_issuers: UnorderedMap<AccountId, IssuerId>,
     pub issuer_id_map: LookupMap<IssuerId, AccountId>, // reverse index
-    /// registry of blacklisted accounts by issuer
-    pub(crate) banlist: UnorderedSet<AccountId>,
     /// store ongoing soul transfers by "old owner"
     pub(crate) ongoing_soul_tx: LookupMap<AccountId, IssuerTokenId>,
+
+    /// registry of banned accounts created through `Nep393Event::Ban` (eg: soul transfer).
+    pub(crate) banlist: UnorderedSet<AccountId>,
+    /// Map of accounts that are marked by a committee to have a special status (eg: blacklist,
+    /// whitelist).
+    pub(crate) flagged: LookupMap<AccountId, AccountFlag>,
+    /// list of admins that can manage flagged accounts map.
+    pub(crate) authorized_flaggers: LazyOption<Vec<AccountId>>,
 
     pub(crate) supply_by_owner: LookupMap<(AccountId, IssuerId), u64>,
     pub(crate) supply_by_class: LookupMap<(IssuerId, ClassId), u64>,
@@ -44,8 +49,8 @@ pub struct Contract {
     pub(crate) next_token_ids: LookupMap<IssuerId, TokenId>,
     pub(crate) next_issuer_id: IssuerId,
 
-    /// tuple of (required issuer for IAH, [required list of classes for IAH])
-    /// represents mandatory requirements to be verified as human by using is_human and is_human_call methods.
+    /// tuple of (required issuer, [required list of classes]) that represents mandatory
+    /// requirements to be verified as human for `is_human` and `is_human_call` methods.
     pub(crate) iah_sbts: (AccountId, Vec<ClassId>),
 }
 
@@ -56,7 +61,12 @@ impl Contract {
     /// `iah_issuer`: required issuer for is_human check.
     /// `iah_classes`: required list of classes for is_human check.
     #[init]
-    pub fn new(authority: AccountId, iah_issuer: AccountId, iah_classes: Vec<ClassId>) -> Self {
+    pub fn new(
+        authority: AccountId,
+        iah_issuer: AccountId,
+        iah_classes: Vec<ClassId>,
+        authorized_flaggers: Vec<AccountId>,
+    ) -> Self {
         require!(
             iah_classes.len() > 0,
             "iah_classes must be a non empty list"
@@ -75,6 +85,11 @@ impl Contract {
             next_issuer_id: 1,
             ongoing_soul_tx: LookupMap::new(StorageKey::OngoingSoultTx),
             iah_sbts: (iah_issuer.clone(), iah_classes),
+            flagged: LookupMap::new(StorageKey::Flagged),
+            authorized_flaggers: LazyOption::new(
+                StorageKey::AdminsFlagged,
+                Some(&authorized_flaggers),
+            ),
         };
         contract._add_sbt_issuer(&iah_issuer);
         contract
@@ -99,11 +114,21 @@ impl Contract {
         self.banlist.contains(account)
     }
 
-    /// Returns empty list if the account is NOT a human.
+    /// Returns account status if it was flagged. Returns None if the account was not flagged.
+    pub fn account_flagged(&self, account: AccountId) -> Option<AccountFlag> {
+        self.flagged.get(&account)
+    }
+
+    /// Returns empty list if the account is NOT a human according to the IAH protocol.
     /// Otherwise returns list of SBTs (identifed by issuer and list of token IDs) proving
     /// the `account` humanity.
     pub fn is_human(&self, account: AccountId) -> SBTs {
-        if self._is_banned(&account) {
+        self._is_human(&account)
+    }
+
+    fn _is_human(&self, account: &AccountId) -> SBTs {
+        if self.flagged.get(&account) == Some(AccountFlag::Blacklisted) || self._is_banned(&account)
+        {
             return vec![];
         }
         let issuer = Some(self.iah_sbts.0.clone());
@@ -141,8 +166,8 @@ impl Contract {
         let issuer = &env::predecessor_account_id();
         for ts in &token_spec {
             require!(
-                !self.is_human(ts.0.clone()).is_empty(),
-                format!("{} is not a human", ts.0.clone())
+                !self._is_human(&ts.0).is_empty(),
+                format!("{} is not a human", &ts.0)
             );
         }
         self._sbt_mint(issuer, token_spec)
@@ -155,10 +180,13 @@ impl Contract {
     /// continued by a subsequent call.
     /// Emits `Ban` event for the caller at the beginning of the process.
     /// Emits `SoulTransfer` event only once all the tokens from the caller were transferred
-    /// and at least one token was trasnfered (caller had at least 1 sbt).
+    /// and at least one token was transferred (caller had at least 1 sbt).
     /// + User must keep calling the `sbt_soul_transfer` until `true` is returned.
     /// + If caller does not have any tokens, nothing will be transfered, the caller
     ///   will be banned and `Ban` event will be emitted.
+    // Transfers the account flag from the owner to the recipient.
+    // Fails if there is a potential conflict between the caller's and recipient's flags,
+    // specifically when one account is `Blacklisted` and the other is `Verified`.
     #[payable]
     pub fn sbt_soul_transfer(
         &mut self,
@@ -169,12 +197,33 @@ impl Contract {
         self._sbt_soul_transfer(recipient, 25)
     }
 
+    pub(crate) fn _transfer_flag(&mut self, from: &AccountId, recipient: &AccountId) {
+        if let Some(flag_from) = self.flagged.get(from) {
+            match self.flagged.get(recipient) {
+                Some(AccountFlag::Verified) => require!(
+                    flag_from != AccountFlag::Blacklisted,
+                    "can't transfer soul from a blacklisted account to a verified account"
+                ),
+                Some(AccountFlag::Blacklisted) => require!(
+                    flag_from != AccountFlag::Verified,
+                    "can't transfer soul from a verified account to a blacklisted account"
+                ),
+                None => {
+                    self.flagged.insert(recipient, &flag_from);
+                }
+            }
+        }
+    }
+
     // execution of the sbt_soul_transfer in this function to parametrize `max_updates` in
     // order to facilitate tests.
     pub(crate) fn _sbt_soul_transfer(&mut self, recipient: AccountId, limit: usize) -> (u32, bool) {
         let owner = env::predecessor_account_id();
 
         let (resumed, start) = self.transfer_continuation(&owner, &recipient, true);
+        if !resumed {
+            self._transfer_flag(&owner, &recipient);
+        }
 
         let batch: Vec<(BalanceKey, TokenId)> = self
             .balances
@@ -252,29 +301,32 @@ impl Contract {
         (token_counter as u32, completed)
     }
 
-    /// Checks if the `account` is human. If yes, calls the `ctr.function` with args serialized
-    /// with base64. Normally, `args` is a JSON string serialized as base64.
-    /// If the `account` is not human, then returns false.
-    /// NOTICE: the function is in development, and subject to change (alpha stage). You should
-    /// rather not use it.
+    /// Checks if the `predecessor_account_id` is human. If yes, then calls:
+    ///
+    ///    ctr.function({caller: predecessor_account_id(),
+    ///                 iah_proof: SBTs,
+    ///                 payload: payload})
+    ///
+    /// `payload` must be a JSON string, and it will be passed through the default interface,
+    /// hence it will be JSON deserialized when using SDK.
+    /// Panics if the predecessor is not a human.
     #[payable]
-    pub fn is_human_call(
-        &mut self,
-        account: AccountId,
-        ctr: AccountId,
-        function: String,
-        args: Base64VecU8,
-    ) -> PromiseOrValue<bool> {
-        if self.is_human(account.clone()).is_empty() {
-            Promise::new(account).transfer(env::attached_deposit());
-            return PromiseOrValue::Value(false);
-        }
-        PromiseOrValue::Promise(Promise::new(ctr).function_call(
+    pub fn is_human_call(&mut self, ctr: AccountId, function: String, payload: String) -> Promise {
+        let caller = env::predecessor_account_id();
+        let iah_proof = self._is_human(&caller);
+        require!(!iah_proof.is_empty(), "caller not a human");
+
+        let args = IsHumanCallbackArgs {
+            caller,
+            iah_proof,
+            payload: &RawValue::from_string(payload).unwrap(),
+        };
+        Promise::new(ctr).function_call(
             function,
-            args.into(),
+            serde_json::to_vec(&args).unwrap(),
             env::attached_deposit(),
             env::prepaid_gas() - IS_HUMAN_GAS,
-        ))
+        )
     }
 
     pub(crate) fn start_transfer_with_continuation(
@@ -283,10 +335,7 @@ impl Contract {
         recipient: &AccountId,
         ban_owner: bool,
     ) -> IssuerTokenId {
-        require!(
-            !self._is_banned(recipient),
-            "receiver account is banned. Cannot start the transfer"
-        );
+        self.assert_not_banned(recipient);
         if ban_owner {
             // we only ban the source account in the soul transfer
             // insert into banlist and assure the owner is not already banned.
@@ -504,6 +553,40 @@ impl Contract {
         self.authority = new_admin;
     }
 
+    pub fn admin_set_authorized_flaggers(&mut self, authorized_flaggers: Vec<AccountId>) {
+        self.assert_authority();
+        self.authorized_flaggers.set(&authorized_flaggers);
+    }
+
+    /// flag accounts
+    pub fn admin_flag_accounts(
+        &mut self,
+        flag: AccountFlag,
+        accounts: Vec<AccountId>,
+        #[allow(unused_variables)] memo: String,
+    ) {
+        self.assert_authorized_flagger();
+        for a in &accounts {
+            self.assert_not_banned(&a);
+            self.flagged.insert(a, &flag);
+        }
+        events::emit_iah_flag_accounts(flag, accounts);
+    }
+
+    /// removes flag from the provided account list.
+    /// Panics if an account is not currently flagged.
+    pub fn admin_unflag_accounts(
+        &mut self,
+        accounts: Vec<AccountId>,
+        #[allow(unused_variables)] memo: String,
+    ) {
+        self.assert_authorized_flagger();
+        for a in &accounts {
+            require!(self.flagged.remove(a).is_some());
+        }
+        events::emit_iah_unflag_accounts(accounts);
+    }
+
     //
     // Internal
     //
@@ -521,6 +604,15 @@ impl Contract {
         let tid = self.next_token_ids.get(&issuer_id).unwrap_or(0);
         self.next_token_ids.insert(&issuer_id, &(tid + num));
         tid + 1
+    }
+
+    #[inline]
+    pub(crate) fn assert_authorized_flagger(&self) {
+        let caller = env::predecessor_account_id();
+        let a = self.authorized_flaggers.get();
+        if a.is_none() || !a.unwrap().contains(&caller) {
+            env::panic_str("not authorized");
+        }
     }
 
     #[inline]
@@ -585,8 +677,8 @@ impl Contract {
         let storage_start = env::storage_usage();
         let storage_deposit = env::attached_deposit();
         require!(
-            storage_deposit >= 6 * MILI_NEAR,
-            "min required storage deposit: 0.006 NEAR"
+            storage_deposit >= 9 * MILI_NEAR,
+            "min required storage deposit: 0.009 NEAR"
         );
 
         let issuer_id = self.assert_issuer(issuer);
@@ -665,7 +757,7 @@ impl Contract {
         require!(
             storage_deposit >= required_deposit,
             format!(
-                "not enough NEAR storage depost, required: {}",
+                "not enough NEAR storage deposit, required: {}",
                 required_deposit
             )
         );
@@ -828,6 +920,10 @@ mod tests {
         AccountId::new_unchecked("sbt4.near".to_string())
     }
 
+    fn admins_flagged() -> Vec<AccountId> {
+        vec![AccountId::new_unchecked("admin_flagged.near".to_string())]
+    }
+
     #[inline]
     fn fractal_mainnet() -> AccountId {
         AccountId::new_unchecked("fractal.i-am-human.near".to_string())
@@ -881,7 +977,7 @@ mod tests {
 
     const MILI_SECOND: u64 = 1_000_000; // milisecond in ns
     const START: u64 = 10;
-    const MINT_DEPOSIT: Balance = 6 * MILI_NEAR;
+    const MINT_DEPOSIT: Balance = 9 * MILI_NEAR;
 
     fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
@@ -893,10 +989,11 @@ mod tests {
             ctx.attached_deposit = deposit
         }
         testing_env!(ctx.clone());
-        let mut ctr = Contract::new(admin(), fractal_mainnet(), vec![1]);
+        let mut ctr = Contract::new(admin(), fractal_mainnet(), vec![1], admins_flagged());
         ctr.admin_add_sbt_issuer(issuer1());
         ctr.admin_add_sbt_issuer(issuer2());
         ctr.admin_add_sbt_issuer(issuer3());
+        ctr.admin_set_authorized_flaggers([predecessor.clone()].to_vec());
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
@@ -904,7 +1001,7 @@ mod tests {
 
     #[test]
     fn init_method() {
-        let ctr = Contract::new(admin(), fractal_mainnet(), vec![1]);
+        let ctr = Contract::new(admin(), fractal_mainnet(), vec![1], vec![]);
         // make sure the iah_issuer has been set as an issuer
         assert_eq!(1, ctr.assert_issuer(&fractal_mainnet()));
     }
@@ -959,11 +1056,30 @@ mod tests {
         assert_eq!(0, ctr.sbt_supply(issuer2()));
 
         let sbt1_1 = ctr.sbt(issuer1(), 1).unwrap();
-        assert_eq!(sbt1_1, mk_token(1, alice(), m1_1.clone()));
+        let sbt1_1_e = mk_token(1, alice(), m1_1.clone());
+        let sbt1_2_e = mk_token(2, bob(), m1_1.clone());
+        assert_eq!(sbt1_1, sbt1_1_e);
         let sbt1_2 = ctr.sbt(issuer1(), 2).unwrap();
-        assert_eq!(sbt1_2, mk_token(2, bob(), m1_1.clone()));
+        assert_eq!(sbt1_2, sbt1_2_e);
         assert!(ctr.sbt(issuer2(), 1).is_none());
         assert!(ctr.sbt(issuer1(), 3).is_none());
+
+        let sbts = ctr.sbts(issuer1(), vec![1, 2]);
+        assert_eq!(sbts, vec![Some(sbt1_1_e.clone()), Some(sbt1_2_e.clone())]);
+        assert_eq!(
+            ctr.sbt_classes(issuer1(), vec![1, 1]),
+            vec![Some(1), Some(1)]
+        );
+
+        let sbts = ctr.sbts(issuer1(), vec![2, 10, 3, 1]);
+        assert_eq!(
+            sbts,
+            vec![Some(sbt1_2_e.clone()), None, None, Some(sbt1_1_e.clone())]
+        );
+        assert_eq!(
+            ctr.sbt_classes(issuer1(), vec![2, 10, 3, 1]),
+            vec![Some(1), None, None, Some(1)]
+        );
 
         assert_eq!(1, ctr.sbt_supply_by_owner(alice(), issuer1(), None));
         assert_eq!(1, ctr.sbt_supply_by_owner(alice(), issuer1(), Some(1)));
@@ -2073,7 +2189,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "receiver account is banned. Cannot start the transfer")]
+    #[should_panic(expected = "account alice.nea is banned")]
     fn sbt_soul_transfer_to_banned_account() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 1 * MINT_DEPOSIT);
         let m1_1 = mk_metadata(1, Some(START + 10));
@@ -2342,6 +2458,17 @@ mod tests {
         testing_env!(ctx.clone());
         assert_eq!(ctr.is_human(alice()), vec![]);
         assert_eq!(ctr.is_human(bob()), vec![]);
+    }
+
+    #[test]
+    fn is_human_expires_at_none() {
+        let (_, mut ctr) = setup(&fractal_mainnet(), 150 * MINT_DEPOSIT);
+
+        // make sure is_human works as expected when the expiratoin date is set to None (the token never expires).
+        let m1_1 = mk_metadata(1, None);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
+
+        assert_eq!(ctr.is_human(alice()), vec![(fractal_mainnet(), vec![1])]);
     }
 
     #[test]
@@ -2660,5 +2787,216 @@ mod tests {
         assert_eq!(ctr.sbt_supply(issuer1()), 20);
         assert_eq!(ctr.sbt_supply(issuer2()), 20);
         assert_eq!(ctr.sbt_supply(issuer3()), 20);
+    }
+
+    #[test]
+    fn is_human_call() {
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), MINT_DEPOSIT);
+
+        let m1_1 = mk_metadata(1, Some(START));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1])]);
+        assert_eq!(ctr.is_human(alice()), vec![(fractal_mainnet(), vec![1])]);
+
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+
+        ctr.is_human_call(
+            AccountId::new_unchecked("registry.i-am-human.near".to_string()),
+            "function_name".to_string(),
+            "{}".to_string(),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "caller not a human")]
+    fn is_human_call_fail() {
+        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctr.is_human_call(
+            AccountId::new_unchecked("registry.i-am-human.near".to_string()),
+            "function_name".to_string(),
+            "{}".to_string(),
+        );
+    }
+
+    #[test]
+    fn admin_set_authorized_flaggers() {
+        let (mut ctx, mut ctr) = setup(&admin(), MINT_DEPOSIT);
+
+        let flaggers = [dan()].to_vec();
+        ctr.admin_set_authorized_flaggers(flaggers);
+
+        ctx.predecessor_account_id = dan();
+        testing_env!(ctx);
+        ctr.assert_authorized_flagger();
+    }
+
+    #[test]
+    #[should_panic(expected = "not an admin")]
+    fn admin_set_authorized_flaggers_fail() {
+        let (mut ctx, mut ctr) = setup(&admin(), MINT_DEPOSIT);
+
+        ctx.predecessor_account_id = dan();
+        testing_env!(ctx.clone());
+
+        let flaggers = [dan()].to_vec();
+        ctr.admin_set_authorized_flaggers(flaggers);
+    }
+
+    #[test]
+    fn admin_flag_accounts() {
+        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctr.admin_flag_accounts(
+            AccountFlag::Blacklisted,
+            [dan(), issuer1()].to_vec(),
+            "memo".to_owned(),
+        );
+        ctr.admin_flag_accounts(
+            AccountFlag::Verified,
+            [issuer2()].to_vec(),
+            "memo".to_owned(),
+        );
+
+        let exp = r#"EVENT_JSON:{"standard":"i_am_human","version":"1.0.0","event":"flag_blacklisted","data":["dan.near","sbt.n"]}"#;
+        // check only flag event is emitted
+        assert_eq!(test_utils::get_logs().len(), 2);
+        assert_eq!(test_utils::get_logs()[0], exp);
+
+        assert_eq!(ctr.account_flagged(dan()), Some(AccountFlag::Blacklisted));
+        assert_eq!(
+            ctr.account_flagged(issuer1()),
+            Some(AccountFlag::Blacklisted)
+        );
+        assert_eq!(ctr.account_flagged(issuer2()), Some(AccountFlag::Verified));
+
+        ctr.admin_unflag_accounts([dan()].to_vec(), "memo".to_owned());
+
+        let exp = r#"EVENT_JSON:{"standard":"i_am_human","version":"1.0.0","event":"unflag","data":["dan.near"]}"#;
+        assert_eq!(test_utils::get_logs().len(), 3);
+        assert_eq!(test_utils::get_logs()[2], exp);
+
+        assert_eq!(ctr.account_flagged(dan()), None);
+        assert_eq!(
+            ctr.account_flagged(issuer1()),
+            Some(AccountFlag::Blacklisted)
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "not authorized")]
+    fn admin_flag_accounts_non_authorized() {
+        let (mut ctx, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctx.predecessor_account_id = dan();
+        testing_env!(ctx.clone());
+        ctr.admin_flag_accounts(AccountFlag::Blacklisted, vec![dan()], "memo".to_owned());
+    }
+
+    #[test]
+    #[should_panic(expected = "account bob.near is banned")]
+    fn admin_flag_accounts_banned() {
+        let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctr.banlist.insert(&bob());
+        ctr.admin_flag_accounts(
+            AccountFlag::Blacklisted,
+            vec![dan(), bob()],
+            "memo".to_owned(),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "not authorized")]
+    fn admin_unflag_accounts_non_authorized() {
+        let (mut ctx, mut ctr) = setup(&alice(), MINT_DEPOSIT);
+
+        ctr.admin_flag_accounts(
+            AccountFlag::Blacklisted,
+            vec![dan(), issuer1()],
+            "memo".to_owned(),
+        );
+        assert_eq!(ctr.account_flagged(dan()), Some(AccountFlag::Blacklisted));
+
+        ctx.predecessor_account_id = dan();
+        testing_env!(ctx.clone());
+        ctr.admin_unflag_accounts(vec![dan()], "memo".to_owned());
+    }
+
+    #[test]
+    fn is_human_flagged() {
+        let (_, mut ctr) = setup(&fractal_mainnet(), MINT_DEPOSIT);
+
+        let m1_1 = mk_metadata(1, Some(START));
+        ctr.sbt_mint(vec![(dan(), vec![m1_1])]);
+        let human_proof = vec![(fractal_mainnet(), vec![1])];
+        ctr.admin_flag_accounts(AccountFlag::Verified, [dan()].to_vec(), "memo".to_owned());
+        assert_eq!(ctr.is_human(dan()), human_proof.clone());
+
+        ctr.admin_flag_accounts(
+            AccountFlag::Blacklisted,
+            [dan()].to_vec(),
+            "memo".to_owned(),
+        );
+        assert_eq!(ctr.is_human(dan()), vec![]);
+
+        ctr.admin_unflag_accounts([dan()].to_vec(), "memo".to_owned());
+        assert_eq!(ctr.is_human(dan()), human_proof);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "can't transfer soul from a blacklisted account to a verified account"
+    )]
+    fn flagged_soul_transfer() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        ctr.admin_flag_accounts(AccountFlag::Blacklisted, vec![alice()], "memo".to_owned());
+        ctr.admin_flag_accounts(AccountFlag::Verified, vec![bob()], "memo".to_owned());
+
+        // make soul transfer
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        ctr.sbt_soul_transfer(alice2(), None);
+
+        assert_eq!(
+            ctr.flagged.get(&alice()),
+            Some(AccountFlag::Blacklisted),
+            "flag must not be removed"
+        );
+        assert_eq!(
+            ctr.flagged.get(&alice2()),
+            Some(AccountFlag::Blacklisted),
+            "flag is transferred"
+        );
+        assert_eq!(
+            ctr.flagged.get(&bob()),
+            Some(AccountFlag::Verified),
+            "bob keeps his flag"
+        );
+
+        // transferring from blacklisted to verified account should fail
+        ctx.predecessor_account_id = alice2();
+        testing_env!(ctx.clone());
+        ctr.sbt_soul_transfer(bob(), None);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "can't transfer soul from a verified account to a blacklisted account"
+    )]
+    fn flagged_soul_transfer2() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
+
+        let m1_1 = mk_metadata(1, Some(START + 10));
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        ctr.admin_flag_accounts(AccountFlag::Verified, vec![alice()], "memo".to_owned());
+        ctr.admin_flag_accounts(AccountFlag::Blacklisted, vec![alice2()], "memo".to_owned());
+
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        ctr.sbt_soul_transfer(alice2(), None);
     }
 }

@@ -1,20 +1,19 @@
 [package]
 name = "oracle-sbt"
-version = "1.0.0"
+version = "1.0.1"
 authors = ["Robert Zaremba 'https://zaremba.ch/'"]
 edition = { workspace = true }
 repository = { workspace = true }
 license = { workspace = true }
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 
 [dependencies]
 uint.workspace = true
 near-sdk.workspace = true
 serde_json.workspace = true
-ed25519-dalek.workspace = true
 
 cost = { path = "../cost" }
 sbt = { path = "../sbt" }
@@ -22,3 +21,12 @@ sbt = { path = "../sbt" }
 [dev-dependencies]
 rand = "^0.7"
 near-primitives.workspace = true
+ed25519-dalek.workspace = true
+
+# integration tests
+pretty_assertions.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+workspaces.workspace = true
+near-units.workspace = true
+tracing.workspace = true
