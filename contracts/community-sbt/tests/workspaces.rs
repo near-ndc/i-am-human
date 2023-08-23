@@ -118,6 +118,23 @@ async fn init(
             .transact()
             .await?;
         assert!(res.is_success(), "{:?}", res.receipt_failures());
+
+        let res = authority
+            .call(community_mainnet.id(), "enable_next_class")
+            .args_json(
+                json!({"requires_iah": false, "minter": minter.id(),"max_ttl": 100000000,
+                       "metadata": ClassMetadata {
+                           name: "cls-2".to_string(),
+                           symbol: None,
+                           icon: None,
+                           reference: None,
+                           reference_hash: None},
+                       "memo": "test"}),
+            )
+            .max_gas()
+            .transact()
+            .await?;
+        assert!(res.is_success(), "{:?}", res.receipt_failures());
     }
 
     // mint mocked community tokens
@@ -416,6 +433,68 @@ async fn sbt_revoke_fail() -> anyhow::Result<()> {
     assert!(sbts.len() == 2);
     assert!(sbts[0].is_some());
     assert!(sbts[1].is_some());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn sbt_mint_many() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (registry, community_sbt, _, admin, minter) = init(&worker, false).await?;
+
+    let bob = worker.dev_create_account().await?;
+    let charlie = worker.dev_create_account().await?;
+
+    let supply: u64 = admin
+        .call(registry.id(), "sbt_supply")
+        .args_json(json!({"issuer": community_sbt.id()}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+    assert_eq!(supply, 2);
+
+    let token_metadata = vec![
+        TokenMetadata {
+            class: 1,
+            issued_at: Some(0),
+            expires_at: None,
+            reference: None,
+            reference_hash: None,
+        },
+        TokenMetadata {
+            class: 2,
+            issued_at: Some(0),
+            expires_at: None,
+            reference: None,
+            reference_hash: None,
+        },
+    ];
+
+    // sbt_mint_many
+    let res = minter
+        .call(community_sbt.id(), "sbt_mint_many")
+        .args_json(json!({
+            "token_spec":
+                vec![
+                    (bob.id(), token_metadata.clone()),
+                    (charlie.id(), token_metadata),
+                ]
+        }))
+        .deposit(parse_near!("0.1 N"))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
+
+    let supply: u64 = admin
+        .call(registry.id(), "sbt_supply")
+        .args_json(json!({"issuer": community_sbt.id()}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+    assert_eq!(supply, 6);
 
     Ok(())
 }

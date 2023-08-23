@@ -419,7 +419,10 @@ impl SBTContract for Contract {
 mod tests {
     use cost::mint_deposit;
     use near_sdk::{
-        test_utils::{test_env::bob, VMContextBuilder},
+        test_utils::{
+            test_env::{alice, bob, carol},
+            VMContextBuilder,
+        },
         testing_env, AccountId, Balance, VMContext,
     };
     use sbt::{ClassId, ClassMetadata, ContractMetadata, TokenMetadata};
@@ -427,10 +430,6 @@ mod tests {
     use crate::{ClassMinters, Contract, MintError, MIN_TTL};
 
     const START: u64 = 10;
-
-    fn alice() -> AccountId {
-        AccountId::new_unchecked("alice.near".to_string())
-    }
 
     fn registry() -> AccountId {
         AccountId::new_unchecked("registry.near".to_string())
@@ -670,7 +669,7 @@ mod tests {
         ctr.sbt_mint(alice(), mk_meteadata(1), None)?;
         match ctr.sbt_mint(alice(), mk_meteadata(cls2), None) {
             Err(MintError::NotMinter) => (),
-            Ok(_) => panic!("expected NotAuthorized, got: Promise"),
+            Ok(_) => panic!("expected NotAuthorized, got: Ok"),
             Err(x) => panic!("expected NotAuthorized, got: {:?}", x),
         };
 
@@ -695,5 +694,72 @@ mod tests {
     fn assert_minter() {
         let (_, ctr) = setup(&admin(), None);
         ctr.assert_minter(&alice(), &vec![bob()]);
+    }
+
+    #[test]
+    fn mint_many() -> Result<(), MintError> {
+        let (mut ctx, mut ctr) = setup(&admin(), None);
+
+        let cls2 = ctr.enable_next_class(true, authority(1), MIN_TTL, class_metadata(2), None);
+        let cls3 = ctr.enable_next_class(true, authority(2), MIN_TTL, class_metadata(3), None);
+
+        ctx.predecessor_account_id = authority(1);
+        testing_env!(ctx.clone());
+
+        match ctr.sbt_mint_many(
+            vec![
+                (alice(), vec![mk_meteadata(1), mk_meteadata(cls2)]),
+                (bob(), vec![mk_meteadata(1), mk_meteadata(cls2)]),
+            ],
+            None,
+        ) {
+            Err(MintError::RequiredDeposit(37000000000000000000000)) => (),
+            Ok(_) => panic!("expected RequiredDeposit, got: Ok"),
+            Err(x) => panic!("expected RequiredDeposit, got: {:?}", x),
+        };
+
+        match ctr.sbt_mint_many(
+            vec![
+                (alice(), vec![mk_meteadata(1), mk_meteadata(cls2)]),
+                (bob(), vec![mk_meteadata(1), mk_meteadata(cls3)]),
+            ],
+            None,
+        ) {
+            Err(MintError::NotMinter) => (),
+            Ok(_) => panic!("expected NotAuthorized, got: Ok"),
+            Err(x) => panic!("expected NotAuthorized, got: {:?}", x),
+        };
+
+        match ctr.sbt_mint_many(
+            vec![
+                (alice(), vec![mk_meteadata(1), mk_meteadata(cls2)]),
+                (bob(), vec![mk_meteadata(1122), mk_meteadata(cls2)]),
+            ],
+            None,
+        ) {
+            Err(MintError::ClassNotEnabled) => (),
+            Ok(_) => panic!("expected ClassNotEnabled, got: Ok"),
+            Err(x) => panic!("expected NotAuthorized, got: {:?}", x),
+        };
+
+        ctx.attached_deposit = 19000000000000000000000;
+        testing_env!(ctx.clone());
+        ctr.sbt_mint_many(
+            vec![(alice(), vec![mk_meteadata(1), mk_meteadata(cls2)])],
+            None,
+        )?;
+
+        // deposit increases because we are minting more tokens
+        ctx.attached_deposit = 37000000000000000000000;
+        testing_env!(ctx.clone());
+        ctr.sbt_mint_many(
+            vec![
+                (bob(), vec![mk_meteadata(1), mk_meteadata(cls2)]),
+                (carol(), vec![mk_meteadata(1), mk_meteadata(cls2)]),
+            ],
+            None,
+        )?;
+
+        Ok(())
     }
 }
