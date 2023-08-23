@@ -669,7 +669,7 @@ mod tests {
         ctr.sbt_mint(alice(), mk_meteadata(1), None)?;
         match ctr.sbt_mint(alice(), mk_meteadata(cls2), None) {
             Err(MintError::NotMinter) => (),
-            Ok(_) => panic!("expected NotAuthorized, got: Promise"),
+            Ok(_) => panic!("expected NotAuthorized, got: Ok"),
             Err(x) => panic!("expected NotAuthorized, got: {:?}", x),
         };
 
@@ -714,7 +714,7 @@ mod tests {
             None,
         ) {
             Err(MintError::RequiredDeposit(37000000000000000000000)) => (),
-            Ok(_) => panic!("expected RequiredDeposit, got: OK"),
+            Ok(_) => panic!("expected RequiredDeposit, got: Ok"),
             Err(x) => panic!("expected RequiredDeposit, got: {:?}", x),
         };
 
@@ -726,7 +726,7 @@ mod tests {
             None,
         ) {
             Err(MintError::NotMinter) => (),
-            Ok(_) => panic!("expected NotAuthorized, got: Promise"),
+            Ok(_) => panic!("expected NotAuthorized, got: Ok"),
             Err(x) => panic!("expected NotAuthorized, got: {:?}", x),
         };
 
