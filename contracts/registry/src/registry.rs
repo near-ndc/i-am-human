@@ -349,7 +349,11 @@ impl SBTRegistry for Contract {
         SbtTokensEvent { issuer, tokens }.emit_revoke();
     }
 
-    /// Revokes all owners SBTs issued by the caller either by burning or updating their expire time.
+    /// Revokes owners SBTs issued by the caller either by burning or updating their expire
+    /// time. The function will try to revoke at most `MAX_LIMIT` tokens (to fit into the tx
+    /// gas limit), so when an owner has many tokens from the issuer, the issuer may need to
+    /// call this function multiple times, until all tokens are revoked. Issuer should query
+    /// `sbt_supply_by_owner` to check if the function should be called again.
     /// Must be called by an SBT contract.
     /// Must emit `Revoke` event.
     /// Must also emit `Burn` event if the SBT tokens are burned (removed).

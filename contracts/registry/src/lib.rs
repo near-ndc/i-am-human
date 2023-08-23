@@ -258,7 +258,6 @@ impl Contract {
                 }
             }
 
-            self.balances.remove(key);
             key_new.issuer_id = key.issuer_id;
             key_new.class_id = key.class_id;
             // TODO: decide if we should overwrite or panic if receipient already had a token.
@@ -329,6 +328,9 @@ impl Contract {
         )
     }
 
+    // NOTE: we are using IssuerTokenId to return Issuer and ClassId. This works as expected
+    // and doesn't create API conflict because this is a crate private function. The reason we
+    // do it is to avoid another struct creation and save the bytes.
     pub(crate) fn start_transfer_with_continuation(
         &mut self,
         owner: &AccountId,
