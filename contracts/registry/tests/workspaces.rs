@@ -1,7 +1,8 @@
 use anyhow::Ok;
 use near_sdk::serde_json::json;
 use near_units::parse_near;
-use sbt::{TokenMetadata, ClassSet};
+use registry::storage::AccountFlag;
+use sbt::{ClassSet, TokenMetadata};
 use workspaces::{network::Sandbox, Account, AccountId, Contract, Worker};
 
 const MAINNET_REGISTRY_ID: &str = "registry.i-am-human.near";
@@ -227,7 +228,7 @@ async fn migration_mainnet() -> anyhow::Result<()> {
     // call the migrate method
     let res = new_registry_contract
         .call("migrate")
-        .args_json(json!({"authorized_flaggers": ["alice.near"]}))
+        .args_json(json!({"authorized_flaggers": [alice.id()]}))
         .max_gas()
         .transact()
         .await?;
@@ -243,12 +244,43 @@ async fn migration_mainnet() -> anyhow::Result<()> {
     )
     .await?;
 
+    let res = new_registry_contract
+        .call("account_flagged")
+        .args_json(json!({"account": "bob.near"}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success());
+    let res: Option<AccountFlag> = res.json()?;
+    assert!(res.is_none());
+
+    let res = alice
+        .call(new_registry_contract.id(), "admin_flag_accounts")
+        .args_json(
+            json!({"flag": AccountFlag::Blacklisted,"accounts": vec!["bob.near"], "memo": "test"}),
+        )
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    let res = new_registry_contract
+        .call("account_flagged")
+        .args_json(json!({"account": "bob.near"}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success());
+    let res: Option<AccountFlag> = res.json()?;
+    assert_eq!(res.unwrap(), AccountFlag::Blacklisted);
+
     Ok(())
 }
 
 #[ignore = "this test is not valid after the migration"]
 // handler error: [State of contract registry.i-am-human.near is too large to be viewed]
-// For current block 99,142,922
+// The current running registry contract is too large to be viewed.
+// This test cannot be perfomed on real data anymore
 #[tokio::test]
 async fn migration_mainnet_real_data() -> anyhow::Result<()> {
     // import the registry contract from mainnet with data

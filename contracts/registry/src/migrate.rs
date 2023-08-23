@@ -26,7 +26,7 @@ impl Contract {
         let old_state: OldState = env::state_read().expect("failed");
         // new field in the smart contract :
         // + flagged: LookupMap<AccountId, AccountFlag>
-        // + admins_flagged: LazyOption<Vec<AccountId>>
+        // + authorized_flaggers: LazyOption<Vec<AccountId>>
 
         Self {
             authority: old_state.authority.clone(),
