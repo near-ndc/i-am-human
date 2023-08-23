@@ -696,4 +696,63 @@ mod tests {
         let (_, ctr) = setup(&admin(), None);
         ctr.assert_minter(&alice(), &vec![bob()]);
     }
+
+    #[test]
+    fn mint_many() -> Result<(), MintError> {
+        let (mut ctx, mut ctr) = setup(&admin(), None);
+
+        let cls2 = ctr.enable_next_class(true, authority(1), MIN_TTL, class_metadata(2), None);
+        let cls3 = ctr.enable_next_class(true, authority(2), MIN_TTL, class_metadata(3), None);
+
+        ctx.predecessor_account_id = authority(1);
+        testing_env!(ctx.clone());
+
+        match ctr.sbt_mint_many(
+            vec![
+                (alice(), vec![mk_meteadata(1), mk_meteadata(cls2)]),
+                (bob(), vec![mk_meteadata(1), mk_meteadata(cls2)]),
+            ],
+            None,
+        ) {
+            Err(MintError::RequiredDeposit(37000000000000000000000)) => (),
+            Ok(_) => panic!("expected RequiredDeposit, got: Promise"),
+            Err(x) => panic!("expected RequiredDeposit, got: {:?}", x),
+        };
+
+        match ctr.sbt_mint_many(
+            vec![
+                (alice(), vec![mk_meteadata(1), mk_meteadata(cls2)]),
+                (bob(), vec![mk_meteadata(1), mk_meteadata(cls3)]),
+            ],
+            None,
+        ) {
+            Err(MintError::NotMinter) => (),
+            Ok(_) => panic!("expected NotAuthorized, got: Promise"),
+            Err(x) => panic!("expected NotAuthorized, got: {:?}", x),
+        };
+
+        match ctr.sbt_mint_many(
+            vec![
+                (alice(), vec![mk_meteadata(1), mk_meteadata(cls2)]),
+                (bob(), vec![mk_meteadata(1122), mk_meteadata(cls2)]),
+            ],
+            None,
+        ) {
+            Err(MintError::ClassNotEnabled) => (),
+            Ok(_) => panic!("expected ClassNotEnabled, got: Ok"),
+            Err(x) => panic!("expected NotAuthorized, got: {:?}", x),
+        };
+
+        ctx.attached_deposit = 37000000000000000000000;
+        testing_env!(ctx.clone());
+        ctr.sbt_mint_many(
+            vec![
+                (alice(), vec![mk_meteadata(1), mk_meteadata(cls2)]),
+                (bob(), vec![mk_meteadata(1), mk_meteadata(cls2)]),
+            ],
+            None,
+        )?;
+
+        Ok(())
+    }
 }
