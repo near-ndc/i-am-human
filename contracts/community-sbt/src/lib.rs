@@ -4,7 +4,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
 
-use cost::{mint_deposit, IS_HUMAN_GAS, MINT_GAS};
+use cost::{calculate_iah_mint_gas, calculate_mint_gas, mint_deposit};
 use sbt::*;
 
 pub use crate::errors::*;
@@ -81,62 +81,41 @@ impl Contract {
         #[allow(unused_mut)] mut metadata: TokenMetadata,
         memo: Option<String>,
     ) -> Result<Promise, MintError> {
-        let (requires_iah, ttl) = self.class_info(metadata.class)?;
-        let now_ms = env::block_timestamp_ms();
-        metadata.expires_at = Some(now_ms + ttl);
-        metadata.issued_at = Some(now_ms);
         let token_spec = vec![(receiver, vec![metadata])];
-
-        self._sbt_mint(requires_iah, token_spec, memo)
+        self.sbt_mint_many(token_spec, memo)
     }
 
     /// Similar to `sbt_mint`, but allows to mint many tokens at once. See `sbt_mint` doc for
     /// more details.
-    /// * `tokens` is list of pairs: token recipient and token metadata.
+    /// * `tokens` is list of pairs: token recipient and token metadata to mint for given recipient.
     #[payable]
     #[handle_result]
     pub fn sbt_mint_many(
         &mut self,
-        tokens: Vec<(AccountId, TokenMetadata)>,
+        #[allow(unused_mut)] mut token_spec: Vec<(AccountId, Vec<TokenMetadata>)>,
         memo: Option<String>,
     ) -> Result<Promise, MintError> {
         let now_ms = env::block_timestamp_ms();
         let mut requires_iah = false;
-        let mut to_mint_map: HashMap<AccountId, Vec<TokenMetadata>> = HashMap::new();
         let mut class_info_map: HashMap<ClassId, (bool, u64)> = HashMap::new();
-        for (r, mut m) in tokens {
-            let (cls_requires_iah, ttl) = match class_info_map.get(&m.class) {
-                Some(ci) => (ci.0, ci.1),
-                None => {
-                    let ci = self.class_info(m.class)?;
-                    class_info_map.insert(m.class, ci);
-                    ci
-                }
-            };
-            requires_iah = requires_iah || cls_requires_iah;
-            m.expires_at = Some(now_ms + ttl);
-            m.issued_at = Some(now_ms);
-            match to_mint_map.get_mut(&r) {
-                Some(recipient_tokens) => recipient_tokens.push(m),
-                None => {
-                    to_mint_map.insert(r, vec![m]);
-                }
-            };
+        let mut total_len = 0;
+        for (_, token_metadatas) in &mut token_spec {
+            total_len += token_metadatas.len();
+            for m in token_metadatas {
+                let (cls_requires_iah, ttl) = match class_info_map.get(&m.class) {
+                    Some(ci) => (ci.0, ci.1),
+                    None => {
+                        let ci = self.class_info(m.class)?;
+                        class_info_map.insert(m.class, ci);
+                        ci
+                    }
+                };
+                requires_iah = requires_iah || cls_requires_iah;
+                m.expires_at = Some(now_ms + ttl);
+                m.issued_at = Some(now_ms);
+            }
         }
-        let to_mint = to_mint_map.into_iter().collect();
 
-        self._sbt_mint(requires_iah, to_mint, memo)
-    }
-
-    fn _sbt_mint(
-        &mut self,
-        requires_iah: bool,
-        token_spec: Vec<(AccountId, Vec<TokenMetadata>)>,
-        memo: Option<String>,
-    ) -> Result<Promise, MintError> {
-        let total_len = token_spec
-            .iter()
-            .fold(0, |len, (_, tokens)| len + tokens.len());
         let required_deposit = mint_deposit(total_len);
         let attached_deposit = env::attached_deposit();
         if attached_deposit < required_deposit {
@@ -150,11 +129,12 @@ impl Contract {
         let sbt_reg =
             ext_registry::ext(self.registry.clone()).with_attached_deposit(attached_deposit);
         let promise = if requires_iah {
-            sbt_reg
-                .with_static_gas(MINT_GAS + IS_HUMAN_GAS)
-                .sbt_mint_iah(token_spec)
+            let gas = calculate_iah_mint_gas(total_len, token_spec.len());
+            sbt_reg.with_static_gas(gas).sbt_mint_iah(token_spec)
         } else {
-            sbt_reg.with_static_gas(MINT_GAS).sbt_mint(token_spec)
+            sbt_reg
+                .with_static_gas(calculate_mint_gas(total_len))
+                .sbt_mint(token_spec)
         };
 
         Ok(promise)
@@ -437,13 +417,14 @@ impl SBTContract for Contract {
 
 #[cfg(test)]
 mod tests {
+    use cost::mint_deposit;
     use near_sdk::{
         test_utils::{test_env::bob, VMContextBuilder},
         testing_env, AccountId, Balance, VMContext,
     };
     use sbt::{ClassId, ClassMetadata, ContractMetadata, TokenMetadata};
 
-    use crate::{required_sbt_mint_deposit, ClassMinters, Contract, MintError, MIN_TTL};
+    use crate::{ClassMinters, Contract, MintError, MIN_TTL};
 
     const START: u64 = 10;
 
@@ -499,7 +480,7 @@ mod tests {
             .block_timestamp(START)
             .is_view(false)
             .build();
-        ctx.attached_deposit = deposit.unwrap_or(required_sbt_mint_deposit(1));
+        ctx.attached_deposit = deposit.unwrap_or(mint_deposit(1));
         testing_env!(ctx.clone());
         let mut ctr = Contract::new(registry(), admin(), contract_metadata());
         let c = ctr.enable_next_class(true, authority(1), MIN_TTL, class_metadata(1), None);

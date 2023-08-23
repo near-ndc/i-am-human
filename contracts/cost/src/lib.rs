@@ -21,6 +21,10 @@ pub const fn calculate_mint_gas(num_tokens: usize) -> Gas {
     Gas((num_tokens as u64 + 1) * MINT_GAS.0)
 }
 
+pub const fn calculate_iah_mint_gas(num_tokens: usize, accounts: usize) -> Gas {
+    Gas(calculate_mint_gas(num_tokens).0 + accounts as u64 * IS_HUMAN_GAS.0)
+}
+
 pub const fn mint_deposit(num_tokens: usize) -> Balance {
     num_tokens as u128 * MINT_COST + MILI_NEAR
 }
