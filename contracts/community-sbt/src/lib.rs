@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
-use near_sdk::{env, near_bindgen, require, AccountId, Balance, PanicOnDefault, Promise};
+use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
 
-use cost::{IS_HUMAN_GAS, MILI_NEAR, MINT_COST, MINT_GAS};
+use cost::{mint_deposit, IS_HUMAN_GAS, MINT_GAS};
 use sbt::*;
 
 pub use crate::errors::*;
@@ -81,20 +81,72 @@ impl Contract {
         #[allow(unused_mut)] mut metadata: TokenMetadata,
         memo: Option<String>,
     ) -> Result<Promise, MintError> {
-        let required_deposit = required_sbt_mint_deposit(1);
-        let attached_deposit = env::attached_deposit();
-        if attached_deposit < required_deposit {
-            return Err(MintError::RequiredDeposit(required_deposit));
-        }
         let (requires_iah, ttl) = self.class_info(metadata.class)?;
         let now_ms = env::block_timestamp_ms();
         metadata.expires_at = Some(now_ms + ttl);
         metadata.issued_at = Some(now_ms);
+        let token_spec = vec![(receiver, vec![metadata])];
+
+        self._sbt_mint(requires_iah, token_spec, memo)
+    }
+
+    /// Similar to `sbt_mint`, but allows to mint many tokens at once. See `sbt_mint` doc for
+    /// more details.
+    /// * `tokens` is list of pairs: token recipient and token metadata.
+    #[payable]
+    #[handle_result]
+    pub fn sbt_mint_many(
+        &mut self,
+        tokens: Vec<(AccountId, TokenMetadata)>,
+        memo: Option<String>,
+    ) -> Result<Promise, MintError> {
+        let now_ms = env::block_timestamp_ms();
+        let mut requires_iah = false;
+        let mut to_mint_map: HashMap<AccountId, Vec<TokenMetadata>> = HashMap::new();
+        let mut class_info_map: HashMap<ClassId, (bool, u64)> = HashMap::new();
+        for (r, mut m) in tokens {
+            let (cls_requires_iah, ttl) = match class_info_map.get(&m.class) {
+                Some(ci) => (ci.0, ci.1),
+                None => {
+                    let ci = self.class_info(m.class)?;
+                    class_info_map.insert(m.class, ci);
+                    ci
+                }
+            };
+            requires_iah = requires_iah || cls_requires_iah;
+            m.expires_at = Some(now_ms + ttl);
+            m.issued_at = Some(now_ms);
+            match to_mint_map.get_mut(&r) {
+                Some(recipient_tokens) => recipient_tokens.push(m),
+                None => {
+                    to_mint_map.insert(r, vec![m]);
+                }
+            };
+        }
+        let to_mint = to_mint_map.into_iter().collect();
+
+        self._sbt_mint(requires_iah, to_mint, memo)
+    }
+
+    fn _sbt_mint(
+        &mut self,
+        requires_iah: bool,
+        token_spec: Vec<(AccountId, Vec<TokenMetadata>)>,
+        memo: Option<String>,
+    ) -> Result<Promise, MintError> {
+        let total_len = token_spec
+            .iter()
+            .fold(0, |len, (_, tokens)| len + tokens.len());
+        let required_deposit = mint_deposit(total_len);
+        let attached_deposit = env::attached_deposit();
+        if attached_deposit < required_deposit {
+            return Err(MintError::RequiredDeposit(required_deposit));
+        }
+
         if let Some(memo) = memo {
             env::log_str(&format!("SBT mint memo: {}", memo));
         }
 
-        let token_spec = vec![(receiver, vec![metadata])];
         let sbt_reg =
             ext_registry::ext(self.registry.clone()).with_attached_deposit(attached_deposit);
         let promise = if requires_iah {
@@ -104,6 +156,7 @@ impl Contract {
         } else {
             sbt_reg.with_static_gas(MINT_GAS).sbt_mint(token_spec)
         };
+
         Ok(promise)
     }
 
@@ -380,11 +433,6 @@ impl SBTContract for Contract {
     fn sbt_metadata(&self) -> ContractMetadata {
         self.metadata.get().unwrap()
     }
-}
-
-#[inline]
-pub fn required_sbt_mint_deposit(num_tokens: usize) -> Balance {
-    (num_tokens as u128) * MINT_COST + MILI_NEAR
 }
 
 #[cfg(test)]
