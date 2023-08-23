@@ -419,7 +419,10 @@ impl SBTContract for Contract {
 mod tests {
     use cost::mint_deposit;
     use near_sdk::{
-        test_utils::{test_env::bob, VMContextBuilder},
+        test_utils::{
+            test_env::{alice, bob, carol},
+            VMContextBuilder,
+        },
         testing_env, AccountId, Balance, VMContext,
     };
     use sbt::{ClassId, ClassMetadata, ContractMetadata, TokenMetadata};
@@ -427,10 +430,6 @@ mod tests {
     use crate::{ClassMinters, Contract, MintError, MIN_TTL};
 
     const START: u64 = 10;
-
-    fn alice() -> AccountId {
-        AccountId::new_unchecked("alice.near".to_string())
-    }
 
     fn registry() -> AccountId {
         AccountId::new_unchecked("registry.near".to_string())
@@ -743,12 +742,20 @@ mod tests {
             Err(x) => panic!("expected NotAuthorized, got: {:?}", x),
         };
 
+        ctx.attached_deposit = 19000000000000000000000;
+        testing_env!(ctx.clone());
+        ctr.sbt_mint_many(
+            vec![(alice(), vec![mk_meteadata(1), mk_meteadata(cls2)])],
+            None,
+        )?;
+
+        // deposit increases because we are minting more tokens
         ctx.attached_deposit = 37000000000000000000000;
         testing_env!(ctx.clone());
         ctr.sbt_mint_many(
             vec![
-                (alice(), vec![mk_meteadata(1), mk_meteadata(cls2)]),
                 (bob(), vec![mk_meteadata(1), mk_meteadata(cls2)]),
+                (carol(), vec![mk_meteadata(1), mk_meteadata(cls2)]),
             ],
             None,
         )?;
