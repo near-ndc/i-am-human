@@ -49,8 +49,8 @@ pub struct Contract {
     pub(crate) next_token_ids: LookupMap<IssuerId, TokenId>,
     pub(crate) next_issuer_id: IssuerId,
 
-    /// tuple of (required issuer for IAH, [required list of classes for IAH])
-    /// represents mandatory requirements to be verified as human by using is_human and is_human_call methods.
+    /// tuple of (required issuer, [required list of classes]) that represents mandatory
+    /// requirements to be verified as human for `is_human` and `is_human_call` methods.
     pub(crate) iah_sbts: (AccountId, Vec<ClassId>),
 }
 
@@ -127,10 +127,8 @@ impl Contract {
     }
 
     fn _is_human(&self, account: &AccountId) -> SBTs {
-        if self._is_banned(&account) {
-            return vec![];
-        }
-        if let Some(AccountFlag::Blacklisted) = self.flagged.get(&account) {
+        if self.flagged.get(&account) == Some(AccountFlag::Blacklisted) || self._is_banned(&account)
+        {
             return vec![];
         }
         let issuer = Some(self.iah_sbts.0.clone());
