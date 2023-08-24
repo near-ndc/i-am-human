@@ -479,6 +479,19 @@ impl Contract {
         return (tokens_recovered as u32, completed);
     }
 
+    /// Method to burn all caller tokens (from all issuers).
+    /// The method must be called repeatedly until true is returned.
+    /// Not all tokens may be burned in a single call due to the gas limitation - in that case
+    /// `false` is returned.
+    /// The burn event is emitted for all the tokens burned.
+    pub fn sbt_burn_all(&mut self) -> bool {
+        self._sbt_burn_all(25)
+    }
+
+    /// Allows user to burn any of his tokens.
+    /// The burn event is emitted for all  tokens burned.
+    /// Panics if user has ongoing soul transfer or ongoing recovery or doesn't own a listed
+    /// token.
     pub fn sbt_burn(
         &mut self,
         issuer: AccountId,
@@ -765,15 +778,6 @@ impl Contract {
         );
 
         ret_token_ids
-    }
-
-    /// Method to burn all caller tokens (from all issuers).
-    /// The burn event is emitted for all the tokens burned.
-    /// The method must be called repeatedly until true is returned.
-    /// Not all tokens may be burned in a single
-    /// call due to the gas limitation - in that case `false` is returned.
-    pub fn sbt_burn_all(&mut self) -> bool {
-        self._sbt_burn_all(25)
     }
 
     /// Method to help parametrize the sbt_burn_all.
