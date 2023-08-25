@@ -18,6 +18,7 @@ pub struct OldClassMinters {
     pub minters: Vec<AccountId>,
 }
 
+// migration to community-sbt/v4.2.0
 #[near_bindgen]
 impl Contract {
     #[private]

@@ -54,13 +54,13 @@ Production:
 - **SBT registry**: `registry.i-am-human.near` @ registry/v1.3.0
 - **Fractal**: `fractal.i-am-human.near` @ oracle/v1.0.1
   - verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
-- **Community SBTs**: `community.i-am-human.near` @ community-sbt/v4.1.0
+- **Community SBTs**: `community.i-am-human.near` @ community-sbt/v4.2.0
   Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
   classes: 1=OG, 2=NDC_Contributor, 3=NDC_Core_Contributors, 4=NDC_Champion
-- **Regens SBTs**: `issuer.regens.near` @ community-sbt/v4.1.0
+- **Regens SBTs**: `issuer.regens.near` @ community-sbt/v4.2.0
   Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
   classes: ProofOfRegen=1
-- **Proof of Vibes**: `issuer.proofofvibes.near` @ community-sbt/v4.1.0
+- **Proof of Vibes**: `issuer.proofofvibes.near` @ community-sbt/v4.2.0
   Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
   classes: Vibes=1
 
@@ -68,7 +68,7 @@ Mainnet Testing:
 
 - `registry-v1.gwg-testing.near` @ registry/v1.4.0
   IAH issuer: `(fractal.i-am-human.near, [1])`
-- `community-testing.i-am-human.near` @ community-sbt/v4.1.0
+- `community-testing.i-am-human.near` @ community-sbt/v4.2.0
   classes: OG=1, Vibes=2
   Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
 
@@ -87,7 +87,7 @@ Deprecated:
 - **Demo SBT**: `sbt1.i-am-human.testnet` (the `demo_issuer` contract)
 - **Fractal**: `i-am-human-staging.testnet` @ oracle/v1.0.1
   registry: `registry-1.i-am-human.testnet`; Verification pubkey base64: `FGoAI6DXghOSK2ZaKVT/5lSP4X4JkoQQphv1FD4YRto=`, `claim_ttl`: 3600ms, FV class: 1
-- **Community-SBT**: `community-v1.i-am-human.testnet` @ community-sbt/v4.1.0
+- **Community-SBT**: `community-v1.i-am-human.testnet` @ community-sbt/v4.2.0
   registry: `registry-1.i-am-human.testnet`
   classes: 1=OG, 2=NDC_Contributor, 3=NDC_Core_Contributors, 4=NDC_Champion
   Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.

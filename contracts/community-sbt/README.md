@@ -26,8 +26,20 @@ The `community-sbt` contract requires an admin to enable a token class and set i
 
 ```shell
 near call CTR_ADDRESS enable_next_class \
-  '{"requires_iah": true, "minter": MINTER_ADDRESS}' \
-  --accountId ADMIN
+  '{"requires_iah": true, "minter": MINTER_ADDRESS}' --accountId ADMIN
+```
+
+Contract admin should set the metadata information for each class using:
+
+```shell
+near call CTR_ADDRESS set_class_metadata \
+  '{"class": ClassId, "metadata": "Metadata JSON"}' --accountId ADMIN
+```
+
+And anyone can query the class metadata:
+
+```shell
+near view CTR_ADDRESS class_metadata '{"class": ClassId}'
 ```
 
 #### Minting
