@@ -1,0 +1,23 @@
+[package]
+name = "kudos-contract"
+version = "0.1.0"
+authors = ["Kirill QQ <zeliondragon@gmail.com>"]
+edition = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+near-sdk.workspace = true
+near-contract-standards.workspace = true
+cid.workspace = true
+
+[dev-dependencies]
+assert_matches.workspace = true
+workspaces.workspace = true
+near-sandbox-utils.workspace = true
+near-units.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
