@@ -152,6 +152,10 @@ impl Contract {
         vec![(self.iah_sbts.0.clone(), proof)]
     }
 
+    pub fn get_authority(self) -> AccountId {
+        self.authority
+    }
+
     //
     // Transactions
     //
@@ -258,7 +262,6 @@ impl Contract {
                 }
             }
 
-            self.balances.remove(key);
             key_new.issuer_id = key.issuer_id;
             key_new.class_id = key.class_id;
             // TODO: decide if we should overwrite or panic if receipient already had a token.
@@ -329,6 +332,9 @@ impl Contract {
         )
     }
 
+    // NOTE: we are using IssuerTokenId to return Issuer and ClassId. This works as expected
+    // and doesn't create API conflict because this is a crate private function. The reason we
+    // do it is to avoid another struct creation and save the bytes.
     pub(crate) fn start_transfer_with_continuation(
         &mut self,
         owner: &AccountId,
@@ -477,6 +483,19 @@ impl Contract {
         return (tokens_recovered as u32, completed);
     }
 
+    /// Method to burn all caller tokens (from all issuers).
+    /// The method must be called repeatedly until true is returned.
+    /// Not all tokens may be burned in a single call due to the gas limitation - in that case
+    /// `false` is returned.
+    /// The burn event is emitted for all the tokens burned.
+    pub fn sbt_burn_all(&mut self) -> bool {
+        self._sbt_burn_all(25)
+    }
+
+    /// Allows user to burn any of his tokens.
+    /// The burn event is emitted for all  tokens burned.
+    /// Panics if user has ongoing soul transfer or ongoing recovery or doesn't own a listed
+    /// token.
     pub fn sbt_burn(
         &mut self,
         issuer: AccountId,
@@ -768,47 +787,6 @@ impl Contract {
         ret_token_ids
     }
 
-    //
-    // TESTING
-    // list of functions used in backstage for testing
-    //
-
-    fn assert_testnet(&self) {
-        require!(
-            env::current_account_id().as_str().contains("test"),
-            "must be testnet"
-        );
-    }
-
-    /// returns false if the `issuer` contract was already registered.
-    pub fn testing_add_sbt_issuer(&mut self, issuer: AccountId) -> bool {
-        self.assert_testnet();
-        self._add_sbt_issuer(&issuer)
-    }
-
-    #[payable]
-    pub fn testing_sbt_mint(
-        &mut self,
-        issuer: AccountId,
-        token_spec: Vec<(AccountId, Vec<TokenMetadata>)>,
-    ) -> Vec<TokenId> {
-        self.assert_testnet();
-        self._sbt_mint(&issuer, token_spec)
-    }
-
-    pub fn testing_sbt_renew(&mut self, issuer: AccountId, tokens: Vec<TokenId>, expires_at: u64) {
-        self.assert_testnet();
-        self._sbt_renew(issuer, tokens, expires_at)
-    }
-    /// Method to burn all caller tokens (from all issuers).
-    /// The burn event is emitted for all the tokens burned.
-    /// The method must be called repeatedly until true is returned.
-    /// Not all tokens may be burned in a single
-    /// call due to the gas limitation - in that case `false` is returned.
-    pub fn sbt_burn_all(&mut self) -> bool {
-        self._sbt_burn_all(25)
-    }
-
     /// Method to help parametrize the sbt_burn_all.
     /// limit indicates the number of tokens that will be burned in one call
     pub(crate) fn _sbt_burn_all(&mut self, limit: u32) -> bool {
@@ -868,6 +846,39 @@ impl Contract {
             }
         }
         true
+    }
+
+    //
+    // TESTING
+    // list of functions used in backstage for testing
+    //
+
+    fn assert_testnet(&self) {
+        require!(
+            env::current_account_id().as_str().contains("test"),
+            "must be testnet"
+        );
+    }
+
+    /// returns false if the `issuer` contract was already registered.
+    pub fn testing_add_sbt_issuer(&mut self, issuer: AccountId) -> bool {
+        self.assert_testnet();
+        self._add_sbt_issuer(&issuer)
+    }
+
+    #[payable]
+    pub fn testing_sbt_mint(
+        &mut self,
+        issuer: AccountId,
+        token_spec: Vec<(AccountId, Vec<TokenMetadata>)>,
+    ) -> Vec<TokenId> {
+        self.assert_testnet();
+        self._sbt_mint(&issuer, token_spec)
+    }
+
+    pub fn testing_sbt_renew(&mut self, issuer: AccountId, tokens: Vec<TokenId>, expires_at: u64) {
+        self.assert_testnet();
+        self._sbt_renew(issuer, tokens, expires_at)
     }
 }
 
