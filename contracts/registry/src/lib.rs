@@ -152,6 +152,10 @@ impl Contract {
         vec![(self.iah_sbts.0.clone(), proof)]
     }
 
+    pub fn get_authority(self) -> AccountId {
+        self.authority
+    }
+
     //
     // Transactions
     //
