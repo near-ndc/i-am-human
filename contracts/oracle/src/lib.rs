@@ -30,8 +30,8 @@ pub const CLASS_KYC_SBT: ClassId = 2;
 pub const MINT_TOTAL_COST: Balance = mint_deposit(1);
 pub const MINT_TOTAL_COST_WITH_KYC: Balance = mint_deposit(2);
 
-pub const ELECTIONS_START: u64 = 1693519199000; // Thu Aug 31 2023 21:59:59 GMT in miliseconds
-pub const ELECTIONS_END: u64 = 1695419999000; // Fri Sep 22 2023 21:59:59 GMT in miliseconds
+pub const ELECTIONS_START: u64 = 1693612799000; // Fri, 1 Sep 2023 23:59:59 UTC in ms
+pub const ELECTIONS_END: u64 = 1695427199000; // Fri, 22 Sep 2023 23:59:59 UTC in ms
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]

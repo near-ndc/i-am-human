@@ -173,6 +173,7 @@ async fn init(
     ));
 }
 
+#[ignore = "This test is not valid after the migration"]
 #[tokio::test]
 async fn migration_mainnet() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
