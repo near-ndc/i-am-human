@@ -192,14 +192,14 @@ async fn init(
         .await?;
     assert!(res.is_success());
 
-    return Ok((
+    Ok((
         registry_mainnet.clone(),
         iah_issuer,
         og_issuer,
         registry_contract,
         alice_acc,
         bob_acc,
-    ));
+    ))
 }
 
 //#[ignore = "this test is not valid after the migration"]
