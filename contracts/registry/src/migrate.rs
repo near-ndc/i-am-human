@@ -47,6 +47,7 @@ impl Contract {
                 StorageKey::AdminsFlagged,
                 Some(&authorized_flaggers),
             ),
+            admins: vec![]
         }
     }
 }
