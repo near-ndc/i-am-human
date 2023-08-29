@@ -11,7 +11,6 @@ use sbt::*;
 use crate::storage::*;
 
 pub mod events;
-pub mod migrate;
 pub mod registry;
 pub mod storage;
 
@@ -73,7 +72,7 @@ impl Contract {
             "iah_classes must be a non empty list"
         );
         let mut contract = Self {
-            authority: authority.clone(),
+            authority: authority,
             sbt_issuers: UnorderedMap::new(StorageKey::SbtIssuers),
             issuer_id_map: LookupMap::new(StorageKey::SbtIssuersRev),
             banlist: UnorderedSet::new(StorageKey::Banlist),
