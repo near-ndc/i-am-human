@@ -1,12 +1,12 @@
 [package]
-name = "tests"
+name = "test-util"
 version = "0.1.0"
 edition = "2021"
 authors = ["Kirill QQ <zeliondragon@gmail.com>"]
 
 [dependencies]
-oracle-sbt = { path = "../oracle/" }
-registry = { path = "../registry/" }
+# oracle-sbt = { path = "../oracle/" }
+# registry = { path = "../registry/" }
 ed25519-dalek.workspace = true
 near-sdk.workspace = true
 near-contract-standards.workspace = true
@@ -19,7 +19,7 @@ anyhow.workspace = true
 
 near-crypto = "^0"
 chrono = "0.4.26"
-uuid = { version = "1.3.3", features = [ "v4", "fast-rng" ] }
+uuid = { version = "1.3.3", features = ["v4", "fast-rng"] }
 
 [[test]]
 name = "test_oracle_sbt"

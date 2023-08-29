@@ -3,7 +3,6 @@ res:
 
 build: res
 	@RUSTFLAGS='-C link-arg=-s' cargo build --target wasm32-unknown-unknown --release
-	@mkdir -p ../res
 	@cp ../target/wasm32-unknown-unknown/release/*.wasm ../res/
 
 build-debug: res
@@ -17,7 +16,6 @@ build-abi: res
 
 build-all: res
 	@RUSTFLAGS='-C link-arg=-s' cargo build --all --target wasm32-unknown-unknown --release
-	@mkdir -p ../res
 	@cp ../target/wasm32-unknown-unknown/release/*.wasm ../res/
 	@cargo near abi
 	@cp ../target/near/*/*_abi.json ../res

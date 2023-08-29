@@ -9,7 +9,7 @@ members = [
 
     "human_checker",
     "ubi",
-    "tests",
+    "test-util",
     "demo-issuer",
 ]
 

@@ -2320,6 +2320,7 @@ dependencies = [
  "rand 0.7.3",
  "sbt",
  "serde_json",
+ "test-util",
  "tokio",
  "tracing",
  "uint",
@@ -3279,7 +3280,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tests"
+name = "test-util"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -3287,12 +3288,10 @@ dependencies = [
  "chrono",
  "ed25519-dalek",
  "near-contract-standards",
- "near-crypto 0.17.0",
+ "near-crypto 0.14.0",
  "near-primitives 0.17.0",
  "near-sdk",
  "near-units",
- "oracle-sbt",
- "registry",
  "tokio",
  "uuid",
  "workspaces",

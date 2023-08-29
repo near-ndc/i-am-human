@@ -16,6 +16,7 @@ serde_json.workspace = true
 
 cost = { path = "../cost" }
 sbt = { path = "../sbt" }
+test-util = { path = "../test-util" }
 
 [dev-dependencies]
 getrandom = { version = "0.2", features = ["js"] }

@@ -1,5 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::serde::Serialize;
+use near_sdk::AccountId;
 use uuid::Uuid;
 
 /// External account id represented as hexadecimal string
@@ -30,4 +31,16 @@ impl ExternalAccountId {
 pub struct SignedClaim {
     pub claim_b64: String,
     pub claim_sig: String,
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
+pub struct Claim {
+    pub claimer: AccountId,
+    /// external, Ethereum compatible address. Must be a hex string, can start with "0x".
+    pub external_id: String,
+    /// unix time (seconds) when the claim was signed
+    pub timestamp: u64,
+    /// indicates whether the user has passed a KYC or not
+    pub verified_kyc: bool,
 }

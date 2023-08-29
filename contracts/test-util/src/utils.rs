@@ -1,9 +1,8 @@
-use crate::common::{ExternalAccountId, SignedClaim};
+use crate::common::{Claim, ExternalAccountId, SignedClaim};
 use chrono::Utc;
 use ed25519_dalek::Signer;
 use near_crypto::{PublicKey, SecretKey, Signature};
 use near_sdk::{borsh::BorshSerialize, test_utils::VMContextBuilder, AccountId, Balance, Gas};
-use oracle_sbt::util::Claim;
 
 pub const MAX_GAS: Gas = Gas(300_000_000_000_000);
 
