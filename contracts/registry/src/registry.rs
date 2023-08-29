@@ -20,6 +20,34 @@ impl SBTRegistry for Contract {
             .map(|td| td.to_token(token))
     }
 
+    /// Get the information about list of token IDs issued by the SBT `issuer`.
+    /// If token ID is not found, `None` is set in the specific return index.
+    fn sbts(&self, issuer: AccountId, tokens: Vec<TokenId>) -> Vec<Option<Token>> {
+        let issuer_id = self.assert_issuer(&issuer);
+        tokens
+            .into_iter()
+            .map(|token| {
+                self.issuer_tokens
+                    .get(&IssuerTokenId { issuer_id, token })
+                    .map(|td| td.to_token(token))
+            })
+            .collect()
+    }
+
+    /// Query class ID for each token ID issued by the SBT `issuer`.
+    /// If token ID is not found, `None` is set in the specific return index.
+    fn sbt_classes(&self, issuer: AccountId, tokens: Vec<TokenId>) -> Vec<Option<ClassId>> {
+        let issuer_id = self.assert_issuer(&issuer);
+        tokens
+            .into_iter()
+            .map(|token| {
+                self.issuer_tokens
+                    .get(&IssuerTokenId { issuer_id, token })
+                    .map(|td| td.metadata.class_id())
+            })
+            .collect()
+    }
+
     /// returns total amount of tokens minted by the given issuer
     fn sbt_supply(&self, issuer: AccountId) -> u64 {
         let issuer_id = match self.sbt_issuers.get(&issuer) {
@@ -114,9 +142,11 @@ impl SBTRegistry for Contract {
     /// Query SBT tokens by owner
     /// If `from_class` is not specified, then `from_class` should be assumed to be the first
     /// valid class id.
+    /// If `issuer` is specified, then returns only tokens minted by that issuer.
     /// If limit is not specified, default is used: MAX_LIMIT.
     /// Returns list of pairs: `(Issuer address, list of token IDs)`.
-    /// if `with_expired` is set to `true` then only non-expired tokens are returned, otherwise all tokens are returned.
+    /// If `with_expired` is set to `true` then all the tokens are returned including expired ones
+    /// otherwise only non-expired tokens are returned.
     fn sbt_tokens_by_owner(
         &self,
         account: AccountId,
@@ -212,13 +242,13 @@ impl SBTRegistry for Contract {
     }
 
     /// sbt_recover reassigns all tokens issued by the caller, from the old owner to a new owner.
-    /// + Must be called by a valid SBT issuer.
-    /// + Must emit `Recover` event once all the tokens have been recovered.
-    /// + Requires attaching enough tokens to cover the storage growth.
-    /// + Returns the amount of tokens recovered and a boolean: `true` if the whole
-    ///   process has finished, `false` when the process has not finished and should be
-    ///   continued by a subsequent call.
-    /// + User must keep calling the `sbt_recover` until `true` is returned.
+    /// Must be called by a valid SBT issuer.
+    /// Must emit `Recover` event once all the tokens have been recovered.
+    /// Requires attaching enough tokens to cover the storage growth.
+    /// Returns the amount of tokens recovered and a boolean: `true` if the whole
+    /// process has finished, `false` when the process has not finished and should be
+    /// continued by a subsequent call. User must keep calling the `sbt_recover` until `true`
+    /// is returned.
     #[payable]
     fn sbt_recover(&mut self, from: AccountId, to: AccountId) -> (u32, bool) {
         self._sbt_recover(from, to, 20)
@@ -235,7 +265,8 @@ impl SBTRegistry for Contract {
         self._sbt_renew(issuer, tokens, expires_at);
     }
 
-    /// Revokes SBT.
+    /// Revokes SBT. If `burn==true`, the tokens are burned (removed). Otherwise, the token
+    /// expire_at is set to now, making the token expired.
     /// Must be called by an SBT contract.
     /// Must emit `Revoke` event.
     /// Must also emit `Burn` event if the SBT tokens are burned (removed).
@@ -316,5 +347,99 @@ impl SBTRegistry for Contract {
             }
         }
         SbtTokensEvent { issuer, tokens }.emit_revoke();
+    }
+
+    /// Revokes owners SBTs issued by the caller either by burning or updating their expire
+    /// time. The function will try to revoke at most `MAX_LIMIT` tokens (to fit into the tx
+    /// gas limit), so when an owner has many tokens from the issuer, the issuer may need to
+    /// call this function multiple times, until all tokens are revoked. Issuer should query
+    /// `sbt_supply_by_owner` to check if the function should be called again.
+    /// Must be called by an SBT contract.
+    /// Must emit `Revoke` event.
+    /// Must also emit `Burn` event if the SBT tokens are burned (removed).
+    fn sbt_revoke_by_owner(&mut self, owner: AccountId, burn: bool) {
+        let issuer = env::predecessor_account_id();
+        let issuer_id = self.assert_issuer(&issuer);
+        let mut tokens_by_owner =
+            self.sbt_tokens_by_owner(owner.clone(), Some(issuer.clone()), None, None, Some(true));
+        if tokens_by_owner.is_empty() {
+            return;
+        };
+        let (_, tokens) = tokens_by_owner.pop().unwrap();
+
+        let mut token_ids = Vec::new();
+
+        if burn == true {
+            let mut burned_per_class: HashMap<u64, u64> = HashMap::new();
+            let tokens_burned = tokens.len() as u64;
+            for t in tokens {
+                token_ids.push(t.token);
+                let class_id = t.metadata.class;
+                self.balances.remove(&BalanceKey {
+                    issuer_id,
+                    owner: owner.clone(),
+                    class_id,
+                });
+
+                // collect the info about the tokens revoked per class
+                // to update the balance accordingly
+                burned_per_class
+                    .entry(class_id)
+                    .and_modify(|key_value| *key_value += 1)
+                    .or_insert(1);
+
+                self.issuer_tokens.remove(&IssuerTokenId {
+                    issuer_id,
+                    token: t.token,
+                });
+            }
+
+            let key = &(owner.clone(), issuer_id);
+            let old_supply = self.supply_by_owner.get(key).unwrap();
+            self.supply_by_owner
+                .insert(key, &(old_supply - tokens_burned));
+
+            let supply_by_issuer = self.supply_by_issuer.get(&issuer_id).unwrap_or(0);
+            self.supply_by_issuer
+                .insert(&issuer_id, &(supply_by_issuer - tokens_burned));
+
+            // update supply by class
+            for (class_id, tokens_revoked) in burned_per_class {
+                let key = &(issuer_id, class_id);
+                let old_supply = self.supply_by_class.get(key).unwrap();
+                self.supply_by_class
+                    .insert(key, &(old_supply - tokens_revoked));
+            }
+
+            SbtTokensEvent {
+                issuer: issuer.clone(),
+                tokens: token_ids.clone(),
+            }
+            .emit_burn();
+        } else {
+            // revoke
+            // update expire date for all tokens to current_timestamp
+            let now = env::block_timestamp_ms();
+            for mut t in tokens {
+                token_ids.push(t.token);
+                t.metadata.expires_at = Some(now);
+                let token_data = TokenData {
+                    owner: owner.clone(),
+                    metadata: t.metadata.into(),
+                };
+                self.issuer_tokens.insert(
+                    &IssuerTokenId {
+                        issuer_id,
+                        token: t.token,
+                    },
+                    &token_data,
+                );
+            }
+        }
+        SbtTokensEvent {
+            issuer,
+            tokens: token_ids,
+        }
+        .emit_revoke();
     }
 }

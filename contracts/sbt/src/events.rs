@@ -20,6 +20,19 @@ pub struct NearEvent<T: Serialize> {
     pub event: T,
 }
 
+impl<T: Serialize> NearEvent<T> {
+    pub fn to_json_event_string(&self) -> String {
+        let s = serde_json::to_string(&self)
+            .ok()
+            .unwrap_or_else(|| env::abort());
+        format!("EVENT_JSON:{}", s)
+    }
+
+    pub fn emit(self) {
+        env::log_str(&self.to_json_event_string());
+    }
+}
+
 /// Enum that represents the data type of a NEP-393 Event.
 #[derive(Serialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
@@ -39,22 +52,14 @@ pub enum Nep393Event<'a> {
 }
 
 impl Nep393Event<'_> {
-    /// creates a string compatible with NEAR event standard
-    pub fn to_json_event_string(self) -> String {
-        let e = NearEvent {
+    // todo: maybe move to NearEvent
+    pub fn emit(self) {
+        NearEvent {
             standard: STANDARD_NAME,
             version: SPEC_VERSION,
             event: self,
-        };
-        let s = serde_json::to_string(&e)
-            .ok()
-            .unwrap_or_else(|| env::abort());
-        format!("EVENT_JSON:{}", s)
-    }
-
-    // todo: maybe move to NearEvent
-    pub fn emit(self) {
-        env::log_str(&self.to_json_event_string());
+        }
+        .emit()
     }
 }
 
@@ -148,12 +153,25 @@ pub fn emit_soul_transfer(from: &AccountId, to: &AccountId) {
     SoulTransfer { from, to }.emit();
 }
 
-/// Helper function to be used with `NearEvent` to construct NAER Event compatible payload
+/// Helper struct to be used in `NearEvent.event` to construct NEAR Event compatible payload
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
-struct EventWrapper<T: Serialize> {
-    event: &'static str,
-    data: T,
+pub struct EventPayload<T: Serialize> {
+    /// event name
+    pub event: &'static str,
+    /// event payload
+    pub data: T,
+}
+
+impl<T: Serialize> EventPayload<T> {
+    pub fn emit(self, standard: &'static str, version: &'static str) {
+        NearEvent {
+            standard,
+            version,
+            event: self,
+        }
+        .emit()
+    }
 }
 
 /// NEP-171 compatible Mint event structure. A light version of the Mint event from the
@@ -168,32 +186,20 @@ pub struct Nep171Mint<'a> {
 }
 
 impl Nep171Mint<'_> {
-    pub fn many_to_json_event_string(data: &[Nep171Mint<'_>]) -> String {
-        let e = NearEvent {
+    pub fn emit_many(data: &[Nep171Mint<'_>]) {
+        NearEvent {
             standard: "nep171",
             version: "1.0.0",
-            event: EventWrapper {
+            event: EventPayload {
                 event: "nft_mint",
                 data,
             },
-        };
-        let s = serde_json::to_string(&e)
-            .ok()
-            .unwrap_or_else(|| env::abort());
-        format!("EVENT_JSON:{}", s)
-    }
-
-    pub fn emit_many(data: &[Nep171Mint<'_>]) {
-        env::log_str(&Nep171Mint::many_to_json_event_string(data));
-    }
-
-    /// creates a string compatible NEP-171 NftMint event standard.
-    pub fn to_json_event_string(self) -> String {
-        Nep171Mint::many_to_json_event_string(&[self])
+        }
+        .emit()
     }
 
     pub fn emit(self) {
-        env::log_str(&self.to_json_event_string());
+        Nep171Mint::emit_many(&[self])
     }
 }
 
@@ -250,8 +256,6 @@ mod tests {
         assert_eq!(expected, test_utils::get_logs()[0]);
 
         let sbt_log: Vec<Nep171Mint> = nft_log.iter().map(from_nftmint).collect();
-        assert_eq!(expected, Nep171Mint::many_to_json_event_string(&sbt_log));
-
         Nep171Mint::emit_many(&sbt_log);
         assert_eq!(2, test_utils::get_logs().len());
         assert_eq!(test_utils::get_logs()[1], expected);
@@ -273,9 +277,10 @@ mod tests {
         assert_eq!(expected, test_utils::get_logs()[2]);
 
         log.emit();
-        assert_eq!(4, test_utils::get_logs().len());
+        log2.emit();
+        assert_eq!(5, test_utils::get_logs().len());
         assert_eq!(expected, test_utils::get_logs()[3]);
-        assert_eq!(expected, log2.to_json_event_string());
+        assert_eq!(expected, test_utils::get_logs()[4]);
     }
 
     #[test]
@@ -289,7 +294,6 @@ mod tests {
             issuer: &issuer,
             tokens: vec![(&bob, &bob1_tokens), (&bob, &bob2_tokens)],
         });
-        assert_eq!(expected, event.clone().to_json_event_string());
         event.emit();
         assert_eq!(expected, test_utils::get_logs()[0]);
     }
@@ -305,7 +309,6 @@ mod tests {
             old_owner: &bob,
             new_owner: &charlie,
         });
-        assert_eq!(expected, event.clone().to_json_event_string());
         event.emit();
         assert_eq!(expected, test_utils::get_logs()[0]);
     }
@@ -318,7 +321,6 @@ mod tests {
             tokens: vec![21, 10, 888],
         };
         let event = Nep393Event::Renew(e.clone());
-        assert_eq!(expected, event.clone().to_json_event_string());
         event.emit();
         assert_eq!(expected, test_utils::get_logs()[0]);
         e.emit_renew();
@@ -333,7 +335,6 @@ mod tests {
             tokens: vec![19853, 1],
         };
         let event = Nep393Event::Revoke(e.clone());
-        assert_eq!(expected, event.clone().to_json_event_string());
         event.emit();
         assert_eq!(expected, test_utils::get_logs()[0]);
         e.emit_revoke();
@@ -348,7 +349,6 @@ mod tests {
             tokens: vec![19853, 12],
         };
         let event = Nep393Event::Burn(e.clone());
-        assert_eq!(expected, event.clone().to_json_event_string());
         event.emit();
         assert_eq!(expected, test_utils::get_logs()[0]);
         e.emit_burn();
@@ -361,7 +361,6 @@ mod tests {
         let bob = bob();
         let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"ban","data":["alice.near","bob.near"]}"#;
         let event = Nep393Event::Ban(vec![&alice, &bob]);
-        assert_eq!(expected, event.clone().to_json_event_string());
         event.emit();
         assert_eq!(expected, test_utils::get_logs()[0]);
     }
@@ -376,7 +375,6 @@ mod tests {
             to: &bob,
         };
         let event = Nep393Event::SoulTransfer(e.clone());
-        assert_eq!(expected, event.clone().to_json_event_string());
         event.emit();
         assert_eq!(expected, test_utils::get_logs()[0]);
         e.emit();

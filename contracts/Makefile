@@ -1,17 +1,15 @@
 ##
 # I Am Human
 
+res:
+	mkdir -p res
+
 add-deps:
 	rustup target add wasm32-unknown-unknown
 
-build:
+build: res
 	@RUSTFLAGS='-C link-arg=-s' cargo build --workspace --exclude tests --target wasm32-unknown-unknown --release
-	@mkdir -p res
 	@cp target/wasm32-unknown-unknown/release/*.wasm res/
 
-cp-builds:
-	@mkdir -p res
-	@cp target/wasm32-unknown-unknown/release/*.wasm res/
-
-test:
+test: build
 	@cargo test

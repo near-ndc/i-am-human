@@ -1,11 +1,13 @@
 [package]
 name = "community-sbt"
-version = "1.0.0"
+version = "4.2.0"
 authors = ["Robert Zaremba 'https://zaremba.ch/'"]
-edition = "2021"
+edition = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
 
 [lib]
-crate-type = ["cdylib", "lib"]
+crate-type = ["cdylib", "rlib"]
 
 
 [dependencies]
@@ -15,3 +17,12 @@ serde_json.workspace = true
 
 cost = { path = "../cost" }
 sbt = { path = "../sbt" }
+
+[dev-dependencies]
+pretty_assertions.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+workspaces.workspace = true
+near-primitives.workspace = true
+near-units.workspace = true
+tracing.workspace = true

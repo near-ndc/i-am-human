@@ -32,6 +32,15 @@ pub type TokenId = u64;
 /// Minimum valid `ClassId` must be 1.
 pub type ClassId = u64;
 
+/// Collection of SBTs serialized as list of pairs: (Issuer Account, Vector of Token IDs).
+/// This is used for code size and processing efficiency.
+pub type SBTs = Vec<(AccountId, Vec<TokenId>)>;
+
+/// List of pairs: (Issuer Account, Vector of Class IDs).
+/// This is used to create class sets used to specify required token classes,
+/// like set of tokens required to be verified as IAH
+pub type ClassSet = Vec<(AccountId, Vec<ClassId>)>;
+
 /// SBTContract is the minimum required interface to be implemented by issuer.
 /// Other methods, such as a mint function, which requests the registry to proceed with token
 /// minting, is specific to an Issuer implementation (similarly, mint is not part of the FT
@@ -46,11 +55,19 @@ pub trait SBTRegistry {
      * QUERIES
      **********/
 
-    /// Get the information about specific token ID issued by `issuer` SBT contract.
+    /// Get the information about specific token ID issued by the `issuer` SBT contract.
     fn sbt(&self, issuer: AccountId, token: TokenId) -> Option<Token>;
 
+    /// Get the information about list of token IDs issued by the SBT `issuer`.
+    /// If token ID is not found, `None` is set in the specific return index.
+    fn sbts(&self, issuer: AccountId, token: Vec<TokenId>) -> Vec<Option<Token>>;
+
+    /// Query class ID for each token ID issued by the SBT `issuer`.
+    /// If token ID is not found, `None` is set in the specific return index.
+    fn sbt_classes(&self, issuer: AccountId, tokens: Vec<TokenId>) -> Vec<Option<ClassId>>;
+
     /// Returns total amount of tokens issued by `issuer` SBT contract, including expired
-    /// tokens. Depending on the implementation, if a revoke removes a token, it then is should
+    /// tokens. Depending on the implementation, if a revoke removes a token, then it should
     /// not be included in the supply.
     fn sbt_supply(&self, issuer: AccountId) -> u64;
 
@@ -86,6 +103,8 @@ pub trait SBTRegistry {
     /// If `from_class` is not specified, then `from_class` should be assumed to be the first
     /// valid class id. If `with_expired` if is set to `false` or `None` then all tokens are returned.
     /// Returns list of pairs: `(Contract address, list of token IDs)`.
+    /// If `with_expired` is set to `true` then all the tokens are returned including expired ones
+    /// otherwise only non-expired tokens are returned.
     fn sbt_tokens_by_owner(
         &self,
         account: AccountId,
@@ -112,11 +131,13 @@ pub trait SBTRegistry {
     fn sbt_mint(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>;
 
     /// sbt_recover reassigns all tokens issued by the caller, from the old owner to a new owner.
-    /// Adds `old_owner` to a banned accounts list.
     /// Must be called by a valid SBT issuer.
-    /// Must emit `Recover` event.
-    /// Must be called by an operator.
+    /// Must emit `Recover` event once all the tokens have been recovered.
     /// Requires attaching enough tokens to cover the storage growth.
+    /// Returns the amount of tokens recovered and a boolean: `true` if the whole
+    /// process has finished, `false` when the process has not finished and should be
+    /// continued by a subsequent call. User must keep calling the `sbt_recover` until `true`
+    /// is returned.
     // #[payable]
     fn sbt_recover(&mut self, from: AccountId, to: AccountId) -> (u32, bool);
 
@@ -131,12 +152,26 @@ pub trait SBTRegistry {
     /// Must emit `Revoke` event.
     /// Must also emit `Burn` event if the SBT tokens are burned (removed).
     fn sbt_revoke(&mut self, tokens: Vec<TokenId>, burn: bool);
+
+    /// Revokes all owners SBTs issued by the caller either by burning or updating their expire time.
+    /// Must be called by an SBT contract.
+    /// Must emit `Revoke` event.
+    /// Must also emit `Burn` event if the SBT tokens are burned (removed).
+    fn sbt_revoke_by_owner(&mut self, owner: AccountId, burn: bool);
 }
 
 // ext_registry is a helper to make cross contract registry calls
 #[ext_contract(ext_registry)]
 trait ExtRegistry {
     fn sbt_mint(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>;
+    fn sbt_mint_iah(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>;
     fn sbt_renew(&mut self, tokens: Vec<TokenId>, expires_at: u64);
     fn sbt_revoke(&mut self, tokens: Vec<TokenId>, burn: bool);
+
+    // queries
+
+    fn is_human(&self, account: AccountId) -> Vec<(AccountId, Vec<TokenId>)>;
+    fn sbt(&self, issuer: AccountId, token: TokenId) -> Option<Token>;
+    fn sbts(&self, issuer: AccountId, tokens: Vec<TokenId>) -> Vec<Option<Token>>;
+    fn sbt_classes(&self, issuer: AccountId, tokens: Vec<TokenId>) -> Vec<Option<ClassId>>;
 }

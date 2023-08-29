@@ -1,8 +1,9 @@
 [package]
 name = "sbt"
-version = "1.0.0"
+version = "1.2.0"
 authors = ["Robert Zaremba 'https://zaremba.ch/'"]
-edition = "2021"
+edition = { workspace = true }
+repository = { workspace = true }
 
 [dependencies]
 uint.workspace = true
