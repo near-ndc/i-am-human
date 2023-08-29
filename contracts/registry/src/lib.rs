@@ -860,12 +860,6 @@ impl Contract {
         );
     }
 
-    /// returns false if the `issuer` contract was already registered.
-    pub fn testing_add_sbt_issuer(&mut self, issuer: AccountId) -> bool {
-        self.assert_testnet();
-        self._add_sbt_issuer(&issuer)
-    }
-
     #[payable]
     pub fn testing_sbt_mint(
         &mut self,
