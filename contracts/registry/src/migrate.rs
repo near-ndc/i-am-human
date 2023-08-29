@@ -16,6 +16,7 @@ pub struct OldState {
     pub(crate) next_token_ids: LookupMap<IssuerId, TokenId>,
     pub(crate) next_issuer_id: IssuerId,
     pub(crate) iah_sbts: (AccountId, Vec<ClassId>),
+    pub(crate) admins: Vec<AccountId>,
 }
 
 #[near_bindgen]
@@ -42,12 +43,12 @@ impl Contract {
             next_issuer_id: old_state.next_issuer_id,
             ongoing_soul_tx: old_state.ongoing_soul_tx,
             iah_sbts: old_state.iah_sbts,
+            admins: old_state.admins,
             flagged: LookupMap::new(StorageKey::Flagged),
             authorized_flaggers: LazyOption::new(
                 StorageKey::AdminsFlagged,
                 Some(&authorized_flaggers),
             ),
-            admins: vec![old_state.authority],
         }
     }
 }

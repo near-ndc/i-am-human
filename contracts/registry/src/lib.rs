@@ -91,7 +91,7 @@ impl Contract {
                 StorageKey::AdminsFlagged,
                 Some(&authorized_flaggers),
             ),
-            admins: vec![authority]
+            admins: vec![]
         };
         contract._add_sbt_issuer(&iah_issuer);
         contract
@@ -861,10 +861,12 @@ impl Contract {
     }
 
     fn assert_admins(&self) {
-        require!(
-            self.admins.contains(&env::predecessor_account_id()),
-            "minting not allowed"
-        );
+        if !self.admins.is_empty() {
+            require!(
+                self.admins.contains(&env::predecessor_account_id()),
+                "minting not allowed"
+            );
+        }
     }
 
     fn assert_testnet(&self) {
