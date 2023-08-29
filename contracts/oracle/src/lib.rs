@@ -395,7 +395,7 @@ pub mod tests {
         );
         testing_env!(ctx.clone());
 
-        return (ctx, ctr, keypair);
+        (ctx, ctr, keypair)
     }
 
     fn assert_bad_request(resp: Result<Promise, CtrError>, expected_msg: &str) {
@@ -436,7 +436,7 @@ pub mod tests {
         testing_env!(ctx);
         let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, false);
         let _ = ctr
-            .sbt_mint(c_str.clone(), sig.clone(), None)
+            .sbt_mint(c_str, sig, None)
             .expect("must panic");
     }
 
@@ -453,7 +453,7 @@ pub mod tests {
         testing_env!(ctx);
         let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, true);
         let _ = ctr
-            .sbt_mint(c_str.clone(), sig.clone(), None)
+            .sbt_mint(c_str, sig, None)
             .expect("must panic");
     }
 
@@ -491,9 +491,9 @@ pub mod tests {
         );
 
         ctx.signer_account_id = acc_implicit();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         assert_bad_request(
-            ctr.sbt_mint(c_str.clone(), sig.clone(), None),
+            ctr.sbt_mint(c_str, sig, None),
             "claimer is not the transaction signer",
         );
     }
@@ -510,7 +510,7 @@ pub mod tests {
         ctx.block_timestamp = 1689675340 * SECOND;
         ctr.authority_pubkey =
             pubkey_from_b64("zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E=".to_owned());
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
 
         let claim_b64 = "FAAAAG15YWNjb3VudDEyMy50ZXN0bmV0IAAAAGFmZWU5MmYwNzEyMjQ2NGU4MzEzYWFlMjI1Y2U1YTNmSGa2ZAAAAAAA".to_owned();
         let claim_sig_b64 = "38X2TnWgc6moc4zReAJFQ7BjtOUlWZ+i3YQl9gSMOXwnm5gupfHV/YGmGPOek6SSkotT586d4zTTT2U8Qh3GBw==".to_owned();
@@ -555,7 +555,7 @@ pub mod tests {
         }
 
         // fail: claim_ttl passed way more
-        ctx.signer_account_id = signer.clone();
+        ctx.signer_account_id = signer;
         ctx.block_timestamp = start() + CLAIM_TTL * 10 * SECOND;
         testing_env!(ctx.clone());
         match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
@@ -577,12 +577,12 @@ pub mod tests {
 
         // should create a SBT for a valid claim
         ctx.block_timestamp = start() + SECOND;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         let resp = ctr.sbt_mint(c_str.clone(), sig.clone(), None);
         assert!(resp.is_ok(), "should accept valid claim");
 
         // fail: signer already has SBT
-        match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
+        match ctr.sbt_mint(c_str, sig, None) {
             Err(CtrError::DuplicatedID(_)) => (),
             Err(error) => panic!("expected DuplicatedID, got: {:?}", error),
             Ok(_) => panic!("expected DuplicatedID, got: Ok"),
@@ -597,14 +597,14 @@ pub mod tests {
         ctx.block_timestamp = (ELECTIONS_START + 1) * 1_000_000;
         testing_env!(ctx.clone());
         let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, false);
-        let res = ctr.sbt_mint(c_str.clone(), sig.clone(), None);
+        let res = ctr.sbt_mint(c_str, sig, None);
         assert!(res.is_err());
         assert_bad_request(res, "IAH SBT cannot be mint during the elections period");
 
         ctx.block_timestamp = ELECTIONS_END * 1_000_000;
         testing_env!(ctx);
         let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, false);
-        let res = ctr.sbt_mint(c_str.clone(), sig.clone(), None);
+        let res = ctr.sbt_mint(c_str, sig, None);
         assert!(res.is_err());
         assert_bad_request(res, "IAH SBT cannot be mint during the elections period");
     }

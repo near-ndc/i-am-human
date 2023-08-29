@@ -5,7 +5,7 @@ use near_sdk::{env, near_bindgen, require, AccountId, Balance, NearSchema, Panic
 
 use sbt::*;
 
-pub const MILI_NEAR: Balance = 1_000_000_000_000_000_000__000;
+pub const MILI_NEAR: Balance = 1_000_000_000_000_000_000_000;
 pub const REG_HUMAN_DEPOSIT: Balance = 3 * MILI_NEAR;
 
 #[near_bindgen]
@@ -104,7 +104,7 @@ mod tests {
         }
         testing_env!(ctx.clone());
         let ctr = Contract::new(registry());
-        return (ctx, ctr);
+        (ctx, ctr)
     }
 
     #[test]
@@ -120,7 +120,7 @@ mod tests {
         assert_eq!(ctr.used_tokens.get(&alice()).unwrap(), tokens);
 
         assert!(
-            !ctr.register_human_token(alice(), vec![(issuer1(), vec![2])], payload.clone()),
+            !ctr.register_human_token(alice(), vec![(issuer1(), vec![2])], payload),
             "second call for the same user should return false"
         );
         assert_eq!(

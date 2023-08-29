@@ -164,13 +164,13 @@ async fn init(
         .await?;
     assert!(res.is_success());
 
-    return Ok((
+    Ok((
         registry_mainnet.clone(),
         community_mainnet.clone(),
         community_contract,
         authority.clone(),
         minter.clone(),
-    ));
+    ))
 }
 
 #[ignore = "This test is not valid after the migration"]
