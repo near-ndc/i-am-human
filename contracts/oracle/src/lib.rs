@@ -332,17 +332,8 @@ pub mod tests {
     use ed25519_dalek::{Keypair, Signer};
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::{testing_env, VMContext};
-    use rand::rngs::OsRng;
 
-    use crate::util::tests::{acc_claimer, b64_encode, gen_key, mk_claim_sign};
-  
-    fn b64_encode(data: Vec<u8>) -> String {
-        near_sdk::base64::encode(data)
-    }
-
-    fn acc_claimer() -> AccountId {
-        "user1.near".parse().unwrap()
-    }
+    use crate::util::tests::{acc_claimer, b64_encode, gen_key};
 
     fn acc_u1() -> AccountId {
         "user2.near".parse().unwrap()
@@ -435,7 +426,6 @@ pub mod tests {
         let (c_str, sig) = sign_claim(&c, k);
         (c, c_str, sig)
     }
-
 
     fn assert_bad_request(resp: Result<Promise, CtrError>, expected_msg: &str) {
         match resp {
