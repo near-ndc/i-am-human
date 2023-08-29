@@ -52,6 +52,7 @@ pub struct Contract {
     /// tuple of (required issuer, [required list of classes]) that represents mandatory
     /// requirements to be verified as human for `is_human` and `is_human_call` methods.
     pub(crate) iah_sbts: (AccountId, Vec<ClassId>),
+    /// list of admins allowed to mint tokens 
     pub(crate) admins: Vec<AccountId>,
 }
 
@@ -864,7 +865,7 @@ impl Contract {
         if !self.admins.is_empty() {
             require!(
                 self.admins.contains(&env::predecessor_account_id()),
-                "minting not allowed"
+                "only admins are allowed to mint tokens"
             );
         }
     }
