@@ -52,6 +52,7 @@ pub struct Contract {
     /// tuple of (required issuer, [required list of classes]) that represents mandatory
     /// requirements to be verified as human for `is_human` and `is_human_call` methods.
     pub(crate) iah_sbts: (AccountId, Vec<ClassId>),
+    pub(crate) admins: Vec<AccountId>,
 }
 
 // Implement the contract structure
@@ -72,7 +73,7 @@ impl Contract {
             "iah_classes must be a non empty list"
         );
         let mut contract = Self {
-            authority,
+            authority: authority.clone(),
             sbt_issuers: UnorderedMap::new(StorageKey::SbtIssuers),
             issuer_id_map: LookupMap::new(StorageKey::SbtIssuersRev),
             banlist: UnorderedSet::new(StorageKey::Banlist),
@@ -90,6 +91,7 @@ impl Contract {
                 StorageKey::AdminsFlagged,
                 Some(&authorized_flaggers),
             ),
+            admins: vec![authority]
         };
         contract._add_sbt_issuer(&iah_issuer);
         contract
@@ -853,11 +855,29 @@ impl Contract {
     // list of functions used in backstage for testing
     //
 
+    pub fn admin_add_minter(&mut self, minter: AccountId) {
+        self.assert_authority();
+        self.admins.push(minter);
+    }
+
+    fn assert_admins(&self) {
+        require!(
+            self.admins.contains(&env::predecessor_account_id()),
+            "minting not allowed"
+        );
+    }
+
     fn assert_testnet(&self) {
         require!(
             env::current_account_id().as_str().contains("test"),
             "must be testnet"
         );
+    }
+
+     /// returns false if the `issuer` contract was already registered.
+     pub fn testing_add_sbt_issuer(&mut self, issuer: AccountId) -> bool {
+        self.assert_testnet();
+        self._add_sbt_issuer(&issuer)
     }
 
     #[payable]
@@ -866,11 +886,13 @@ impl Contract {
         issuer: AccountId,
         token_spec: Vec<(AccountId, Vec<TokenMetadata>)>,
     ) -> Vec<TokenId> {
+        self.assert_admins();
         self.assert_testnet();
         self._sbt_mint(&issuer, token_spec)
     }
 
     pub fn testing_sbt_renew(&mut self, issuer: AccountId, tokens: Vec<TokenId>, expires_at: u64) {
+        self.assert_admins();
         self.assert_testnet();
         self._sbt_renew(issuer, tokens, expires_at)
     }
