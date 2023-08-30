@@ -6,7 +6,7 @@ use workspaces::{network::Sandbox, result::ExecutionFinalResult, Account, Contra
 
 use human_checker::RegisterHumanPayload;
 
-const REGISTER_HUMAN_TOKEN: &'static str = "register_human_token";
+const REGISTER_HUMAN_TOKEN: &str = "register_human_token";
 
 struct Suite {
     registry: Contract,
@@ -120,14 +120,14 @@ async fn init(
         .await?;
     assert!(res.is_success());
 
-    return Ok((
+    Ok((
         registry,
         human_checker.clone(),
         alice,
         bob,
         john,
         iah_issuer,
-    ));
+    ))
 }
 
 #[tokio::test]

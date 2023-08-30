@@ -168,7 +168,7 @@ impl SBTRegistry for Contract {
 
         let issuer_id = match &issuer {
             None => 0,
-            Some(addr) => self.assert_issuer(&addr),
+            Some(addr) => self.assert_issuer(addr),
         };
         let from_class = from_class.unwrap_or(0);
         // iter_from starts from exclusive "left end". We need to iteretare from one before.
@@ -273,7 +273,7 @@ impl SBTRegistry for Contract {
     fn sbt_revoke(&mut self, tokens: Vec<TokenId>, burn: bool) {
         let issuer = env::predecessor_account_id();
         let issuer_id = self.assert_issuer(&issuer);
-        if burn == true {
+        if burn {
             let mut revoked_per_class: HashMap<u64, u64> = HashMap::new();
             let mut revoked_per_owner: HashMap<AccountId, u64> = HashMap::new();
             let tokens_burned: u64 = tokens.len().try_into().unwrap();
@@ -369,7 +369,7 @@ impl SBTRegistry for Contract {
 
         let mut token_ids = Vec::new();
 
-        if burn == true {
+        if burn {
             let mut burned_per_class: HashMap<u64, u64> = HashMap::new();
             let tokens_burned = tokens.len() as u64;
             for t in tokens {
@@ -394,7 +394,7 @@ impl SBTRegistry for Contract {
                 });
             }
 
-            let key = &(owner.clone(), issuer_id);
+            let key = &(owner, issuer_id);
             let old_supply = self.supply_by_owner.get(key).unwrap();
             self.supply_by_owner
                 .insert(key, &(old_supply - tokens_burned));
