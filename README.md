@@ -56,7 +56,7 @@ Production:
   - verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
 - **Community SBTs**: `community.i-am-human.near` @ community-sbt/v4.2.0
   Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
-  classes: 1=OG, 2=NDC_Contributor, 3=NDC_Core_Contributors, 4=NDC_Champion
+  classes: 1=OG, 2=NDC_Contributor, 3=NDC_Core_Contributors, 4=NDC_Champion, 5=NDC_Mod, 6=NDC_TechWG, 7=Creatives_DAO
 - **Regens SBTs**: `issuer.regens.near` @ community-sbt/v4.2.0
   Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
   classes: ProofOfRegen=1
@@ -89,7 +89,7 @@ Deprecated:
   registry: `registry-1.i-am-human.testnet`; Verification pubkey base64: `FGoAI6DXghOSK2ZaKVT/5lSP4X4JkoQQphv1FD4YRto=`, `claim_ttl`: 3600ms, FV class: 1
 - **Community-SBT**: `community-v1.i-am-human.testnet` @ community-sbt/v4.2.0
   registry: `registry-1.i-am-human.testnet`
-  classes: 1=OG, 2=NDC_Contributor, 3=NDC_Core_Contributors, 4=NDC_Champion
+  classes: 1=OG, 2=NDC_Contributor, 3=NDC_Core_Contributors, 4=NDC_Champion, 5=NDC_Mod, 6=NDC_TechWG, 7=Creatives_DAO
   Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
 
 Deprecated:
