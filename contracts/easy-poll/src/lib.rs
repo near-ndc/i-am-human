@@ -23,7 +23,7 @@ pub struct Contract {
     /// map of all results summarized
     pub results: LookupMap<PollId, Results>,
     /// map of all answers, (poll, user) -> vec of answers
-    pub answers: UnorderedMap<(PollId, AccountId), Vec<Answer>>,
+    pub answers: UnorderedMap<(PollId, AccountId), Vec<Option<Answer>>>,
     /// text answers are stored in a separate map
     pub text_answers: LookupMap<(PollId, usize), Vector<String>>,
     /// SBT registry.
@@ -51,7 +51,7 @@ impl Contract {
      **********/
 
     /// Returns caller response to the specified poll
-    pub fn my_respond(&self, poll_id: PollId) -> Vec<Answer> {
+    pub fn my_respond(&self, poll_id: PollId) -> Vec<Option<Answer>> {
         let caller = env::predecessor_account_id();
         self.answers
             .get(&(poll_id, caller))
@@ -207,12 +207,12 @@ impl Contract {
         if iah_only && tokens.is_empty() {
             return Err(PollError::NoSBTs);
         }
-        let questions: Vec<Question> = self.polls.get(&poll_id).unwrap().questions;
+        let questions: Vec<Question> = self.polls.get(&poll_id).expect("poll not found").questions;
         if questions.len() != answers.len() {
             return Err(PollError::IncorrectAnswerVector);
         }
-        let mut unwrapped_answers: Vec<Answer> = Vec::new();
-        let mut poll_results = self.results.get(&poll_id).unwrap();
+        let mut unwrapped_answers: Vec<Option<Answer>> = Vec::new();
+        let mut poll_results = self.results.get(&poll_id).expect("results not found");
 
         for i in 0..questions.len() {
             if questions[i].required && answers[i].is_none() {
@@ -262,10 +262,13 @@ impl Contract {
                     answers.push(answer);
                     self.text_answers.insert(&(poll_id, i), &answers);
                 }
+                (None, _) => {
+                    unwrapped_answers.push(None);
+                }
                 (_, _) => return Err(PollError::WrongAnswer),
             }
             if answers[i].is_some() {
-                unwrapped_answers.push(answers[i].clone().unwrap());
+                unwrapped_answers.push(Some(answers[i].clone().unwrap()));
             }
         }
         let mut answers = self
@@ -502,7 +505,7 @@ mod tests {
         let (mut ctx, mut ctr) = setup(&alice());
         let poll_id = ctr.create_poll(
             false,
-            vec![question_yes_no(true)],
+            vec![question_yes_no(false), question_yes_no(true)],
             2,
             100,
             String::from("Hello, world!"),
@@ -517,11 +520,11 @@ mod tests {
             false,
             ctx.predecessor_account_id,
             poll_id,
-            vec![Some(Answer::YesNo(true))],
+            vec![None, Some(Answer::YesNo(true))],
         );
         assert!(res.is_ok());
         let res = ctr.my_respond(poll_id);
-        assert_eq!(res, vec![Answer::YesNo(true)])
+        assert_eq!(res, vec![None, Some(Answer::YesNo(true))])
     }
 
     #[test]
