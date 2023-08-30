@@ -1,4 +1,5 @@
-# kudos
+# Kudos
+
 Kudos contract for NDC
 
 ## Setup [Testnet]
