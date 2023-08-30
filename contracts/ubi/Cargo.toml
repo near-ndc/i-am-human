@@ -7,7 +7,7 @@ repository = { workspace = true }
 license = { workspace = true }
 
 [lib]
-crate-type = ["cdylib", "lib"]
+crate-type = ["cdylib"]
 
 [dependencies]
 uint.workspace = true

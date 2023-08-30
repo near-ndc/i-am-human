@@ -8,7 +8,7 @@ add-deps:
 	rustup target add wasm32-unknown-unknown
 
 build: res
-	@RUSTFLAGS='-C link-arg=-s' cargo build --workspace --exclude tests --target wasm32-unknown-unknown --release
+	@RUSTFLAGS='-C link-arg=-s' cargo build --workspace --exclude test-util --target wasm32-unknown-unknown --release
 	@cp target/wasm32-unknown-unknown/release/*.wasm res/
 
 test: build
