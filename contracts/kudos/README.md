@@ -6,22 +6,22 @@ Kudos contract for NDC
 
 1. Build contract
 
-```sh
-RUSTFLAGS='-C link-arg=-s' cargo build --all --target wasm32-unknown-unknown --release
-```
+  ```sh
+  RUSTFLAGS='-C link-arg=-s' cargo build --all --target wasm32-unknown-unknown --release
+  ```
 
 2. Init contract
 
-```sh
-near call $CONRTACT_ID init '{"iah_registry": "registry-unstable.i-am-human.testnet"}' --accountId rubycoptest.testnet
-near call $CONRTACT_ID set_external_db '{"external_db_id": "v1.social08.testnet"}' --accountId rubycoptest.testnet --amount 5
-```
+  ```sh
+  near call $CONRTACT_ID init '{"iah_registry": "registry-unstable.i-am-human.testnet"}' --accountId rubycoptest.testnet
+  near call $CONRTACT_ID set_external_db '{"external_db_id": "v1.social08.testnet"}' --accountId rubycoptest.testnet --amount 5
+  ```
 
 3. Deploy it on testnet
 
-```sh
-near dev-deploy target/wasm32-unknown-unknown/release/kudos_contract.wasm
-```
+  ```sh
+  near dev-deploy target/wasm32-unknown-unknown/release/kudos_contract.wasm
+  ```
 
 ## Public methods
 
@@ -96,7 +96,7 @@ Deposit required: 0.004 Ⓝ
 
 #### Interface
 
-```
+```js
 upvote_kudos(receiver_id, kudos_id): timestamp
 
 - receiver_id: user's NEAR account id whos unique kudos should be upvoted
@@ -138,7 +138,7 @@ Deposit required: 0.017 Ⓝ
 
 #### Interface
 
-```
+```js
 leave_comment(receiver_id, kudos_id, parent_comment_id, message): commentary id
 
 - receiver_id: user's NEAR account id whos unique kudos should be upvoted
@@ -184,7 +184,7 @@ Deposit required: 0.008 Ⓝ
 
 #### Interface
 
-```
+```js
 exchange_kudos_for_sbt(kudos_id): array of minted SBTs
 
 - kudos_id: unique kudos identified granted to a caller NEAR account
