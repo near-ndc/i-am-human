@@ -5,15 +5,20 @@ Kudos contract for NDC
 ## Setup [Testnet]
 
 1. Build conrtact
+
 ```
 RUSTFLAGS='-C link-arg=-s' cargo build --all --target wasm32-unknown-unknown --release
 ```
+
 2. Init contract
+
 ```
 near call $CONRTACT_ID init '{"iah_registry": "registry-unstable.i-am-human.testnet"}' --accountId rubycoptest.testnet
 near call $CONRTACT_ID set_external_db '{"external_db_id": "v1.social08.testnet"}' --accountId rubycoptest.testnet --amount 5
 ```
+
 3. Deploy it on testnet
+
 ```
 near dev-deploy target/wasm32-unknown-unknown/release/kudos_contract.wasm
 ```
@@ -46,6 +51,7 @@ give_kudos(receiver_id, message, icon_cid, hashtags): kudos id
 Returns unique kudos identifier or panics with an error message
 
 Example JSON written to SocialDB:
+
 ```
 {
   "kudos.near": {
@@ -102,6 +108,7 @@ upvote_kudos(receiver_id, kudos_id): timestamp
 Returns stringified timestamp of block when kudos was upvoted or panics with an error message
 
 Example JSON written to SocialDB:
+
 ```
 {
   "kudos.near": {
@@ -145,6 +152,7 @@ leave_comment(receiver_id, kudos_id, parent_comment_id, message): commentary id
 Returns unique commentary identifier or panics with an error message
 
 Example JSON written to SocialDB:
+
 ```
 {
   "kudos.near": {
