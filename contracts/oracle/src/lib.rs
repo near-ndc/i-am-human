@@ -27,8 +27,11 @@ pub const CLASS_FV_SBT: ClassId = 1;
 pub const CLASS_KYC_SBT: ClassId = 2;
 
 // Total storage deposit cost without KYC
-pub const MINT_TOTAL_COST: Balance = MINT_COST + MILI_NEAR;
-pub const MINT_TOTAL_COST_WITH_KYC: Balance = 2 * MINT_COST + MILI_NEAR;
+pub const MINT_TOTAL_COST: Balance = mint_deposit(1);
+pub const MINT_TOTAL_COST_WITH_KYC: Balance = mint_deposit(2);
+
+pub const ELECTIONS_START: u64 = 1693612799000; // Fri, 1 Sep 2023 23:59:59 UTC in ms
+pub const ELECTIONS_END: u64 = 1695427199000; // Fri, 22 Sep 2023 23:59:59 UTC in ms
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -89,18 +92,18 @@ impl Contract {
      * QUERIES
      **********/
 
-    /// Checks if the given id was already used to mint an sbt
-    pub fn is_used_identity(&self, external_id: String) -> bool {
-        let normalised_id = normalize_external_id(external_id).expect("failed to normalize id");
-        self.used_identities.contains(&normalised_id)
-    }
-
     #[inline]
-    pub fn get_required_sbt_mint_deposit(is_verified_kyc: bool) -> Balance {
+    pub fn required_sbt_mint_deposit(is_verified_kyc: bool) -> Balance {
         if is_verified_kyc {
             return MINT_TOTAL_COST_WITH_KYC;
         };
         MINT_TOTAL_COST
+    }
+
+    /// Checks if the given id was already used to mint an sbt
+    pub fn is_used_identity(&self, external_id: String) -> bool {
+        let normalised_id = normalize_external_id(external_id).expect("failed to normalize id");
+        self.used_identities.contains(&normalised_id)
     }
 
     // all SBT queries should be done through registry
@@ -114,6 +117,7 @@ impl Contract {
     /// @claim_sig: standard base64 serialized ed25519 signature.
     /// If `metadata.expires_at` is None then we set it to ` now+self.ttl`.
     /// Panics if `metadata.expires_at > now+self.ttl`.
+    /// Throws an error if trying to mint during the elections period.
     // TODO: update result to return TokenId
     #[handle_result]
     #[payable]
@@ -123,6 +127,13 @@ impl Contract {
         claim_sig: String,
         memo: Option<String>,
     ) -> Result<Promise, CtrError> {
+        let now_ms = env::block_timestamp_ms();
+        if now_ms > ELECTIONS_START && now_ms <= ELECTIONS_END {
+            return Err(CtrError::BadRequest(
+                "IAH SBT cannot be mint during the elections period".to_owned(),
+            ));
+        }
+
         let user = env::signer_account_id();
         if !is_supported_account(user.as_ref().chars()) {
             return Err(CtrError::BadRequest(
@@ -136,19 +147,16 @@ impl Contract {
         let signature = b64_decode("claim_sig", claim_sig)?;
         verify_claim(&signature, &claim_bytes, &self.authority_pubkey)?;
 
-        if claim.verified_kyc {
-            require!(
-                env::attached_deposit() == MINT_TOTAL_COST_WITH_KYC,
-                "Requires attached deposit of exactly 0.015 NEAR"
-            );
-        } else {
-            require!(
-                env::attached_deposit() == MINT_TOTAL_COST,
-                "Requires attached deposit of exactly 0.008 NEAR"
-            );
-        }
+        let storage_deposit = Self::required_sbt_mint_deposit(claim.verified_kyc);
+        require!(
+            env::attached_deposit() >= storage_deposit,
+            format!(
+                "Requires attached deposit at least {} yoctoNEAR",
+                storage_deposit
+            )
+        );
+        let num_tokens = if claim.verified_kyc { 2 } else { 1 };
 
-        let now_ms = env::block_timestamp_ms();
         let now = now_ms / 1000;
         if claim.timestamp > now {
             return Err(CtrError::BadRequest(
@@ -196,8 +204,8 @@ impl Contract {
         }
 
         let result = ext_registry::ext(self.registry.clone())
-            .with_attached_deposit(Self::get_required_sbt_mint_deposit(claim.verified_kyc))
-            .with_static_gas(MINT_GAS)
+            .with_attached_deposit(storage_deposit)
+            .with_static_gas(calculate_mint_gas(num_tokens))
             .sbt_mint(vec![(claim.claimer, tokens_metadata)])
             .then(
                 Self::ext(env::current_account_id())
@@ -363,7 +371,7 @@ pub mod tests {
         let ctx = VMContextBuilder::new()
             .signer_account_id(signer.clone())
             .predecessor_account_id(predecessor.clone())
-            .attached_deposit(MINT_TOTAL_COST)
+            .attached_deposit(MINT_TOTAL_COST * 5)
             .block_timestamp(start())
             .current_account_id("oracle.near".parse().unwrap())
             .is_view(false)
@@ -387,7 +395,7 @@ pub mod tests {
         );
         testing_env!(ctx.clone());
 
-        return (ctx, ctr, keypair);
+        (ctx, ctr, keypair)
     }
 
     fn assert_bad_request(resp: Result<Promise, CtrError>, expected_msg: &str) {
@@ -416,7 +424,9 @@ pub mod tests {
     */
 
     #[test]
-    #[should_panic(expected = "Requires attached deposit of exactly 0.008 NEAR")]
+    #[should_panic(
+        expected = "Requires attached deposit at least 10000000000000000000000 yoctoNEAR"
+    )]
     fn mint_not_enough_storage_deposit() {
         let signer = acc_claimer();
         let (mut ctx, mut ctr, k) = setup(&signer, &acc_u1());
@@ -426,12 +436,14 @@ pub mod tests {
         testing_env!(ctx);
         let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, false);
         let _ = ctr
-            .sbt_mint(c_str.clone(), sig.clone(), None)
+            .sbt_mint(c_str, sig, None)
             .expect("must panic");
     }
 
     #[test]
-    #[should_panic(expected = "Requires attached deposit of exactly 0.015 NEAR")]
+    #[should_panic(
+        expected = "Requires attached deposit at least 19000000000000000000000 yoctoNEAR"
+    )]
     fn mint_with_kyc_not_enough_storage_deposit() {
         let signer = acc_claimer();
         let (mut ctx, mut ctr, k) = setup(&signer, &acc_u1());
@@ -441,7 +453,7 @@ pub mod tests {
         testing_env!(ctx);
         let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, true);
         let _ = ctr
-            .sbt_mint(c_str.clone(), sig.clone(), None)
+            .sbt_mint(c_str, sig, None)
             .expect("must panic");
     }
 
@@ -479,9 +491,9 @@ pub mod tests {
         );
 
         ctx.signer_account_id = acc_implicit();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         assert_bad_request(
-            ctr.sbt_mint(c_str.clone(), sig.clone(), None),
+            ctr.sbt_mint(c_str, sig, None),
             "claimer is not the transaction signer",
         );
     }
@@ -498,7 +510,7 @@ pub mod tests {
         ctx.block_timestamp = 1689675340 * SECOND;
         ctr.authority_pubkey =
             pubkey_from_b64("zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E=".to_owned());
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
 
         let claim_b64 = "FAAAAG15YWNjb3VudDEyMy50ZXN0bmV0IAAAAGFmZWU5MmYwNzEyMjQ2NGU4MzEzYWFlMjI1Y2U1YTNmSGa2ZAAAAAAA".to_owned();
         let claim_sig_b64 = "38X2TnWgc6moc4zReAJFQ7BjtOUlWZ+i3YQl9gSMOXwnm5gupfHV/YGmGPOek6SSkotT586d4zTTT2U8Qh3GBw==".to_owned();
@@ -543,7 +555,7 @@ pub mod tests {
         }
 
         // fail: claim_ttl passed way more
-        ctx.signer_account_id = signer.clone();
+        ctx.signer_account_id = signer;
         ctx.block_timestamp = start() + CLAIM_TTL * 10 * SECOND;
         testing_env!(ctx.clone());
         match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
@@ -565,15 +577,35 @@ pub mod tests {
 
         // should create a SBT for a valid claim
         ctx.block_timestamp = start() + SECOND;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         let resp = ctr.sbt_mint(c_str.clone(), sig.clone(), None);
         assert!(resp.is_ok(), "should accept valid claim");
 
         // fail: signer already has SBT
-        match ctr.sbt_mint(c_str.clone(), sig.clone(), None) {
+        match ctr.sbt_mint(c_str, sig, None) {
             Err(CtrError::DuplicatedID(_)) => (),
             Err(error) => panic!("expected DuplicatedID, got: {:?}", error),
             Ok(_) => panic!("expected DuplicatedID, got: Ok"),
         }
+    }
+
+    #[test]
+    fn mint_during_elections() {
+        let signer = acc_claimer();
+        let (mut ctx, mut ctr, k) = setup(&signer, &acc_u1());
+
+        ctx.block_timestamp = (ELECTIONS_START + 1) * 1_000_000;
+        testing_env!(ctx.clone());
+        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, false);
+        let res = ctr.sbt_mint(c_str, sig, None);
+        assert!(res.is_err());
+        assert_bad_request(res, "IAH SBT cannot be mint during the elections period");
+
+        ctx.block_timestamp = ELECTIONS_END * 1_000_000;
+        testing_env!(ctx);
+        let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, false);
+        let res = ctr.sbt_mint(c_str, sig, None);
+        assert!(res.is_err());
+        assert_bad_request(res, "IAH SBT cannot be mint during the elections period");
     }
 }

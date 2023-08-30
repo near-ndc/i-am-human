@@ -172,8 +172,8 @@ pub mod tests {
         is_verified_kyc: bool,
     ) -> (Claim, String, String) {
         let c = mk_claim(timestamp, external_id, is_verified_kyc);
-        let (c_str, sig) = sign_claim(&c, &k);
-        return (c, c_str, sig);
+        let (c_str, sig) = sign_claim(&c, k);
+        (c, c_str, sig)
     }
 
     fn check_hex(s: &str, r: Vec<u8>) -> Result<(), FromHexError> {

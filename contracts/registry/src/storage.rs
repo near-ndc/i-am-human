@@ -1,5 +1,5 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::serde::Serialize;
+use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::serde_json::value::RawValue;
 use near_sdk::{AccountId, BorshStorageKey};
 use sbt::{ClassId, SBTs, TokenId};
@@ -20,6 +20,17 @@ pub enum StorageKey {
     IssuerTokens,
     NextTokenId,
     OngoingSoultTx,
+    Flagged,
+    AdminsFlagged,
+}
+
+#[derive(BorshSerialize, BorshDeserialize, BorshStorageKey, Serialize, Deserialize, PartialEq)]
+#[serde(crate = "near_sdk::serde")]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+pub enum AccountFlag {
+    /// Account is "blacklisted" when it was marked as a scam or breaking the IAH rules.
+    Blacklisted,
+    Verified,
 }
 
 /// Composition of issuer address and token id used for indexing

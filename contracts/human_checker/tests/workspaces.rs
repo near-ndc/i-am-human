@@ -6,7 +6,7 @@ use workspaces::{network::Sandbox, result::ExecutionFinalResult, Account, Contra
 
 use human_checker::RegisterHumanPayload;
 
-const REGISTER_HUMAN_TOKEN: &'static str = "register_human_token";
+const REGISTER_HUMAN_TOKEN: &str = "register_human_token";
 
 struct Suite {
     registry: Contract,
@@ -54,16 +54,19 @@ async fn init(
         .dev_deploy(include_bytes!("../../res/human_checker.wasm"))
         .await?;
 
-    let authority_acc = worker.dev_create_account().await?;
+    let authority = worker.dev_create_account().await?;
+    let auth_flagger = worker.dev_create_account().await?;
     let iah_issuer = worker.dev_create_account().await?;
-    let alice_acc = worker.dev_create_account().await?;
-    let bob_acc = worker.dev_create_account().await?;
-    let john_acc = worker.dev_create_account().await?;
+    let alice = worker.dev_create_account().await?;
+    let bob = worker.dev_create_account().await?;
+    let john = worker.dev_create_account().await?;
 
     // init the contracts
     let res1 = registry
         .call("new")
-        .args_json(json!({"authority": authority_acc.id(), "iah_issuer": iah_issuer.id(), "iah_classes": [1]}))
+        .args_json(json!({"authority": authority.id(),
+                   "iah_issuer": iah_issuer.id(), "iah_classes": [1],
+                   "authorized_flaggers": vec![auth_flagger.id()]}))
         .max_gas()
         .transact();
 
@@ -76,7 +79,7 @@ async fn init(
     assert!(res1.await?.is_success() && res2.await?.is_success());
 
     // add iah_issuer
-    let res = authority_acc
+    let res = authority
         .call(registry.id(), "admin_add_sbt_issuer")
         .args_json(json!({"issuer": iah_issuer.id()}))
         .max_gas()
@@ -87,7 +90,7 @@ async fn init(
     // populate registry with mocked data
     let iah_token_spec = vec![
         (
-            alice_acc.id(),
+            alice.id(),
             vec![TokenMetadata {
                 class: 1,
                 issued_at: Some(0),
@@ -97,7 +100,7 @@ async fn init(
             }],
         ),
         (
-            bob_acc.id(),
+            bob.id(),
             vec![TokenMetadata {
                 class: 2,
                 issued_at: Some(0),
@@ -117,14 +120,14 @@ async fn init(
         .await?;
     assert!(res.is_success());
 
-    return Ok((
+    Ok((
         registry,
         human_checker.clone(),
-        alice_acc,
-        bob_acc,
-        john_acc,
+        alice,
+        bob,
+        john,
         iah_issuer,
-    ));
+    ))
 }
 
 #[tokio::test]
