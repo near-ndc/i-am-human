@@ -4,20 +4,20 @@ Kudos contract for NDC
 
 ## Setup [Testnet]
 
-1. Build contract
+- Build contract
 
   ```sh
   RUSTFLAGS='-C link-arg=-s' cargo build --all --target wasm32-unknown-unknown --release
   ```
 
-2. Init contract
+- Init contract
 
   ```sh
   near call $CONRTACT_ID init '{"iah_registry": "registry-unstable.i-am-human.testnet"}' --accountId rubycoptest.testnet
   near call $CONRTACT_ID set_external_db '{"external_db_id": "v1.social08.testnet"}' --accountId rubycoptest.testnet --amount 5
   ```
 
-3. Deploy it on testnet
+- Deploy it on testnet
 
   ```sh
   near dev-deploy target/wasm32-unknown-unknown/release/kudos_contract.wasm
