@@ -374,6 +374,7 @@ mod tests {
     fn tags() -> Vec<String> {
         vec![String::from("tag1"), String::from("tag2")]
     }
+
     fn question_text_answers(required: bool) -> Question {
         Question {
             question_type: Answer::TextAnswer(String::from("")),
