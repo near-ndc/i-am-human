@@ -70,6 +70,7 @@ impl Contract {
         question: usize,
         from_answer: usize,
     ) -> (bool, Vec<String>) {
+        // We cannot return more than 20 due to gas limit per txn.
         self._result_text_answers(poll_id, question, from_answer, 20)
     }
 
