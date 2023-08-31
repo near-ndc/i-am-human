@@ -73,7 +73,7 @@ impl Contract {
         self._result_text_answers(poll_id, question, from_answer, 20)
     }
 
-    ///Returns a fixed value of answers
+    /// Returns a fixed value of answers
     // Function must be called until true is returned -> meaning all the answers were returned
     // `question` must be an index of the text question in the poll
     pub fn _result_text_answers(
