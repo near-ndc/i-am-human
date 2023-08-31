@@ -104,6 +104,10 @@ impl Contract {
         (finished, to_return)
     }
 
+    /**********
+     * TRANSACTIONS
+     **********/
+
     /// User can update the poll if starts_at > now
     /// it panics if
     /// - user tries to create an invalid poll
@@ -144,7 +148,8 @@ impl Contract {
         poll_id
     }
 
-    /// user can change his answer when the poll is still active.
+    /// user can change his answer when the poll is still active
+    // TODO: currently we do not allow users to change the answer
     /// it panics if
     /// - poll not found
     /// - poll not active
@@ -171,7 +176,10 @@ impl Contract {
         // TODO: I think we should add a option for the poll creator to choose whether changing
         // the answers while the poll is active is allowed or not
         self.assert_answered(poll_id, &caller);
-        let poll = self.polls.get(&poll_id).unwrap();
+        let poll = match self.polls.get(&poll_id) {
+            None => return Err(PollError::NotFound),
+            Some(poll) => poll,
+        };
         // if iah calls the registry to verify the iah sbt
         if poll.iah_only {
             ext_registry::ext(self.registry.clone())
