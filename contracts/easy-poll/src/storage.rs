@@ -15,6 +15,7 @@ pub enum Answer {
     OpinionRange(u8),          // should be a number between 0 and 10
     TextAnswer(String),
 }
+
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 #[serde(crate = "near_sdk::serde")]
@@ -25,6 +26,7 @@ pub enum PollResult {
     OpinionRange(OpinionRangeResult), // mean value
     TextAnswer, // indicates whether the question exist or not, the answers are stored in a different struct called `TextAnswers`
 }
+
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 #[serde(crate = "near_sdk::serde")]
