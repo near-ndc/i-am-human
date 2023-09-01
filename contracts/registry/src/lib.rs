@@ -14,6 +14,7 @@ pub mod events;
 pub mod migrate;
 pub mod registry;
 pub mod storage;
+pub mod testing;
 
 const IS_HUMAN_GAS: Gas = Gas(12 * Gas::ONE_TERA.0);
 
@@ -52,7 +53,9 @@ pub struct Contract {
     /// tuple of (required issuer, [required list of classes]) that represents mandatory
     /// requirements to be verified as human for `is_human` and `is_human_call` methods.
     pub(crate) iah_sbts: (AccountId, Vec<ClassId>),
-    /// list of admins allowed to mint tokens 
+
+    /// list of admins allowed to mint tokens.
+    /// Used only in the unstable / testing version.
     pub(crate) admins: Vec<AccountId>,
 }
 
@@ -92,7 +95,7 @@ impl Contract {
                 StorageKey::AdminsFlagged,
                 Some(&authorized_flaggers),
             ),
-            admins: vec![]
+            admins: vec![],
         };
         contract._add_sbt_issuer(&iah_issuer);
         contract
@@ -130,8 +133,7 @@ impl Contract {
     }
 
     fn _is_human(&self, account: &AccountId) -> SBTs {
-        if self.flagged.get(account) == Some(AccountFlag::Blacklisted) || self._is_banned(account)
-        {
+        if self.flagged.get(account) == Some(AccountFlag::Blacklisted) || self._is_banned(account) {
             return vec![];
         }
         let issuer = Some(self.iah_sbts.0.clone());
@@ -850,55 +852,6 @@ impl Contract {
         }
         true
     }
-
-    //
-    // TESTING
-    // list of functions used in backstage for testing
-    //
-
-    pub fn admin_add_minter(&mut self, minter: AccountId) {
-        self.assert_authority();
-        self.admins.push(minter);
-    }
-
-    fn assert_admins(&self) {
-        if !self.admins.is_empty() {
-            require!(
-                self.admins.contains(&env::predecessor_account_id()),
-                "only admins are allowed to mint tokens"
-            );
-        }
-    }
-
-    fn assert_testnet(&self) {
-        require!(
-            env::current_account_id().as_str().contains("test"),
-            "must be testnet"
-        );
-    }
-
-    /// returns false if the `issuer` contract was already registered.
-    pub fn testing_add_sbt_issuer(&mut self, issuer: AccountId) -> bool {
-        self.assert_testnet();
-        self._add_sbt_issuer(&issuer)
-    }
-
-    #[payable]
-    pub fn testing_sbt_mint(
-        &mut self,
-        issuer: AccountId,
-        token_spec: Vec<(AccountId, Vec<TokenMetadata>)>,
-    ) -> Vec<TokenId> {
-        self.assert_admins();
-        self.assert_testnet();
-        self._sbt_mint(&issuer, token_spec)
-    }
-
-    pub fn testing_sbt_renew(&mut self, issuer: AccountId, tokens: Vec<TokenId>, expires_at: u64) {
-        self.assert_admins();
-        self.assert_testnet();
-        self._sbt_renew(issuer, tokens, expires_at)
-    }
 }
 
 #[cfg(test)]
@@ -1102,10 +1055,7 @@ mod tests {
         );
 
         let sbts = ctr.sbts(issuer1(), vec![2, 10, 3, 1]);
-        assert_eq!(
-            sbts,
-            vec![Some(sbt1_2_e), None, None, Some(sbt1_1_e)]
-        );
+        assert_eq!(sbts, vec![Some(sbt1_2_e), None, None, Some(sbt1_1_e)]);
         assert_eq!(
             ctr.sbt_classes(issuer1(), vec![2, 10, 3, 1]),
             vec![Some(1), None, None, Some(1)]
@@ -1413,10 +1363,7 @@ mod tests {
             vec![
                 (
                     issuer1(),
-                    vec![
-                        mk_owned_token(1, m1_1.clone()),
-                        mk_owned_token(2, m2_1)
-                    ]
+                    vec![mk_owned_token(1, m1_1.clone()), mk_owned_token(2, m2_1)]
                 ),
                 (issuer2(), vec![mk_owned_token(1, m1_1)]),
             ]
@@ -1755,10 +1702,7 @@ mod tests {
             ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None, None),
             vec![(
                 issuer1(),
-                vec![
-                    mk_owned_token(1, m1_1),
-                    mk_owned_token(2, m2_1)
-                ]
+                vec![mk_owned_token(1, m1_1), mk_owned_token(2, m2_1)]
             ),]
         );
     }
@@ -1860,14 +1804,8 @@ mod tests {
             ctr.sbt(issuer1(), 1).unwrap(),
             mk_token(1, bob(), m1_1.clone())
         );
-        assert_eq!(
-            ctr.sbt(issuer1(), 2).unwrap(),
-            mk_token(2, bob(), m2_1)
-        );
-        assert_eq!(
-            ctr.sbt(issuer2(), 1).unwrap(),
-            mk_token(1, alice(), m1_1)
-        );
+        assert_eq!(ctr.sbt(issuer1(), 2).unwrap(), mk_token(2, bob(), m2_1));
+        assert_eq!(ctr.sbt(issuer2(), 1).unwrap(), mk_token(1, alice(), m1_1));
     }
 
     #[test]
@@ -1882,10 +1820,7 @@ mod tests {
 
         ctx.predecessor_account_id = issuer2();
         testing_env!(ctx.clone());
-        ctr.sbt_mint(vec![(
-            alice(),
-            vec![m1_1, m1_2, m1_3],
-        )]);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1, m1_2, m1_3])]);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 3);
 
         //set attached deposit to zero, should fail since the storage grows and we do not cover it
@@ -1920,10 +1855,7 @@ mod tests {
         let m2_1 = mk_metadata(2, Some(START + 11));
         let m3_1 = mk_metadata(3, Some(START + 12));
         let m4_1 = mk_metadata(4, Some(START + 13));
-        ctr.sbt_mint(vec![(
-            alice(),
-            vec![m1_1, m2_1, m3_1, m4_1],
-        )]);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1, m2_1, m3_1, m4_1])]);
 
         // sbt_recover
         let mut result = ctr._sbt_recover(alice(), alice2(), 3);
@@ -2379,10 +2311,7 @@ mod tests {
 
         assert_eq!(
             ctr.sbt_tokens(issuer1(), None, None, None),
-            vec![
-                mk_token(1, alice(), m1_1),
-                mk_token(2, alice(), m1_2),
-            ],
+            vec![mk_token(1, alice(), m1_1), mk_token(2, alice(), m1_2),],
         );
         assert!(ctr.sbt_tokens(issuer2(), None, None, None).is_empty());
 
