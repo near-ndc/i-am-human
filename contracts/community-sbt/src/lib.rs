@@ -769,4 +769,26 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    #[should_panic(expected = "not an admin")]
+    fn assert_admin() {
+        let (mut ctx, ctr) = setup(&admin(), None);
+
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+
+        ctr.assert_admin();
+    }
+
+    #[test]
+    fn add_admin() {
+        let (_, mut ctr) = setup(&admin(), None);
+
+        ctr.add_admin(alice());
+        ctr.assert_admin();
+
+        ctr.remove_admin(alice());
+        assert_eq!(ctr.admins.contains(&alice()), false);
+    }
 }
