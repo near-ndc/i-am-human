@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LazyOption, LookupMap};
+use near_sdk::collections::{LazyOption, LookupMap, LookupSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
 
 use cost::{calculate_iah_mint_gas, calculate_mint_gas, mint_deposit};
@@ -19,8 +19,8 @@ const MIN_TTL: u64 = 86_400_000; // 24 hours in miliseconds
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
-    /// Account authorized to add new minting authority
-    pub admin: AccountId,
+    /// Accounts authorized to add new minting authority
+    pub admins: LookupSet<AccountId>,
     /// map of classId -> to set of accounts authorized to mint
     pub classes: LookupMap<ClassId, ClassMinters>,
     pub next_class: ClassId,
@@ -37,8 +37,10 @@ impl Contract {
     /// @admin: account authorized to add new minting authority
     #[init]
     pub fn new(registry: AccountId, admin: AccountId, metadata: ContractMetadata) -> Self {
+        let mut admins = LookupSet::new(StorageKey::Admins);
+        admins.insert(&admin);
         Self {
-            admin,
+            admins: admins,
             classes: LookupMap::new(StorageKey::MintingAuthority),
             next_class: 1,
             registry,
@@ -353,9 +355,14 @@ impl Contract {
         }
     }
 
-    pub fn change_admin(&mut self, new_admin: AccountId) {
+    pub fn add_admin(&mut self, new_admin: AccountId) {
         self.assert_admin();
-        self.admin = new_admin;
+        self.admins.insert(&new_admin);
+    }
+
+    pub fn remove_admin(&mut self, admin: AccountId) {
+        self.assert_admin();
+        self.admins.remove(&admin);
     }
 
     /// admin: authorize `minter` to mint tokens of a `class`.
@@ -370,7 +377,7 @@ impl Contract {
      **********/
 
     fn assert_admin(&self) {
-        require!(self.admin == env::predecessor_account_id(), "not an admin");
+        require!(self.admins.contains(&env::predecessor_account_id()), "not an admin");
     }
 
     /// Returns (requires_iah, max_ttl).

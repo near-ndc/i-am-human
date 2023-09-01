@@ -46,8 +46,11 @@ impl Contract {
             }
         }
 
+        let mut admins = LookupSet::new(StorageKey::Admins);
+        admins.insert(&old_state.admin);
+
         Self {
-            admin: old_state.admin,
+            admins: admins,
             classes,
             next_class: old_state.next_class,
             registry: old_state.registry,
