@@ -785,7 +785,7 @@ impl Contract {
                 required_deposit
             )
         );
-        if env::current_account_id().as_str().ends_with("testnet") {
+        if env::current_account_id().as_str().contains("test") {
             env::log_str(&format!("required deposit: {}", required_deposit));
         }
 
