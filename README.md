@@ -81,18 +81,24 @@ Deprecated:
 
 - **SBT registry**:
   Testnet registry is used to test the issuer behavior. For testing other integrations (eg polling, elections) use the testing-unstable version. Consult issuer contracts to validate which issuer is linked to which registry. We may consider adding migration to `registry-1` to make it compatible with the latest version.
-  - `registry-1.i-am-human.testnet` @ release/v0.2
-  - `registry-2.i-am-human.testnet` @ registry/v1.4.0 (same as the prod version)
+  - `registry-v2.i-am-human.testnet` @ registry/v1.4.0 (same as the prod version)
   - `registry-unstable.i-am-human.testnet` @ registry/v1.4.0
 - **Demo SBT**: `sbt1.i-am-human.testnet` (the `demo_issuer` contract)
-- **Fractal**: `i-am-human-staging.testnet` @ oracle/v1.0.1
+- **Fractal**: `fractal-v2.i-am-human.testnet` @ oracle/v1.0.1
   registry: `registry-1.i-am-human.testnet`; Verification pubkey base64: `FGoAI6DXghOSK2ZaKVT/5lSP4X4JkoQQphv1FD4YRto=`, `claim_ttl`: 3600ms, FV class: 1
-- **Community-SBT**: `community-v1.i-am-human.testnet` @ community-sbt/v4.2.0
-  registry: `registry-1.i-am-human.testnet`
+- **Community-SBT**: `community-v2.i-am-human.testnet` @ community-sbt/v4.2.0
+  registry: `registry-v2.i-am-human.testnet`
   classes: 1=OG, 2=NDC_Contributor, 3=NDC_Core_Contributors, 4=NDC_Champion, 5=NDC_Mod, 6=NDC_TechWG, 7=Creatives_DAO
   Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
 
 Deprecated:
 
-- `registry.i-am-human.testnet`
+- SBT Registry:
+  - `registry.i-am-human.testnet`
+  - `registry-1.i-am-human.testnet` @ release/v0.2
+- **Fractal**: `i-am-human-staging.testnet` @ oracle/v1.0.1
+  registry: `registry-1.i-am-human.testnet`; Verification pubkey base64: `FGoAI6DXghOSK2ZaKVT/5lSP4X4JkoQQphv1FD4YRto=`, `claim_ttl`: 3600ms, FV class: 1
+- **Community-SBT**: `community-v1.i-am-human.testnet` @ community-sbt/v4.2.0
+  registry: `registry-1.i-am-human.testnet`
+  classes: 1=OG, 2=NDC_Contributor, 3=NDC_Core_Contributors, 4=NDC_Champion, 5=NDC_Mod, 6=NDC_TechWG, 7=Creatives_DAO
 - GoodDollar SBT: `gooddollar-v1.i-am-human.testnet`
