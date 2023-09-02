@@ -5,7 +5,6 @@ use near_sdk::collections::{LazyOption, LookupMap, TreeMap, UnorderedMap, Unorde
 use near_sdk::serde_json::value::RawValue;
 use near_sdk::{env, near_bindgen, require, serde_json, AccountId, Gas, PanicOnDefault, Promise};
 
-use cost::MILI_NEAR;
 use sbt::*;
 
 use crate::storage::*;
@@ -127,8 +126,7 @@ impl Contract {
     }
 
     fn _is_human(&self, account: &AccountId) -> SBTs {
-        if self.flagged.get(account) == Some(AccountFlag::Blacklisted) || self._is_banned(account)
-        {
+        if self.flagged.get(account) == Some(AccountFlag::Blacklisted) || self._is_banned(account) {
             return vec![];
         }
         let issuer = Some(self.iah_sbts.0.clone());
@@ -695,10 +693,6 @@ impl Contract {
     ) -> Vec<TokenId> {
         let storage_start = env::storage_usage();
         let storage_deposit = env::attached_deposit();
-        require!(
-            storage_deposit >= 9 * MILI_NEAR,
-            "min required storage deposit: 0.009 NEAR"
-        );
 
         let issuer_id = self.assert_issuer(issuer);
         let mut num_tokens = 0;
@@ -1047,10 +1041,7 @@ mod tests {
         );
 
         let sbts = ctr.sbts(issuer1(), vec![2, 10, 3, 1]);
-        assert_eq!(
-            sbts,
-            vec![Some(sbt1_2_e), None, None, Some(sbt1_1_e)]
-        );
+        assert_eq!(sbts, vec![Some(sbt1_2_e), None, None, Some(sbt1_1_e)]);
         assert_eq!(
             ctr.sbt_classes(issuer1(), vec![2, 10, 3, 1]),
             vec![Some(1), None, None, Some(1)]
@@ -1358,10 +1349,7 @@ mod tests {
             vec![
                 (
                     issuer1(),
-                    vec![
-                        mk_owned_token(1, m1_1.clone()),
-                        mk_owned_token(2, m2_1)
-                    ]
+                    vec![mk_owned_token(1, m1_1.clone()), mk_owned_token(2, m2_1)]
                 ),
                 (issuer2(), vec![mk_owned_token(1, m1_1)]),
             ]
@@ -1700,10 +1688,7 @@ mod tests {
             ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None, None),
             vec![(
                 issuer1(),
-                vec![
-                    mk_owned_token(1, m1_1),
-                    mk_owned_token(2, m2_1)
-                ]
+                vec![mk_owned_token(1, m1_1), mk_owned_token(2, m2_1)]
             ),]
         );
     }
@@ -1805,14 +1790,8 @@ mod tests {
             ctr.sbt(issuer1(), 1).unwrap(),
             mk_token(1, bob(), m1_1.clone())
         );
-        assert_eq!(
-            ctr.sbt(issuer1(), 2).unwrap(),
-            mk_token(2, bob(), m2_1)
-        );
-        assert_eq!(
-            ctr.sbt(issuer2(), 1).unwrap(),
-            mk_token(1, alice(), m1_1)
-        );
+        assert_eq!(ctr.sbt(issuer1(), 2).unwrap(), mk_token(2, bob(), m2_1));
+        assert_eq!(ctr.sbt(issuer2(), 1).unwrap(), mk_token(1, alice(), m1_1));
     }
 
     #[test]
@@ -1827,10 +1806,7 @@ mod tests {
 
         ctx.predecessor_account_id = issuer2();
         testing_env!(ctx.clone());
-        ctr.sbt_mint(vec![(
-            alice(),
-            vec![m1_1, m1_2, m1_3],
-        )]);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1, m1_2, m1_3])]);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 3);
 
         //set attached deposit to zero, should fail since the storage grows and we do not cover it
@@ -1865,10 +1841,7 @@ mod tests {
         let m2_1 = mk_metadata(2, Some(START + 11));
         let m3_1 = mk_metadata(3, Some(START + 12));
         let m4_1 = mk_metadata(4, Some(START + 13));
-        ctr.sbt_mint(vec![(
-            alice(),
-            vec![m1_1, m2_1, m3_1, m4_1],
-        )]);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1, m2_1, m3_1, m4_1])]);
 
         // sbt_recover
         let mut result = ctr._sbt_recover(alice(), alice2(), 3);
@@ -2324,10 +2297,7 @@ mod tests {
 
         assert_eq!(
             ctr.sbt_tokens(issuer1(), None, None, None),
-            vec![
-                mk_token(1, alice(), m1_1),
-                mk_token(2, alice(), m1_2),
-            ],
+            vec![mk_token(1, alice(), m1_1), mk_token(2, alice(), m1_2),],
         );
         assert!(ctr.sbt_tokens(issuer2(), None, None, None).is_empty());
 
