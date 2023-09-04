@@ -575,7 +575,9 @@ impl Contract {
         self.authorized_flaggers.set(&authorized_flaggers);
     }
 
-    /// flag accounts
+    /// Sets a flag for every account in the `accounts` list, overwriting if needed.
+    /// Panics if a caller is not flagged.
+    /// Panics if any of the account is blacklisted.
     pub fn admin_flag_accounts(
         &mut self,
         flag: AccountFlag,
