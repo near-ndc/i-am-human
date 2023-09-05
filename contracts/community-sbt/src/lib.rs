@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LazyOption, LookupMap, LookupSet};
+use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
 
 use cost::{calculate_iah_mint_gas, calculate_mint_gas, mint_deposit};
@@ -20,7 +20,7 @@ const MIN_TTL: u64 = 86_400_000; // 24 hours in miliseconds
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
     /// Accounts authorized to add new minting authority
-    pub admins: LookupSet<AccountId>,
+    pub admins: LazyOption<Vec<AccountId>>,
     /// map of classId -> to set of accounts authorized to mint
     pub classes: LookupMap<ClassId, ClassMinters>,
     pub next_class: ClassId,
@@ -37,10 +37,8 @@ impl Contract {
     /// @admin: account authorized to add new minting authority
     #[init]
     pub fn new(registry: AccountId, admin: AccountId, metadata: ContractMetadata) -> Self {
-        let mut admins = LookupSet::new(StorageKey::Admins);
-        admins.insert(&admin);
         Self {
-            admins: admins,
+            admins: LazyOption::new(StorageKey::Admins, Some(&vec![admin])),
             classes: LookupMap::new(StorageKey::MintingAuthority),
             next_class: 1,
             registry,
@@ -355,14 +353,9 @@ impl Contract {
         }
     }
 
-    pub fn add_admin(&mut self, new_admin: AccountId) {
+    pub fn set_admin_list(&mut self, new_admin_list: Vec<AccountId>) {
         self.assert_admin();
-        self.admins.insert(&new_admin);
-    }
-
-    pub fn remove_admin(&mut self, admin: AccountId) {
-        self.assert_admin();
-        self.admins.remove(&admin);
+        self.admins.set(&new_admin_list);
     }
 
     /// admin: authorize `minter` to mint tokens of a `class`.
@@ -377,7 +370,11 @@ impl Contract {
      **********/
 
     fn assert_admin(&self) {
-        require!(self.admins.contains(&env::predecessor_account_id()), "not an admin");
+        if let Some(admins) = self.admins.get() {
+            require!(admins.contains(&env::predecessor_account_id()), "not an admin");
+        } else {
+            env::panic_str("admins list not found");
+        }
     }
 
     /// Returns (requires_iah, max_ttl).
@@ -782,13 +779,12 @@ mod tests {
     }
 
     #[test]
-    fn add_admin() {
+    fn set_admin_list() {
         let (_, mut ctr) = setup(&admin(), None);
 
-        ctr.add_admin(alice());
+        ctr.set_admin_list(vec![admin(), alice()]);
         ctr.assert_admin();
 
-        ctr.remove_admin(alice());
-        assert_eq!(ctr.admins.contains(&alice()), false);
+        assert_eq!(ctr.admins.get().unwrap(), vec![admin(), alice ()]);
     }
 }

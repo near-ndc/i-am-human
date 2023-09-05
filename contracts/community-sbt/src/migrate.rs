@@ -29,13 +29,10 @@ impl Contract {
         // changed fields:
         // ttl -- removed
         // pub admin: AccountId,
-        //   changed to ->  pub admins: LookupSet<AccountId>,
-
-        let mut admins = LookupSet::new(StorageKey::Admins);
-        admins.insert(&old_state.admin);
+        //   changed to ->  pub admins: LazyOption<Vec<AccountId>>,
 
         Self {
-            admins: admins,
+            admins: LazyOption::new(StorageKey::Admins, Some(&vec![old_state.admin])),
             classes: old_state.classes,
             next_class: old_state.next_class,
             registry: old_state.registry,
