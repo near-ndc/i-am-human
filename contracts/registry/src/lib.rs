@@ -177,18 +177,25 @@ impl Contract {
 
     /// Transfers atomically all SBT tokens from one account to another account.
     /// The caller must be an SBT holder and the `recipient` must not be a banned account.
+    /// Transfers the account flag from the owner to the recipient.
+    /// Fails when:
+    /// + `recipient` is banned;
+    /// + there is a potential conflict between the caller's and recipient's flag,
+    ///   specifically when one account is `Blacklisted` and the other is `Verified`;
+    /// Bans the caller account. NOTE: call can try to do soul_transfer to himself. This
+    /// sounds irrationally, and allows to ban himself/herself.
+    /// Emits:
+    /// + `Ban` event for the caller at the beginning of the process.
+    /// + `SoulTransfer` event only once all the tokens from the caller were transferred
+    ///    and at least one token was transferred (caller had at least 1 sbt).
     /// Returns the amount of tokens transferred and a boolean: `true` if the whole
     /// process has finished, `false` when the process has not finished and should be
     /// continued by a subsequent call.
-    /// Emits `Ban` event for the caller at the beginning of the process.
-    /// Emits `SoulTransfer` event only once all the tokens from the caller were transferred
-    /// and at least one token was transferred (caller had at least 1 sbt).
     /// + User must keep calling the `sbt_soul_transfer` until `true` is returned.
     /// + If caller does not have any tokens, nothing will be transfered, the caller
     ///   will be banned and `Ban` event will be emitted.
-    // Transfers the account flag from the owner to the recipient.
-    // Fails if there is a potential conflict between the caller's and recipient's flags,
-    // specifically when one account is `Blacklisted` and the other is `Verified`.
+    /// See https://github.com/near/NEPs/pull/393 for more details and rationality about
+    /// soul transfer.
     #[payable]
     pub fn sbt_soul_transfer(
         &mut self,
