@@ -4,12 +4,6 @@ Kudos contract for NDC
 
 ## Setup [Testnet]
 
-- Build contract
-
-  ```sh
-  RUSTFLAGS='-C link-arg=-s' cargo build --all --target wasm32-unknown-unknown --release
-  ```
-
 - Init contract
 
   ```sh
