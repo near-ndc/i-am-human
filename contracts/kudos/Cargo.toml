@@ -9,7 +9,7 @@ repository = { workspace = true }
 license = { workspace = true }
 
 [lib]
-crate-type = ["cdylib", "lib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 near-sdk.workspace = true
