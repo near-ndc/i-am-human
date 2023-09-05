@@ -1,7 +1,9 @@
 [package]
 name = "kudos-contract"
 version = "0.1.0"
-authors = ["Kirill QQ <zeliondragon@gmail.com>"]
+authors = [
+    "NDC GWG (https://near.social/#/mob.near/widget/ProfilePage?accountId=govworkinggroup.near)",
+]
 edition = { workspace = true }
 repository = { workspace = true }
 license = { workspace = true }

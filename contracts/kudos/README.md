@@ -87,12 +87,12 @@ Allows caller to upvote kudos by unique id granted to a receiver NEAR account
 
 #### Requirements
 
-User must be human verified (should have minted and valid i-am-human SBT)
-Caller can't be a NEAR account which granted kudos
-Caller can't be a receiver NEAR account
-Caller could upvote specified kudos only once
-Minimum gas required: 92 TGas (300 TGas recommended)
-Deposit required: 0.004 Ⓝ
+- User must be human verified (should have minted and valid i-am-human SBT)
+- Caller can't be a NEAR account which granted kudos
+- Caller can't be a receiver NEAR account
+- Caller could upvote specified kudos only once
+- Minimum gas required: 92 TGas (300 TGas recommended)
+- Deposit required: 0.004 Ⓝ
 
 #### Interface
 
@@ -131,10 +131,10 @@ Allows caller to leave a commentary message to kudos by unique id granted to a r
 
 #### Requirements
 
-User must be human verified (should have minted and valid i-am-human SBT)
-User can't leave a comment for his kudos, but it can reply to other comments
-Minimum gas required: 92 TGas (300 TGas recommended)
-Deposit required: 0.017 Ⓝ
+- User must be human verified (should have minted and valid i-am-human SBT)
+- User can't leave a comment for his kudos, but it can reply to other comments
+- Minimum gas required: 92 TGas (300 TGas recommended)
+- Deposit required: 0.017 Ⓝ
 
 #### Interface
 
@@ -175,12 +175,12 @@ Allows caller to exchange his upvoted kudos by unique id for a ProofOfKudos SBT
 
 #### Requirements
 
-User must be human verified (should have minted and valid i-am-human SBT)
-Caller should be granted with kudos by provided unique identifier
-Caller can exchange his upvoted kudos only once
-Kudos should have minimum required number of upvotes. By default is 3 upvotes
-Minimum gas required: 87 TGas (300 TGas recommended)
-Deposit required: 0.008 Ⓝ
+- User must be human verified (should have minted and valid i-am-human SBT)
+- Caller should be granted with kudos by provided unique identifier
+- Caller can exchange his upvoted kudos only once
+- Kudos should have minimum required number of upvotes. By default is 3 upvotes
+- Minimum gas required: 87 TGas (300 TGas recommended)
+- Deposit required: 0.008 Ⓝ
 
 #### Interface
 
