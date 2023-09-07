@@ -19,8 +19,8 @@ const MIN_TTL: u64 = 86_400_000; // 24 hours in miliseconds
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
-    /// Account authorized to add new minting authority
-    pub admin: AccountId,
+    /// Accounts authorized to add new minting authority
+    pub admins: LazyOption<Vec<AccountId>>,
     /// map of classId -> to set of accounts authorized to mint
     pub classes: LookupMap<ClassId, ClassMinters>,
     pub next_class: ClassId,
@@ -38,7 +38,7 @@ impl Contract {
     #[init]
     pub fn new(registry: AccountId, admin: AccountId, metadata: ContractMetadata) -> Self {
         Self {
-            admin,
+            admins: LazyOption::new(StorageKey::Admins, Some(&vec![admin])),
             classes: LookupMap::new(StorageKey::MintingAuthority),
             next_class: 1,
             registry,
@@ -353,9 +353,9 @@ impl Contract {
         }
     }
 
-    pub fn change_admin(&mut self, new_admin: AccountId) {
+    pub fn set_admin_list(&mut self, new_admin_list: Vec<AccountId>) {
         self.assert_admin();
-        self.admin = new_admin;
+        self.admins.set(&new_admin_list);
     }
 
     /// admin: authorize `minter` to mint tokens of a `class`.
@@ -370,7 +370,11 @@ impl Contract {
      **********/
 
     fn assert_admin(&self) {
-        require!(self.admin == env::predecessor_account_id(), "not an admin");
+        if let Some(admins) = self.admins.get() {
+            require!(admins.contains(&env::predecessor_account_id()), "not an admin");
+        } else {
+            env::panic_str("admins list not found");
+        }
     }
 
     /// Returns (requires_iah, max_ttl).
@@ -761,5 +765,26 @@ mod tests {
         )?;
 
         Ok(())
+    }
+
+    #[test]
+    #[should_panic(expected = "not an admin")]
+    fn assert_admin() {
+        let (mut ctx, ctr) = setup(&admin(), None);
+
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+
+        ctr.assert_admin();
+    }
+
+    #[test]
+    fn set_admin_list() {
+        let (_, mut ctr) = setup(&admin(), None);
+
+        ctr.set_admin_list(vec![admin(), alice()]);
+        ctr.assert_admin();
+
+        assert_eq!(ctr.admins.get().unwrap(), vec![admin(), alice ()]);
     }
 }

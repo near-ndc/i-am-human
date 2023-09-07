@@ -23,6 +23,8 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Breaking Changes
 
+* Contract field type for `admin` changed from `AccoundId` -> `LazyOption<Vec<AccountId>>`
+
 ### Bug Fixes
 
 ## v4.2.0 (2023-08-25)
