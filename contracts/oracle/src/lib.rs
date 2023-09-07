@@ -128,7 +128,12 @@ impl Contract {
         memo: Option<String>,
     ) -> Result<Promise, CtrError> {
         let now_ms = env::block_timestamp_ms();
-        if now_ms > ELECTIONS_START && now_ms <= ELECTIONS_END {
+        let this_acc = env::current_account_id();
+        // only stop in prod
+        if this_acc.as_str().ends_with("i-am-human.near")
+            && now_ms > ELECTIONS_START
+            && now_ms <= ELECTIONS_END
+        {
             return Err(CtrError::BadRequest(
                 "IAH SBT cannot be mint during the elections period".to_owned(),
             ));
@@ -435,9 +440,7 @@ pub mod tests {
         ctx.attached_deposit = MINT_TOTAL_COST - 1;
         testing_env!(ctx);
         let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, false);
-        let _ = ctr
-            .sbt_mint(c_str, sig, None)
-            .expect("must panic");
+        let _ = ctr.sbt_mint(c_str, sig, None).expect("must panic");
     }
 
     #[test]
@@ -452,9 +455,7 @@ pub mod tests {
         ctx.attached_deposit = MINT_TOTAL_COST_WITH_KYC - 1;
         testing_env!(ctx);
         let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, true);
-        let _ = ctr
-            .sbt_mint(c_str, sig, None)
-            .expect("must panic");
+        let _ = ctr.sbt_mint(c_str, sig, None).expect("must panic");
     }
 
     #[test]
