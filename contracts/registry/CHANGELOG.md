@@ -13,7 +13,7 @@ Usage:
 Change log entries are to be added to the Unreleased section. Example entry:
 
 * [#<PR-number>](https://github.com/umee-network/umee/pull/<PR-number>) <description>
-
+-->
 
 # CHANGELOG: Registry
 
@@ -22,6 +22,8 @@ Change log entries are to be added to the Unreleased section. Example entry:
 ### Features
 
 ### Breaking Changes
+
+- Recommended `cost.mint_deposit` is decreased by 0.001 miliNEAR (in total).
 
 ### Bug Fixes
 
