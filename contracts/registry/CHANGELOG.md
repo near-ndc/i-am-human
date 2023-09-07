@@ -21,6 +21,9 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Features
 
+- Added `sbt_update_token_references` into the registry and SBT trait.
+- Added `token_reference` event (`Nep393Event::TokenReference`).
+
 ### Breaking Changes
 
 - Recommended `cost.mint_deposit` is decreased by 0.001 miliNEAR (in total).
