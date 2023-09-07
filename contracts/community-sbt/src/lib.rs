@@ -19,8 +19,8 @@ const MIN_TTL: u64 = 86_400_000; // 24 hours in miliseconds
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
-    /// Account authorized to add new minting authority
-    pub admin: AccountId,
+    /// Accounts authorized to add new minting authority
+    pub admins: LazyOption<Vec<AccountId>>,
     /// map of classId -> to set of accounts authorized to mint
     pub classes: LookupMap<ClassId, ClassMinters>,
     pub next_class: ClassId,
@@ -38,7 +38,7 @@ impl Contract {
     #[init]
     pub fn new(registry: AccountId, admin: AccountId, metadata: ContractMetadata) -> Self {
         Self {
-            admin,
+            admins: LazyOption::new(StorageKey::Admins, Some(&vec![admin])),
             classes: LookupMap::new(StorageKey::MintingAuthority),
             next_class: 1,
             registry,
@@ -171,7 +171,7 @@ impl Contract {
             let class_id: u64 = token_class.expect("token not found");
             if let Some((cached_minters, cached_ttl)) = cached_class_info.get(&class_id) {
                 max_ttl = *cached_ttl;
-                self.assert_minter(caller, &cached_minters);
+                self.assert_minter(caller, cached_minters);
             } else {
                 max_ttl = self.get_ttl(class_id);
                 let minters = self
@@ -225,7 +225,7 @@ impl Contract {
         for token_class in ts {
             let class_id: u64 = token_class.expect("token not found");
             if let Some(cached_minter) = cached_class_minters.get(&class_id) {
-                self.assert_minter(caller, &cached_minter);
+                self.assert_minter(caller, cached_minter);
             } else {
                 let minters = self
                     .class_minter(class_id)
@@ -353,9 +353,9 @@ impl Contract {
         }
     }
 
-    pub fn change_admin(&mut self, new_admin: AccountId) {
+    pub fn set_admin_list(&mut self, new_admin_list: Vec<AccountId>) {
         self.assert_admin();
-        self.admin = new_admin;
+        self.admins.set(&new_admin_list);
     }
 
     /// admin: authorize `minter` to mint tokens of a `class`.
@@ -370,7 +370,11 @@ impl Contract {
      **********/
 
     fn assert_admin(&self) {
-        require!(self.admin == env::predecessor_account_id(), "not an admin");
+        if let Some(admins) = self.admins.get() {
+            require!(admins.contains(&env::predecessor_account_id()), "not an admin");
+        } else {
+            env::panic_str("admins list not found");
+        }
     }
 
     /// Returns (requires_iah, max_ttl).
@@ -444,7 +448,7 @@ mod tests {
     }
 
     fn contract_metadata() -> ContractMetadata {
-        return ContractMetadata {
+        ContractMetadata {
             spec: "community-sbt-0.0.1".to_string(),
             name: "community-sbt".to_string(),
             symbol: "COMMUNITY_SBT".to_string(),
@@ -452,7 +456,7 @@ mod tests {
             base_uri: None,
             reference: None,
             reference_hash: None,
-        };
+        }
     }
 
     fn class_minter(requires_iah: bool, minters: Vec<AccountId>, max_ttl: u64) -> ClassMinters {
@@ -486,7 +490,7 @@ mod tests {
         assert_eq!(c, 1);
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
-        return (ctx, ctr);
+        (ctx, ctr)
     }
 
     #[test]
@@ -524,7 +528,7 @@ mod tests {
 
         // check authority(2)
         ctx.predecessor_account_id = authority(2);
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         expect_not_authorized(1, &ctr);
         ctr.class_info(new_cls)?;
         expect_not_authorized(other_cls, &ctr);
@@ -664,7 +668,7 @@ mod tests {
         let cls2 = ctr.enable_next_class(true, authority(2), MIN_TTL, class_metadata(2), None);
 
         ctx.predecessor_account_id = authority(1);
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
 
         ctr.sbt_mint(alice(), mk_meteadata(1), None)?;
         match ctr.sbt_mint(alice(), mk_meteadata(cls2), None) {
@@ -713,7 +717,7 @@ mod tests {
             ],
             None,
         ) {
-            Err(MintError::RequiredDeposit(37000000000000000000000)) => (),
+            Err(MintError::RequiredDeposit(36000000000000000000000)) => (),
             Ok(_) => panic!("expected RequiredDeposit, got: Ok"),
             Err(x) => panic!("expected RequiredDeposit, got: {:?}", x),
         };
@@ -751,7 +755,7 @@ mod tests {
 
         // deposit increases because we are minting more tokens
         ctx.attached_deposit = 37000000000000000000000;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.sbt_mint_many(
             vec![
                 (bob(), vec![mk_meteadata(1), mk_meteadata(cls2)]),
@@ -761,5 +765,26 @@ mod tests {
         )?;
 
         Ok(())
+    }
+
+    #[test]
+    #[should_panic(expected = "not an admin")]
+    fn assert_admin() {
+        let (mut ctx, ctr) = setup(&admin(), None);
+
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+
+        ctr.assert_admin();
+    }
+
+    #[test]
+    fn set_admin_list() {
+        let (_, mut ctr) = setup(&admin(), None);
+
+        ctr.set_admin_list(vec![admin(), alice()]);
+        ctr.assert_admin();
+
+        assert_eq!(ctr.admins.get().unwrap(), vec![admin(), alice ()]);
     }
 }

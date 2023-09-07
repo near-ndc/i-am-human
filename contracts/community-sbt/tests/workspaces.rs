@@ -5,7 +5,7 @@ use serde_json::json;
 use workspaces::{network::Sandbox, Account, AccountId, Contract, Worker};
 
 const MAINNET_REGISTRY_ID: &str = "registry-v1.gwg-testing.near";
-const MAINNET_COMMUNITY_SBT_ID: &str = "community-testing.i-am-human.near";
+const MAINNET_COMMUNITY_SBT_ID: &str = "community.i-am-human.near";
 
 async fn init(
     worker: &Worker<Sandbox>,
@@ -96,11 +96,20 @@ async fn init(
         // authorize authority to mint tokens
         let res = authority
             .call(community_mainnet.id(), "enable_next_class")
-            .args_json(json!({"requires_iah": false, "minter": minter.id(), "memo": "test"}))
+            .args_json(
+                json!({"requires_iah": false, "minter": minter.id(),"max_ttl": 100000000,
+                       "metadata": ClassMetadata {
+                           name: "cls-1".to_string(),
+                           symbol: None,
+                           icon: None,
+                           reference: None,
+                           reference_hash: None},
+                       "memo": "test"}),
+            )
             .max_gas()
             .transact()
             .await?;
-        assert!(res.is_success());
+        assert!(res.is_success(), "{:?}", res.receipt_failures());
     } else {
         let res = authority
             .call(community_mainnet.id(), "enable_next_class")
@@ -164,15 +173,16 @@ async fn init(
         .await?;
     assert!(res.is_success());
 
-    return Ok((
+    Ok((
         registry_mainnet.clone(),
         community_mainnet.clone(),
         community_contract,
         authority.clone(),
         minter.clone(),
-    ));
+    ))
 }
 
+#[ignore = "This test is not valid after the migration"]
 #[tokio::test]
 async fn migration_mainnet() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
@@ -190,7 +200,7 @@ async fn migration_mainnet() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     // call the migration again should fail
     let res = new_community_contract
@@ -210,41 +220,14 @@ async fn migration_mainnet() -> anyhow::Result<()> {
     let expected_res: AccountId = "registry-v1.gwg-testing.near".parse().unwrap();
     assert_eq!(expected_res, res);
 
-    // authorize authority to mint tokens
+    // change admin list
     let res = admin
-        .call(new_community_contract.id(), "enable_next_class")
-        .args_json(
-            json!({"requires_iah": true, "minter": admin.id(),"max_ttl": 2147483647,
-                   "metadata": ClassMetadata {
-                       name: "cls-1".to_string(),
-                       symbol: None,
-                       icon: None,
-                       reference: None,
-                       reference_hash: None},
-                   "memo": "test"}),
-        )
+        .call(new_community_contract.as_account().id(), "set_admin_list")
+        .args_json(json!({"new_admin_list": ["test.near", admin.id()]}))
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
-
-    // change the admin
-    let res = admin
-        .call(new_community_contract.as_account().id(), "change_admin")
-        .args_json(json!({"new_admin": "test.near"}))
-        .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_success());
-
-    // try to changing the admin again should fail
-    let res = admin
-        .call(new_community_contract.as_account().id(), "change_admin")
-        .args_json(json!({"new_admin": "test.near"}))
-        .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_failure());
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     Ok(())
 }
@@ -270,7 +253,7 @@ async fn sbt_renew() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     let sbts: Vec<Option<Token>> = admin
         .call(registry.id(), "sbts")
@@ -373,7 +356,7 @@ async fn sbt_revoke() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     let sbts: Vec<Option<Token>> = admin
         .call(registry.id(), "sbts")

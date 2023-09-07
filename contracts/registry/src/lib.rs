@@ -5,7 +5,6 @@ use near_sdk::collections::{LazyOption, LookupMap, TreeMap, UnorderedMap, Unorde
 use near_sdk::serde_json::value::RawValue;
 use near_sdk::{env, near_bindgen, require, serde_json, AccountId, Gas, PanicOnDefault, Promise};
 
-use cost::MILI_NEAR;
 use sbt::*;
 
 use crate::storage::*;
@@ -184,18 +183,25 @@ impl Contract {
 
     /// Transfers atomically all SBT tokens from one account to another account.
     /// The caller must be an SBT holder and the `recipient` must not be a banned account.
+    /// Transfers the account flag from the owner to the recipient.
+    /// Fails when:
+    /// + `recipient` is banned;
+    /// + there is a potential conflict between the caller's and recipient's flag,
+    ///   specifically when one account is `Blacklisted` and the other is `Verified`;
+    /// Bans the caller account. NOTE: call can try to do soul_transfer to himself. This
+    /// sounds irrationally, and allows to ban himself/herself.
+    /// Emits:
+    /// + `Ban` event for the caller at the beginning of the process.
+    /// + `SoulTransfer` event only once all the tokens from the caller were transferred
+    ///    and at least one token was transferred (caller had at least 1 sbt).
     /// Returns the amount of tokens transferred and a boolean: `true` if the whole
     /// process has finished, `false` when the process has not finished and should be
     /// continued by a subsequent call.
-    /// Emits `Ban` event for the caller at the beginning of the process.
-    /// Emits `SoulTransfer` event only once all the tokens from the caller were transferred
-    /// and at least one token was transferred (caller had at least 1 sbt).
     /// + User must keep calling the `sbt_soul_transfer` until `true` is returned.
     /// + If caller does not have any tokens, nothing will be transfered, the caller
     ///   will be banned and `Ban` event will be emitted.
-    // Transfers the account flag from the owner to the recipient.
-    // Fails if there is a potential conflict between the caller's and recipient's flags,
-    // specifically when one account is `Blacklisted` and the other is `Verified`.
+    /// See https://github.com/near/NEPs/pull/393 for more details and rationality about
+    /// soul transfer.
     #[payable]
     pub fn sbt_soul_transfer(
         &mut self,
@@ -203,7 +209,7 @@ impl Contract {
         #[allow(unused_variables)] memo: Option<String>,
     ) -> (u32, bool) {
         // TODO: test what is the max safe amount of updates
-        self._sbt_soul_transfer(recipient, 25)
+        self._sbt_soul_transfer(recipient, 20)
     }
 
     pub(crate) fn _transfer_flag(&mut self, from: &AccountId, recipient: &AccountId) {
@@ -269,9 +275,17 @@ impl Contract {
 
             key_new.issuer_id = key.issuer_id;
             key_new.class_id = key.class_id;
-            // TODO: decide if we should overwrite or panic if receipient already had a token.
-            // now we overwrite.
-            self.balances.insert(&key_new, token_id);
+            // One use can have max one toke of a (issuer, class) pair. We don't allow users
+            // to overwrite each other tokens. Recipient or sender should firstly burn his SBT
+            // to avoid conflicts.
+            if self.balances.insert(&key_new, token_id).is_some() {
+                env::panic_str(&format!(
+                    "recipient already has an SBT of issuer={}, class={}; source_token_id={}",
+                    self.issuer_by_id(key.issuer_id),
+                    key.class_id,
+                    token_id
+                ));
+            }
             self.balances.remove(key);
 
             let i_key = IssuerTokenId {
@@ -582,7 +596,9 @@ impl Contract {
         self.authorized_flaggers.set(&authorized_flaggers);
     }
 
-    /// flag accounts
+    /// Sets a flag for every account in the `accounts` list, overwriting if needed.
+    /// Panics if a caller is not flagged.
+    /// Panics if any of the account is blacklisted.
     pub fn admin_flag_accounts(
         &mut self,
         flag: AccountFlag,
@@ -700,10 +716,6 @@ impl Contract {
     ) -> Vec<TokenId> {
         let storage_start = env::storage_usage();
         let storage_deposit = env::attached_deposit();
-        require!(
-            storage_deposit >= 9 * MILI_NEAR,
-            "min required storage deposit: 0.009 NEAR"
-        );
 
         let issuer_id = self.assert_issuer(issuer);
         let mut num_tokens = 0;
@@ -859,6 +871,7 @@ mod tests {
     use std::ops::Mul;
 
     use cost::MILI_NEAR;
+    use near_sdk::json_types::Base64VecU8;
     use near_sdk::test_utils::{self, VMContextBuilder};
     use near_sdk::{testing_env, Balance, Gas, VMContext};
     use sbt::*;
@@ -1423,11 +1436,10 @@ mod tests {
         assert_eq!(test_utils::get_logs(), log_ban);
     }
 
-    #[test]
-    fn soul_transfer_limit() {
+    fn soul_transfer_prepare() -> (VMContext, Contract) {
         let (mut ctx, mut ctr) = setup(&issuer1(), 150 * MINT_DEPOSIT);
-        let batch_metadata = mk_batch_metadata(100);
-        assert!(batch_metadata.len() == 100);
+        let batch_metadata = mk_batch_metadata(110);
+        assert_eq!(batch_metadata.len(), 110);
 
         // issuer_1
         ctr.sbt_mint(vec![(alice(), batch_metadata[..50].to_vec())]);
@@ -1435,50 +1447,51 @@ mod tests {
 
         // issuer_2
         ctx.predecessor_account_id = issuer2();
-        ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
-        ctr.sbt_mint(vec![(alice(), batch_metadata[50..].to_vec())]);
+        ctr.sbt_mint(vec![(alice(), batch_metadata[50..100].to_vec())]);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 50);
 
         // add more tokens to issuer_1
         ctx.predecessor_account_id = issuer1();
-        ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
         ctr.sbt_mint(vec![(bob(), batch_metadata[..20].to_vec())]);
         assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer1(), None), 20);
 
-        ctx.prepaid_gas = max_gas();
-        testing_env!(ctx.clone());
-        ctr.sbt_mint(vec![(alice2(), batch_metadata[..20].to_vec())]);
-        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 20);
+        // mint non conflicting tokens
+        ctr.sbt_mint(vec![(alice2(), batch_metadata[100..].to_vec())]);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 10);
 
-        ctx.prepaid_gas = max_gas();
-        testing_env!(ctx.clone());
+        testing_env!(ctx.clone()); // reset gas
         ctr.sbt_mint(vec![(carol(), batch_metadata[..20].to_vec())]);
         assert_eq!(ctr.sbt_supply_by_owner(carol(), issuer1(), None), 20);
 
-        ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
         ctr.sbt_mint(vec![(dan(), batch_metadata[..10].to_vec())]);
         assert_eq!(ctr.sbt_supply_by_owner(dan(), issuer1(), None), 10);
+
+        (ctx, ctr)
+    }
+
+    #[test]
+    fn soul_transfer_limit() {
+        let (mut ctx, mut ctr) = soul_transfer_prepare();
 
         // soul transfer alice->alice2
         ctx.predecessor_account_id = alice();
         ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
-        let limit: u32 = 25; //anything above this limit will fail due to exceeding maximum gas usage per call
+        let limit: u32 = 20; //anything above this limit will fail due to exceeding maximum gas usage per call
 
         let mut result = ctr._sbt_soul_transfer(alice2(), limit as usize);
         while !result.1 {
-            ctx.prepaid_gas = max_gas();
-            testing_env!(ctx.clone());
+            testing_env!(ctx.clone()); // reset gas
             result = ctr._sbt_soul_transfer(alice2(), limit as usize);
         }
 
         // check all the balances afterwards
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 0);
-        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 70);
+        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 60);
         assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer2(), None), 50);
         assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer1(), None), 20);
         assert_eq!(ctr.sbt_supply_by_owner(carol(), issuer1(), None), 20);
@@ -1487,56 +1500,35 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "HostError(GasLimitExceeded)")]
-    fn soul_transfer_exceeded_limit() {
-        let (mut ctx, mut ctr) = setup(&issuer1(), 150 * MINT_DEPOSIT);
-        let batch_metadata = mk_batch_metadata(100);
-        assert!(batch_metadata.len() == 100);
-
-        // issuer_1
-        ctr.sbt_mint(vec![(alice(), batch_metadata[..50].to_vec())]);
-        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 50);
-
-        // issuer_2
-        ctx.predecessor_account_id = issuer2();
-        ctx.prepaid_gas = max_gas();
-        testing_env!(ctx.clone());
-        ctr.sbt_mint(vec![(alice(), batch_metadata[50..].to_vec())]);
-        assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 50);
-
-        // add more tokens to issuer_1
-        ctx.predecessor_account_id = issuer1();
-        ctx.prepaid_gas = max_gas();
-        testing_env!(ctx.clone());
-        ctr.sbt_mint(vec![(bob(), batch_metadata[..20].to_vec())]);
-        assert_eq!(ctr.sbt_supply_by_owner(bob(), issuer1(), None), 20);
-
-        ctx.prepaid_gas = max_gas();
-        testing_env!(ctx.clone());
-        ctr.sbt_mint(vec![(alice2(), batch_metadata[..20].to_vec())]);
-        assert_eq!(ctr.sbt_supply_by_owner(alice2(), issuer1(), None), 20);
-
-        ctx.prepaid_gas = max_gas();
-        testing_env!(ctx.clone());
-        ctr.sbt_mint(vec![(carol(), batch_metadata[..20].to_vec())]);
-        assert_eq!(ctr.sbt_supply_by_owner(carol(), issuer1(), None), 20);
-
-        ctx.prepaid_gas = max_gas();
-        testing_env!(ctx.clone());
-        ctr.sbt_mint(vec![(dan(), batch_metadata[..10].to_vec())]);
-        assert_eq!(ctr.sbt_supply_by_owner(dan(), issuer1(), None), 10);
+    fn soul_transfer_exceeded_gas_limit() {
+        let (mut ctx, mut ctr) = soul_transfer_prepare();
 
         // soul transfer alice->alice2
         ctx.predecessor_account_id = alice();
         ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
-        let limit: u32 = 30; //anything above this limit will fail due to exceeding maximum gas usage per call
+        let limit: u32 = 30;
+        ctr._sbt_soul_transfer(alice2(), limit as usize);
+    }
 
-        let mut result = ctr._sbt_soul_transfer(alice2(), limit as usize);
-        while !result.1 {
-            ctx.prepaid_gas = max_gas();
-            testing_env!(ctx.clone());
-            result = ctr._sbt_soul_transfer(alice2(), limit as usize);
-        }
+    #[test]
+    #[should_panic(
+        expected = "recipient already has an SBT of issuer=sbt.n, class=1; source_token_id=1"
+    )]
+    fn soul_transfer_conflict() {
+        let (mut ctx, mut ctr) = soul_transfer_prepare();
+
+        // alice1 already has SBT of (issuer1, 1), so let's mint it to alice2 and try soul_transfer
+        let batch_metadata = mk_batch_metadata(1);
+        ctx.predecessor_account_id = issuer1();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice2(), batch_metadata)]);
+
+        ctx.predecessor_account_id = alice();
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        let limit: u32 = 30;
+        ctr._sbt_soul_transfer(alice2(), limit as usize);
     }
 
     #[test]
@@ -2698,6 +2690,7 @@ mod tests {
             assert_eq!(ctr.sbt_supply_by_class(issuer3(), i), 0);
         }
     }
+
     #[test]
     fn sbt_burn_all_limit() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 60 * MINT_DEPOSIT);
@@ -2746,6 +2739,40 @@ mod tests {
         assert_eq!(ctr.sbt_supply(issuer1()), 20);
         assert_eq!(ctr.sbt_supply(issuer2()), 20);
         assert_eq!(ctr.sbt_supply(issuer3()), 20);
+    }
+
+    #[test]
+    fn sbt_update_token_references() {
+        let (ctx, mut ctr) = setup(&fractal_mainnet(), 2 * MINT_DEPOSIT);
+        let m1_1 = mk_metadata(1, Some(START));
+        let tid1 = ctr.sbt_mint(vec![(bob(), vec![m1_1.clone()])])[0];
+        let tid2 = ctr.sbt_mint(vec![(alice(), vec![m1_1])])[0];
+
+        let t1 = ctr.sbt(fractal_mainnet(), tid1).unwrap();
+        assert_eq!(t1.metadata.reference, Some("abc".to_owned()));
+
+        // reset logs
+        testing_env!(ctx);
+        let r = Some("ipfs://abc123".to_owned());
+        let r_hash = Some(Base64VecU8(vec![1, 1, 2]));
+        ctr.sbt_update_token_references(vec![(tid2, r.clone(), r_hash.clone())]);
+
+        let t2 = ctr.sbt(fractal_mainnet(), tid2).unwrap();
+        assert_eq!(t2.metadata.reference, r);
+        assert_eq!(t2.metadata.reference_hash, r_hash);
+
+        let t1_2 = ctr.sbt(fractal_mainnet(), tid1).unwrap();
+        assert_eq!(t1, t1_2);
+
+        let log = mk_log_str(
+            "token_reference",
+            &format!(
+                r#"{{"issuer":"{}","tokens":[{}]}}"#,
+                fractal_mainnet(),
+                tid2
+            ),
+        );
+        assert_eq!(test_utils::get_logs(), log);
     }
 
     #[test]

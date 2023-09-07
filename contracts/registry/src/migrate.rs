@@ -22,7 +22,9 @@ pub struct OldState {
 impl Contract {
     #[private]
     #[init(ignore_state)]
-    pub fn migrate(authorized_flaggers: Vec<AccountId>) -> Self {
+    #[allow(dead_code)] // no migration for 1.5.0
+                        /* pub  */
+    fn migrate(authorized_flaggers: Vec<AccountId>) -> Self {
         let old_state: OldState = env::state_read().expect("failed");
         // new field in the smart contract :
         // + flagged: LookupMap<AccountId, AccountFlag>
