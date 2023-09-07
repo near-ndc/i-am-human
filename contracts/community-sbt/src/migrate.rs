@@ -1,6 +1,6 @@
 use crate::*;
 
-// community-sbt/v4.1.0 old structs
+// community-sbt/v4.2.0 old structs
 
 #[derive(BorshDeserialize)]
 pub struct OldContract {
@@ -10,12 +10,6 @@ pub struct OldContract {
     pub registry: AccountId,
     pub metadata: LazyOption<ContractMetadata>,
     pub class_metadata: LookupMap<ClassId, ClassMetadata>,
-}
-
-#[derive(BorshDeserialize, BorshSerialize)]
-pub struct OldClassMinters {
-    pub requires_iah: bool,
-    pub minters: Vec<AccountId>,
 }
 
 // migration to community-sbt/v4.2.0
