@@ -717,7 +717,7 @@ mod tests {
             ],
             None,
         ) {
-            Err(MintError::RequiredDeposit(37000000000000000000000)) => (),
+            Err(MintError::RequiredDeposit(36000000000000000000000)) => (),
             Ok(_) => panic!("expected RequiredDeposit, got: Ok"),
             Err(x) => panic!("expected RequiredDeposit, got: {:?}", x),
         };

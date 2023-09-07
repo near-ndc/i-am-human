@@ -182,7 +182,7 @@ async fn init(
     ))
 }
 
-//#[ignore = "This test is not valid after the migration"]
+#[ignore = "This test is not valid after the migration"]
 #[tokio::test]
 async fn migration_mainnet() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
@@ -200,7 +200,7 @@ async fn migration_mainnet() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     // call the migration again should fail
     let res = new_community_contract
@@ -227,7 +227,7 @@ async fn migration_mainnet() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     Ok(())
 }
@@ -253,7 +253,7 @@ async fn sbt_renew() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     let sbts: Vec<Option<Token>> = admin
         .call(registry.id(), "sbts")
@@ -356,7 +356,7 @@ async fn sbt_revoke() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     let sbts: Vec<Option<Token>> = admin
         .call(registry.id(), "sbts")
