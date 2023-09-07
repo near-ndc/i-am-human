@@ -227,7 +227,7 @@ async fn migration_mainnet() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success(), , "{:?}", res.receipt_failures());
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     Ok(())
 }
