@@ -28,6 +28,7 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 - Recommended `cost.mint_deposit` is decreased by 0.001 miliNEAR (in total).
 - `soul_transfer` conflict resolution is updated to panic.
+- Default `registry.sbt_soul_transfer` limit is decreased from 25 to 20.
 
 ### Bug Fixes
 

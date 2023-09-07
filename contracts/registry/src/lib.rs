@@ -203,7 +203,7 @@ impl Contract {
         #[allow(unused_variables)] memo: Option<String>,
     ) -> (u32, bool) {
         // TODO: test what is the max safe amount of updates
-        self._sbt_soul_transfer(recipient, 25)
+        self._sbt_soul_transfer(recipient, 20)
     }
 
     pub(crate) fn _transfer_flag(&mut self, from: &AccountId, recipient: &AccountId) {
