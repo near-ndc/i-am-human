@@ -26,6 +26,8 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Breaking Changes
 
+- Recommended `cost.mint_deposit` is decreased by 0.001 miliNEAR (in total).
+
 ### Bug Fixes
 
 ## v1.4.0 (2023-08-23)
