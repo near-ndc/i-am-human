@@ -51,7 +51,7 @@ The IAH Registry supports the following extra queries, which are not part of the
 
 Production:
 
-- **SBT registry**: `registry.i-am-human.near` @ registry/v1.3.0
+- **SBT registry**: `registry.i-am-human.near` @ registry/v1.4.0
 - **Fractal**: `fractal.i-am-human.near` @ oracle/v1.0.1
   - verification pubkey base64: `"zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E="`
 - **Community SBTs**: `community.i-am-human.near` @ community-sbt/v4.2.0
@@ -68,9 +68,6 @@ Mainnet Testing:
 
 - `registry-v1.gwg-testing.near` @ registry/v1.4.0
   IAH issuer: `(fractal.i-am-human.near, [1])`
-- `community-testing.i-am-human.near` @ community-sbt/v4.2.0
-  classes: OG=1, Vibes=2
-  Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
 
 Deprecated:
 
