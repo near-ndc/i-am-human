@@ -27,6 +27,7 @@ Change log entries are to be added to the Unreleased section. Example entry:
 ### Breaking Changes
 
 - Recommended `cost.mint_deposit` is decreased by 0.001 miliNEAR (in total).
+- `soul_transfer` conflict resolution is updated to panic.
 
 ### Bug Fixes
 
