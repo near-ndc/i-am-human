@@ -453,10 +453,12 @@ impl SBTRegistry for Contract {
     ) {
         let issuer = env::predecessor_account_id();
         let issuer_id = self.assert_issuer(&issuer);
+        let mut token_ids = vec![0; updates.len()];
         let mut key = IssuerTokenId {
             issuer_id,
             token: 0,
         };
+        let mut idx = 0;
         for (tid, reference, reference_hash) in updates {
             key.token = tid;
             let mut t = match self.issuer_tokens.get(&key) {
@@ -468,6 +470,14 @@ impl SBTRegistry for Contract {
             m.reference_hash = reference_hash;
             t.metadata = m.into();
             self.issuer_tokens.insert(&key, &t);
+            token_ids[idx] = tid;
+            idx += 1;
         }
+
+        SbtTokensEvent {
+            issuer,
+            tokens: token_ids,
+        }
+        .emit_token_reference();
     }
 }

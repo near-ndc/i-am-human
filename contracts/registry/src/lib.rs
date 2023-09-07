@@ -854,6 +854,7 @@ mod tests {
     use std::ops::Mul;
 
     use cost::MILI_NEAR;
+    use near_sdk::json_types::Base64VecU8;
     use near_sdk::test_utils::{self, VMContextBuilder};
     use near_sdk::{testing_env, Balance, Gas, VMContext};
     use sbt::*;
@@ -2693,6 +2694,7 @@ mod tests {
             assert_eq!(ctr.sbt_supply_by_class(issuer3(), i), 0);
         }
     }
+
     #[test]
     fn sbt_burn_all_limit() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 60 * MINT_DEPOSIT);
@@ -2741,6 +2743,40 @@ mod tests {
         assert_eq!(ctr.sbt_supply(issuer1()), 20);
         assert_eq!(ctr.sbt_supply(issuer2()), 20);
         assert_eq!(ctr.sbt_supply(issuer3()), 20);
+    }
+
+    #[test]
+    fn sbt_update_token_references() {
+        let (ctx, mut ctr) = setup(&fractal_mainnet(), 2 * MINT_DEPOSIT);
+        let m1_1 = mk_metadata(1, Some(START));
+        let tid1 = ctr.sbt_mint(vec![(bob(), vec![m1_1.clone()])])[0];
+        let tid2 = ctr.sbt_mint(vec![(alice(), vec![m1_1])])[0];
+
+        let t1 = ctr.sbt(fractal_mainnet(), tid1).unwrap();
+        assert_eq!(t1.metadata.reference, Some("abc".to_owned()));
+
+        // reset logs
+        testing_env!(ctx);
+        let r = Some("ipfs://abc123".to_owned());
+        let r_hash = Some(Base64VecU8(vec![1, 1, 2]));
+        ctr.sbt_update_token_references(vec![(tid2, r.clone(), r_hash.clone())]);
+
+        let t2 = ctr.sbt(fractal_mainnet(), tid2).unwrap();
+        assert_eq!(t2.metadata.reference, r);
+        assert_eq!(t2.metadata.reference_hash, r_hash);
+
+        let t1_2 = ctr.sbt(fractal_mainnet(), tid1).unwrap();
+        assert_eq!(t1, t1_2);
+
+        let log = mk_log_str(
+            "token_reference",
+            &format!(
+                r#"{{"issuer":"{}","tokens":[{}]}}"#,
+                fractal_mainnet(),
+                tid2
+            ),
+        );
+        assert_eq!(test_utils::get_logs(), log);
     }
 
     #[test]
