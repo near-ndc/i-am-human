@@ -163,7 +163,7 @@ pub trait SBTRegistry {
     /// Allows issuer to update token metadata reference and reference_hash.
     /// * `updates` is a list of triples: (token ID, reference, reference hash).
     /// Must emit `token_reference` event.
-    /// Panics if any of the token Ids don't exists.
+    /// Panics if any of the token IDs don't exist.
     fn sbt_update_token_references(
         &mut self,
         updates: Vec<(TokenId, Option<String>, Option<Base64VecU8>)>,
