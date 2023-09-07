@@ -118,6 +118,7 @@ async fn init(
 
     let registry_mainnet = registry_contract.as_account();
     let authority_acc = worker.dev_create_account().await?;
+    let flagger = worker.dev_create_account().await?;
     let iah_issuer = worker.dev_create_account().await?;
     let og_issuer = worker.dev_create_account().await?;
     let alice_acc = worker.dev_create_account().await?;
@@ -128,11 +129,13 @@ async fn init(
     // init the contract
     let res = registry_contract
         .call("new")
-        .args_json(json!({"authority": authority_acc.id(), "iah_issuer": iah_issuer.id(), "iah_classes": [1]}))
+        .args_json(json!({"authority": authority_acc.id(),
+                          "authorized_flaggers": vec![flagger.id()],
+                          "iah_issuer": iah_issuer.id(), "iah_classes": [1]}))
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     // add iah_issuer
     let res = authority_acc
@@ -141,7 +144,7 @@ async fn init(
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     // add og_issuer
     let res = authority_acc
@@ -150,7 +153,7 @@ async fn init(
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     // populate registry with mocked data
     let mut token_metadata = vec![TokenMetadata {
@@ -175,7 +178,7 @@ async fn init(
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     token_metadata[0].class = 2;
     let og_token_spec = vec![
@@ -190,7 +193,7 @@ async fn init(
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     Ok((
         registry_mainnet.clone(),
@@ -202,7 +205,7 @@ async fn init(
     ))
 }
 
-//#[ignore = "this test is not valid after the migration"]
+#[ignore = "this test is not valid after the migration"]
 #[tokio::test]
 async fn migration_mainnet() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
@@ -232,7 +235,7 @@ async fn migration_mainnet() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     // run queries after the migration
     assert_data_consistency(
@@ -262,7 +265,7 @@ async fn migration_mainnet() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     let res = new_registry_contract
         .call("account_flagged")
@@ -318,7 +321,7 @@ async fn migration_mainnet_real_data() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     // run queries after the migration
     let res: u64 = new_registry_mainnet
