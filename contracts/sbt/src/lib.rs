@@ -1,6 +1,7 @@
 mod events;
 mod metadata;
 
+use near_sdk::json_types::Base64VecU8;
 use near_sdk::{ext_contract, AccountId};
 
 pub use crate::events::*;
@@ -158,6 +159,15 @@ pub trait SBTRegistry {
     /// Must emit `Revoke` event.
     /// Must also emit `Burn` event if the SBT tokens are burned (removed).
     fn sbt_revoke_by_owner(&mut self, owner: AccountId, burn: bool);
+
+    /// Allows issuer to update token metadata reference and reference_hash.
+    /// * `updates` is a list of triples: (token ID, reference, reference hash).
+    /// Must emit `token_reference` event.
+    /// Panics if any of the token Ids don't exists.
+    fn sbt_update_token_references(
+        &mut self,
+        updates: Vec<(TokenId, Option<String>, Option<Base64VecU8>)>,
+    );
 }
 
 // ext_registry is a helper to make cross contract registry calls

@@ -49,6 +49,7 @@ pub enum Nep393Event<'a> {
     Burn(SbtTokensEvent),
     SoulTransfer(SoulTransfer<'a>),
     Ban(Vec<&'a AccountId>), // data is a simple list of accounts to ban
+    TokenReference(SbtTokensEvent),
 }
 
 impl Nep393Event<'_> {
@@ -128,6 +129,10 @@ impl SbtTokensEvent {
 
     pub fn emit_burn(self) {
         Nep393Event::Burn(self).emit();
+    }
+
+    pub fn emit_token_reference(self) {
+        Nep393Event::TokenReference(self).emit();
     }
 }
 
@@ -352,6 +357,20 @@ mod tests {
         event.emit();
         assert_eq!(expected, test_utils::get_logs()[0]);
         e.emit_burn();
+        assert_eq!(expected, test_utils::get_logs()[1]);
+    }
+
+    #[test]
+    fn log_format_token_reference() {
+        let expected = r#"EVENT_JSON:{"standard":"nep393","version":"1.0.0","event":"token_reference","data":{"issuer":"sbt.near","tokens":[19853,12]}}"#;
+        let e = SbtTokensEvent {
+            issuer: sbt_issuer(),
+            tokens: vec![19853, 12],
+        };
+        let event = Nep393Event::TokenReference(e.clone());
+        event.emit();
+        assert_eq!(expected, test_utils::get_logs()[0]);
+        e.emit_token_reference();
         assert_eq!(expected, test_utils::get_logs()[1]);
     }
 
