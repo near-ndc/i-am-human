@@ -68,9 +68,6 @@ Mainnet Testing:
 
 - `registry-v1.gwg-testing.near` @ registry/v1.4.0
   IAH issuer: `(fractal.i-am-human.near, [1])`
-- `community-testing.i-am-human.near` @ community-sbt/v4.2.0
-  classes: OG=1, Vibes=2
-  Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
 
 Deprecated:
 
