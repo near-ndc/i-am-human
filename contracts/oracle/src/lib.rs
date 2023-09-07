@@ -596,6 +596,7 @@ pub mod tests {
         let (mut ctx, mut ctr, k) = setup(&signer, &acc_u1());
 
         ctx.block_timestamp = (ELECTIONS_START + 1) * 1_000_000;
+        ctx.current_account_id = "fractal.i-am-human.near".parse().unwrap();
         testing_env!(ctx.clone());
         let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, false);
         let res = ctr.sbt_mint(c_str, sig, None);
