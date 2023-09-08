@@ -13,9 +13,9 @@ Usage:
 Change log entries are to be added to the Unreleased section. Example entry:
 
 * [#<PR-number>](https://github.com/umee-network/umee/pull/<PR-number>) <description>
+-->
 
-
-# CHANGELOG: Community SBT 
+# CHANGELOG: Community SBT
 
 ## Unreleased
 
@@ -23,9 +23,18 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Breaking Changes
 
-* Contract field type for `admin` changed from `AccoundId` -> `LazyOption<Vec<AccountId>>`
-
 ### Bug Fixes
+
+## v4.3.0 (2023-09-07)
+
+### Features
+
+- Added support for multiple admins authorized to manage issuers.
+
+### Breaking Changes
+
+- Contract field type for `admin` changed from `AccoundId` -> `LazyOption<Vec<AccountId>>`
+- Recommended `cost.mint_deposit` is decreased by 0.001 miliNEAR (in total).
 
 ## v4.2.0 (2023-08-25)
 

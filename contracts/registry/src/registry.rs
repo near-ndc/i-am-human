@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use near_sdk::{near_bindgen, AccountId};
+use near_sdk::{json_types::Base64VecU8, near_bindgen, AccountId};
 
 use crate::*;
 
@@ -441,5 +441,43 @@ impl SBTRegistry for Contract {
             tokens: token_ids,
         }
         .emit_revoke();
+    }
+
+    /// Allows issuer to update token metadata reference and reference_hash.
+    /// * `updates` is a list of triples: (token ID, reference, reference base64-encoded sha256 hash).
+    /// Must emit `token_reference` event.
+    /// Panics if any of the token IDs don't exist.
+    fn sbt_update_token_references(
+        &mut self,
+        updates: Vec<(TokenId, Option<String>, Option<Base64VecU8>)>,
+    ) {
+        let issuer = env::predecessor_account_id();
+        let issuer_id = self.assert_issuer(&issuer);
+        let mut token_ids = vec![0; updates.len()];
+        let mut key = IssuerTokenId {
+            issuer_id,
+            token: 0,
+        };
+        let mut idx = 0;
+        for (tid, reference, reference_hash) in updates {
+            key.token = tid;
+            let mut t = match self.issuer_tokens.get(&key) {
+                None => env::panic_str(&format!("token {} not found", tid)),
+                Some(t) => t,
+            };
+            let mut m = t.metadata.v1();
+            m.reference = reference;
+            m.reference_hash = reference_hash;
+            t.metadata = m.into();
+            self.issuer_tokens.insert(&key, &t);
+            token_ids[idx] = tid;
+            idx += 1;
+        }
+
+        SbtTokensEvent {
+            issuer,
+            tokens: token_ids,
+        }
+        .emit_token_reference();
     }
 }

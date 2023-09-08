@@ -28,8 +28,8 @@ pub struct ContractMetadata {
     /// URI prefix which will be prepended to other links which don't start with a scheme
     /// (eg: ipfs:// or https:// ...).
     pub base_uri: Option<String>,
-    /// URL to a JSON file with more info. If it doesn't start with a scheme (eg: https://) then
-    /// `base_uri` should be prepended.
+    /// JSON or an URL to a JSON file with more info. If it doesn't start with a scheme
+    /// (eg: https://) then base_uri should be prepended.
     pub reference: Option<String>,
     /// Base64-encoded sha256 hash of JSON from reference field. Required if `reference` is included.
     pub reference_hash: Option<Base64VecU8>,
@@ -50,8 +50,8 @@ pub struct ClassMetadata {
     /// Icon content (SVG) or a link to an Icon. If it doesn't start with a scheme (eg: https://)
     /// then `contract_metadata.base_uri` should be prepended.
     pub icon: Option<String>,
-    /// URL to a JSON file with more info. If it doesn't start with a scheme (eg: https://) then
-    /// base_uri should be prepended.
+    /// JSON or an URL to a JSON file with more info. If it doesn't start with a scheme
+    /// (eg: https://) then base_uri should be prepended.
     pub reference: Option<String>,
     /// Base64-encoded sha256 hash of JSON from reference field. Required if `reference` is included.
     pub reference_hash: Option<Base64VecU8>,
@@ -73,14 +73,14 @@ pub enum VerTokenMetadata {
     derive(Debug, PartialEq, Clone, NearSchema)
 )]
 pub struct TokenMetadata {
-    /// token class
+    /// token class, must be non zero.
     pub class: ClassId,
     /// When the token was issued or minted, Unix time in milliseconds
     pub issued_at: Option<u64>,
     /// When the token expires, Unix time in milliseconds
     pub expires_at: Option<u64>,
-    /// URL to a JSON file with more info. If it doesn't start with a scheme (eg: https://) then
-    /// base_uri should be prepended.
+    /// JSON or an URL to a JSON file with more info. If it doesn't start with a scheme
+    /// (eg: https://) then base_uri should be prepended.
     pub reference: Option<String>,
     /// Base64-encoded sha256 hash of JSON from reference field. Required if `reference` is included.
     pub reference_hash: Option<Base64VecU8>,

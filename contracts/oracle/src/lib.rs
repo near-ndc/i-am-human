@@ -430,7 +430,7 @@ pub mod tests {
 
     #[test]
     #[should_panic(
-        expected = "Requires attached deposit at least 10000000000000000000000 yoctoNEAR"
+        expected = "Requires attached deposit at least 9000000000000000000000 yoctoNEAR"
     )]
     fn mint_not_enough_storage_deposit() {
         let signer = acc_claimer();
@@ -445,7 +445,7 @@ pub mod tests {
 
     #[test]
     #[should_panic(
-        expected = "Requires attached deposit at least 19000000000000000000000 yoctoNEAR"
+        expected = "Requires attached deposit at least 18000000000000000000000 yoctoNEAR"
     )]
     fn mint_with_kyc_not_enough_storage_deposit() {
         let signer = acc_claimer();
