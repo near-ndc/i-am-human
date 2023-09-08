@@ -51,7 +51,7 @@ impl Contract {
      **********/
 
     /// Returns caller response to the specified poll
-    pub fn my_respond(&self, poll_id: PollId) -> Vec<Option<Answer>> {
+    pub fn my_response(&self, poll_id: PollId) -> Vec<Option<Answer>> {
         let caller = env::predecessor_account_id();
         self.answers
             .get(&(poll_id, caller))
