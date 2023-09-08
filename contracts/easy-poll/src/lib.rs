@@ -121,8 +121,8 @@ impl Contract {
         ends_at: u64,
         title: String,
         tags: Vec<String>,
-        description: Option<String>,
-        link: Option<String>,
+        description: String,
+        link: String,
     ) -> PollId {
         let created_at = env::block_timestamp_ms();
         require!(
