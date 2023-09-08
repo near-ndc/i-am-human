@@ -58,8 +58,8 @@ pub struct Poll {
     pub ends_at: u64,   // required, time in milliseconds
     pub title: String,  // required
     pub tags: Vec<String>, // can be an empty vector
-    pub description: Option<String>, // optional
-    pub link: Option<String>, // optional
+    pub description: String, // can be an empty string
+    pub link: String,   // can be an empty string
     pub created_at: u64, // time in milliseconds, should be assigned by the smart contract not a user.
 }
 

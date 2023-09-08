@@ -1,4 +1,6 @@
 pub use crate::errors::PollError;
+use crate::events::emit_create_poll;
+use crate::events::emit_respond;
 pub use crate::ext::*;
 pub use crate::storage::*;
 use cost::MILI_NEAR;
@@ -9,6 +11,7 @@ use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
 use near_sdk::{Balance, Gas};
 
 mod errors;
+mod events;
 mod ext;
 mod storage;
 
@@ -42,7 +45,7 @@ impl Contract {
             answers: UnorderedMap::new(StorageKey::Answers),
             text_answers: LookupMap::new(StorageKey::TextAnswers),
             registry,
-            next_poll_id: 0,
+            next_poll_id: 1,
         }
     }
 
@@ -113,6 +116,7 @@ impl Contract {
     /// it panics if
     /// - user tries to create an invalid poll
     /// - if poll aready exists and starts_at < now
+    /// emits create_poll event
     pub fn create_poll(
         &mut self,
         iah_only: bool,
@@ -146,6 +150,7 @@ impl Contract {
                 created_at,
             },
         );
+        emit_create_poll(poll_id);
         poll_id
     }
 
@@ -155,7 +160,8 @@ impl Contract {
     /// - poll not found
     /// - poll not active
     /// - poll.verified_humans_only is true, and user is not verified on IAH
-    // - user tries to vote with an invalid answer to a question
+    /// - user tries to vote with an invalid answer to a question
+    /// emits repond event
     #[payable]
     #[handle_result]
     pub fn respond(
@@ -290,6 +296,7 @@ impl Contract {
         poll_results.status = Status::Active;
         poll_results.participants += 1;
         self.results.insert(&poll_id, &poll_results);
+        emit_respond(poll_id);
         Ok(())
     }
 
@@ -358,7 +365,10 @@ impl Contract {
 
 #[cfg(test)]
 mod tests {
-    use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId, VMContext};
+    use near_sdk::{
+        test_utils::{self, VMContextBuilder},
+        testing_env, AccountId, VMContext,
+    };
 
     use crate::{
         Answer, Contract, OpinionRangeResult, PollError, PollId, PollResult, Question, Results,
@@ -488,14 +498,32 @@ mod tests {
             100,
             String::from("Hello, world!"),
             tags(),
-            None,
-            None,
+            String::from(""),
+            String::from(""),
         );
     }
 
     #[test]
+    fn create_poll() {
+        let (_, mut ctr) = setup(&alice());
+        ctr.create_poll(
+            false,
+            vec![question_yes_no(true)],
+            2,
+            100,
+            String::from("Hello, world!"),
+            tags(),
+            String::from(""),
+            String::from(""),
+        );
+        let expected_event = r#"EVENT_JSON:{"standard":"ndc-easy-polls","version":"0.0.1","event":"create_poll","data":{"poll_id":1}}"#;
+        assert!(test_utils::get_logs().len() == 1);
+        assert_eq!(test_utils::get_logs()[0], expected_event);
+    }
+
+    #[test]
     #[should_panic(expected = "respond not found")]
-    fn my_respond_not_found() {
+    fn my_response_not_found() {
         let (_, mut ctr) = setup(&alice());
         let poll_id = ctr.create_poll(
             false,
@@ -504,14 +532,14 @@ mod tests {
             100,
             String::from("Hello, world!"),
             tags(),
-            None,
-            None,
+            String::from(""),
+            String::from(""),
         );
-        ctr.my_respond(poll_id);
+        ctr.my_response(poll_id);
     }
 
     #[test]
-    fn my_respond() {
+    fn my_response() {
         let (mut ctx, mut ctr) = setup(&alice());
         let poll_id = ctr.create_poll(
             false,
@@ -520,8 +548,8 @@ mod tests {
             100,
             String::from("Hello, world!"),
             tags(),
-            None,
-            None,
+            String::from(""),
+            String::from(""),
         );
         ctx.block_timestamp = MILI_SECOND * 3;
         testing_env!(ctx.clone());
@@ -533,7 +561,7 @@ mod tests {
             vec![None, Some(Answer::YesNo(true))],
         );
         assert!(res.is_ok());
-        let res = ctr.my_respond(poll_id);
+        let res = ctr.my_response(poll_id);
         assert_eq!(res, vec![None, Some(Answer::YesNo(true))])
     }
 
@@ -554,8 +582,8 @@ mod tests {
             100,
             String::from("Hello, world!"),
             tags(),
-            None,
-            None,
+            String::from(""),
+            String::from(""),
         );
         let res = ctr.results(poll_id);
         let expected = Results {
@@ -584,8 +612,8 @@ mod tests {
             100,
             String::from("Hello, world!"),
             tags(),
-            None,
-            None,
+            String::from(""),
+            String::from(""),
         );
         ctr.result_text_answers(poll_id, 1, 0);
     }
@@ -601,8 +629,8 @@ mod tests {
             100,
             String::from("Hello, world!"),
             tags(),
-            None,
-            None,
+            String::from(""),
+            String::from(""),
         );
         ctr.result_text_answers(poll_id, 0, 0);
     }
@@ -627,8 +655,8 @@ mod tests {
             100,
             String::from("Hello, world!"),
             tags(),
-            None,
-            None,
+            String::from(""),
+            String::from(""),
         );
         ctx.attached_deposit = RESPOND_COST;
         testing_env!(ctx.clone());
@@ -668,8 +696,8 @@ mod tests {
             100,
             String::from("Hello, world!"),
             tags(),
-            None,
-            None,
+            String::from(""),
+            String::from(""),
         );
         ctx.block_timestamp = MILI_SECOND * 3;
         testing_env!(ctx.clone());
@@ -681,6 +709,11 @@ mod tests {
             vec![Some(Answer::YesNo(true))],
         );
         assert!(res.is_ok());
+
+        let expected_event = r#"EVENT_JSON:{"standard":"ndc-easy-polls","version":"0.0.1","event":"respond","data":{"poll_id":1}}"#;
+        assert!(test_utils::get_logs().len() == 1);
+        assert_eq!(test_utils::get_logs()[0], expected_event);
+
         ctx.predecessor_account_id = bob();
         testing_env!(ctx.clone());
         res = ctr.on_human_verifed(
@@ -691,6 +724,10 @@ mod tests {
             vec![Some(Answer::YesNo(true))],
         );
         assert!(res.is_ok());
+
+        assert!(test_utils::get_logs().len() == 1);
+        assert_eq!(test_utils::get_logs()[0], expected_event);
+
         ctx.predecessor_account_id = charlie();
         testing_env!(ctx.clone());
         res = ctr.on_human_verifed(
@@ -701,6 +738,10 @@ mod tests {
             vec![Some(Answer::YesNo(false))],
         );
         assert!(res.is_ok());
+
+        assert!(test_utils::get_logs().len() == 1);
+        assert_eq!(test_utils::get_logs()[0], expected_event);
+
         let results = ctr.results(poll_id);
         assert_eq!(
             results,
@@ -722,8 +763,8 @@ mod tests {
             100,
             String::from("Multiple questions test!"),
             tags(),
-            None,
-            None,
+            String::from(""),
+            String::from(""),
         );
         ctx.block_timestamp = MILI_SECOND * 3;
         testing_env!(ctx);
@@ -755,8 +796,8 @@ mod tests {
             100,
             String::from("Multiple questions test!"),
             tags(),
-            None,
-            None,
+            String::from(""),
+            String::from(""),
         );
         ctx.block_timestamp = MILI_SECOND * 3;
         testing_env!(ctx);
@@ -793,8 +834,8 @@ mod tests {
             100,
             String::from("Multiple questions test!"),
             tags(),
-            None,
-            None,
+            String::from(""),
+            String::from(""),
         );
         ctx.predecessor_account_id = alice();
         ctx.block_timestamp = MILI_SECOND * 3;
@@ -850,8 +891,8 @@ mod tests {
             100,
             String::from("Hello, world!"),
             tags(),
-            None,
-            None,
+            String::from(""),
+            String::from(""),
         );
         ctx.predecessor_account_id = alice();
         ctx.block_timestamp = MILI_SECOND * 3;
@@ -905,8 +946,8 @@ mod tests {
             100,
             String::from("Hello, world!"),
             tags(),
-            None,
-            None,
+            String::from(""),
+            String::from(""),
         );
         ctx.predecessor_account_id = alice();
         ctx.block_timestamp = MILI_SECOND * 3;
@@ -966,8 +1007,8 @@ mod tests {
             100,
             String::from("Hello, world!"),
             tags(),
-            None,
-            None,
+            String::from(""),
+            String::from(""),
         );
         mk_batch_text_answers(&mut ctr, alice(), poll_id, 50);
         // depending on the lenght of the answers the limit decreases rappidly
@@ -985,8 +1026,8 @@ mod tests {
             100,
             String::from("Multiple questions test!"),
             tags(),
-            None,
-            None,
+            String::from(""),
+            String::from(""),
         );
         ctx.block_timestamp = MILI_SECOND * 3;
         testing_env!(ctx);
@@ -1020,8 +1061,8 @@ mod tests {
             100,
             String::from("Multiple questions test!"),
             tags(),
-            None,
-            None,
+            String::from(""),
+            String::from(""),
         );
         ctx.block_timestamp = MILI_SECOND * 3;
         testing_env!(ctx);
