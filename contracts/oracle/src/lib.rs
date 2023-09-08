@@ -128,7 +128,12 @@ impl Contract {
         memo: Option<String>,
     ) -> Result<Promise, CtrError> {
         let now_ms = env::block_timestamp_ms();
-        if now_ms > ELECTIONS_START && now_ms <= ELECTIONS_END {
+        let this_acc = env::current_account_id();
+        // only stop in prod
+        if this_acc.as_str().ends_with("i-am-human.near")
+            && now_ms > ELECTIONS_START
+            && now_ms <= ELECTIONS_END
+        {
             return Err(CtrError::BadRequest(
                 "IAH SBT cannot be mint during the elections period".to_owned(),
             ));
@@ -425,7 +430,7 @@ pub mod tests {
 
     #[test]
     #[should_panic(
-        expected = "Requires attached deposit at least 10000000000000000000000 yoctoNEAR"
+        expected = "Requires attached deposit at least 9000000000000000000000 yoctoNEAR"
     )]
     fn mint_not_enough_storage_deposit() {
         let signer = acc_claimer();
@@ -435,14 +440,12 @@ pub mod tests {
         ctx.attached_deposit = MINT_TOTAL_COST - 1;
         testing_env!(ctx);
         let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, false);
-        let _ = ctr
-            .sbt_mint(c_str, sig, None)
-            .expect("must panic");
+        let _ = ctr.sbt_mint(c_str, sig, None).expect("must panic");
     }
 
     #[test]
     #[should_panic(
-        expected = "Requires attached deposit at least 19000000000000000000000 yoctoNEAR"
+        expected = "Requires attached deposit at least 18000000000000000000000 yoctoNEAR"
     )]
     fn mint_with_kyc_not_enough_storage_deposit() {
         let signer = acc_claimer();
@@ -452,9 +455,7 @@ pub mod tests {
         ctx.attached_deposit = MINT_TOTAL_COST_WITH_KYC - 1;
         testing_env!(ctx);
         let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, true);
-        let _ = ctr
-            .sbt_mint(c_str, sig, None)
-            .expect("must panic");
+        let _ = ctr.sbt_mint(c_str, sig, None).expect("must panic");
     }
 
     #[test]
@@ -595,6 +596,7 @@ pub mod tests {
         let (mut ctx, mut ctr, k) = setup(&signer, &acc_u1());
 
         ctx.block_timestamp = (ELECTIONS_START + 1) * 1_000_000;
+        ctx.current_account_id = "fractal.i-am-human.near".parse().unwrap();
         testing_env!(ctx.clone());
         let (_, c_str, sig) = mk_claim_sign(start() / SECOND, "0x1a", &k, false);
         let res = ctr.sbt_mint(c_str, sig, None);
