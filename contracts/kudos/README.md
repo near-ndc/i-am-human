@@ -21,11 +21,11 @@ Kudos contract for NDC
 
 ### Give kudos
 
-Allows caller to grant kudos to a receiver NEAR account
+Enables the caller to award kudos to a recipient's account.
 
 #### Requirements
 
-User must be human verified (should have minted and valid i-am-human SBT)
+User must be human verified (should have a valid i-am-human SBT)
 Minimum gas required: 67 TGas (300 TGas recommended)
 Deposit required: 0.1 Ⓝ
 
@@ -34,7 +34,7 @@ Deposit required: 0.1 Ⓝ
 ```js
 give_kudos(receiver_id, message, icon_cid, hashtags): kudos id
 
-- receiver_id: user's NEAR account id who should be granted with kudos
+- receiver_id: user's account id that should be awarded the kudos
 - message: followed commentary message text to the kudos granted. By default limits to 1000 characters
 - icon_cid: optional valid CID for icon (image) at ipfs
 - hashtags: optional array of user-specified tags (limited to 32 characters by default, and allows to use only alphanumeric characters, underscores and gyphens). By default maximum allowed number of hashtags is 10
