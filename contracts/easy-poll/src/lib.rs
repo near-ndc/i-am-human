@@ -53,17 +53,20 @@ impl Contract {
      * QUERIES
      **********/
 
-    /// Returns caller response to the specified poll
-    pub fn my_response(&self, poll_id: PollId) -> Vec<Option<Answer>> {
-        let caller = env::predecessor_account_id();
-        self.answers
-            .get(&(poll_id, caller))
-            .expect("respond not found")
+    /// Returns the poll details. If poll not found returns None.
+    pub fn poll(&self, poll_id: PollId) -> Option<Poll> {
+        self.polls.get(&poll_id)
     }
 
-    /// Returns poll results (except for text answers), if poll not found panics
-    pub fn results(&self, poll_id: u64) -> Results {
-        self.results.get(&poll_id).expect("poll not found")
+    /// Returns caller response to the specified poll
+    pub fn my_response(&self, poll_id: PollId) -> Option<Vec<Option<Answer>>> {
+        let caller = env::predecessor_account_id();
+        self.answers.get(&(poll_id, caller))
+    }
+
+    /// Returns poll results (except for text answers), if poll not found returns None.
+    pub fn results(&self, poll_id: u64) -> Option<Results> {
+        self.results.get(&poll_id)
     }
 
     /// Returns text answers in rounds. Starts from the question id provided. Needs to be called until true is returned.
@@ -72,7 +75,7 @@ impl Contract {
         poll_id: u64,
         question: usize,
         from_answer: usize,
-    ) -> (bool, Vec<String>) {
+    ) -> TextResponse<(bool, Vec<String>)> {
         // We cannot return more than 20 due to gas limit per txn.
         self._result_text_answers(poll_id, question, from_answer, 20)
     }
@@ -86,17 +89,21 @@ impl Contract {
         question: usize,
         from_answer: usize,
         limit: usize,
-    ) -> (bool, Vec<String>) {
-        self.polls
-            .get(&poll_id)
-            .expect("poll not found")
-            .questions
-            .get(question)
-            .expect("question not found");
-        let text_answers = self
-            .text_answers
-            .get(&(poll_id, question))
-            .expect("question not type `TextAnswer`");
+    ) -> TextResponse<(bool, Vec<String>)> {
+        let poll = match self.polls.get(&poll_id) {
+            Some(poll) => poll,
+            None => return TextResponse::PollNotFound,
+        };
+
+        match poll.questions.get(question) {
+            Some(questions) => questions,
+            None => return TextResponse::QuestionNotFound,
+        };
+
+        let text_answers = match self.text_answers.get(&(poll_id, question)) {
+            Some(text_answers) => text_answers,
+            None => return TextResponse::QuestionWrongType,
+        };
         let to_return;
         let mut finished = false;
         if from_answer + limit > text_answers.len() as usize {
@@ -105,7 +112,7 @@ impl Contract {
         } else {
             to_return = text_answers.to_vec()[from_answer..from_answer + limit].to_vec();
         }
-        (finished, to_return)
+        TextResponse::Ok((finished, to_return))
     }
 
     /**********
@@ -182,7 +189,11 @@ impl Contract {
 
         // TODO: I think we should add a option for the poll creator to choose whether changing
         // the answers while the poll is active is allowed or not
-        self.assert_answered(poll_id, &caller);
+        match self.assert_answered(poll_id, &caller) {
+            Err(err) => return Err(err),
+            Ok(_) => (),
+        }
+
         let poll = match self.polls.get(&poll_id) {
             None => return Err(PollError::NotFound),
             Some(poll) => poll,
@@ -231,7 +242,7 @@ impl Contract {
 
         for i in 0..questions.len() {
             if questions[i].required && answers[i].is_none() {
-                return Err(PollError::RequiredAnswer);
+                return Err(PollError::RequiredAnswer(i));
             }
 
             match (&answers[i], &poll_results.results[i]) {
@@ -303,7 +314,7 @@ impl Contract {
     /**********
      * INTERNAL
      **********/
-    #[handle_result]
+
     fn assert_active(&self, poll_id: PollId) -> Result<(), PollError> {
         let poll = match self.polls.get(&poll_id) {
             Some(poll) => poll,
@@ -316,11 +327,11 @@ impl Contract {
         Ok(())
     }
 
-    fn assert_answered(&self, poll_id: PollId, caller: &AccountId) {
-        require!(
-            self.answers.get(&(poll_id, caller.clone())).is_none(),
-            format!("user: {} has already answered", caller)
-        );
+    fn assert_answered(&self, poll_id: PollId, caller: &AccountId) -> Result<(), PollError> {
+        if self.answers.get(&(poll_id, caller.clone())).is_some() {
+            return Err(PollError::AlredyAnswered);
+        }
+        Ok(())
     }
 
     fn initalize_results(&mut self, poll_id: PollId, questions: &Vec<Question>) {
@@ -372,7 +383,7 @@ mod tests {
 
     use crate::{
         Answer, Contract, OpinionRangeResult, PollError, PollId, PollResult, Question, Results,
-        Status, RESPOND_COST,
+        Status, TextResponse, RESPOND_COST,
     };
 
     const MILI_SECOND: u64 = 1000000; // nanoseconds
@@ -522,7 +533,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "respond not found")]
     fn my_response_not_found() {
         let (_, mut ctr) = setup(&alice());
         let poll_id = ctr.create_poll(
@@ -535,7 +545,7 @@ mod tests {
             String::from(""),
             String::from(""),
         );
-        ctr.my_response(poll_id);
+        assert!(ctr.my_response(poll_id).is_none());
     }
 
     #[test]
@@ -562,14 +572,13 @@ mod tests {
         );
         assert!(res.is_ok());
         let res = ctr.my_response(poll_id);
-        assert_eq!(res, vec![None, Some(Answer::YesNo(true))])
+        assert_eq!(res.unwrap(), vec![None, Some(Answer::YesNo(true))])
     }
 
     #[test]
-    #[should_panic(expected = "poll not found")]
     fn results_poll_not_found() {
         let (_, ctr) = setup(&alice());
-        ctr.results(1);
+        assert!(ctr.results(1).is_none());
     }
 
     #[test]
@@ -591,19 +600,20 @@ mod tests {
             participants: 0,
             results: vec![PollResult::YesNo((0, 0))],
         };
-        assert_eq!(res, expected);
+        assert_eq!(res.unwrap(), expected);
     }
 
     #[test]
-    #[should_panic(expected = "poll not found")]
     fn result_text_answers_poll_not_found() {
         let (_, ctr) = setup(&alice());
-        ctr.result_text_answers(0, 0, 0);
+        match ctr.result_text_answers(0, 0, 0) {
+            TextResponse::PollNotFound => (),
+            other => panic!("Expected TextResponse::PollNotFound, but got {:?}", other),
+        };
     }
 
     #[test]
-    #[should_panic(expected = "question not found")]
-    fn result_text_answers_wrong_question() {
+    fn result_text_answers_question_not_found() {
         let (_, mut ctr) = setup(&alice());
         let poll_id = ctr.create_poll(
             false,
@@ -615,12 +625,17 @@ mod tests {
             String::from(""),
             String::from(""),
         );
-        ctr.result_text_answers(poll_id, 1, 0);
+        match ctr.result_text_answers(poll_id, 1, 0) {
+            TextResponse::QuestionNotFound => (),
+            other => panic!(
+                "Expected TextResponse::QuestionNotFound, but got {:?}",
+                other
+            ),
+        };
     }
 
     #[test]
-    #[should_panic(expected = "question not type `TextAnswer`")]
-    fn result_text_answers_wrong_type() {
+    fn result_text_answers_question_wrong_type() {
         let (_, mut ctr) = setup(&alice());
         let poll_id = ctr.create_poll(
             false,
@@ -632,7 +647,13 @@ mod tests {
             String::from(""),
             String::from(""),
         );
-        ctr.result_text_answers(poll_id, 0, 0);
+        match ctr.result_text_answers(poll_id, 0, 0) {
+            TextResponse::QuestionWrongType => (),
+            other => panic!(
+                "Expected TextResponse::QuestionWrongType, but got {:?}",
+                other
+            ),
+        };
     }
 
     #[test]
@@ -744,7 +765,7 @@ mod tests {
 
         let results = ctr.results(poll_id);
         assert_eq!(
-            results,
+            results.unwrap(),
             Results {
                 status: Status::Active,
                 participants: 3,
@@ -870,7 +891,7 @@ mod tests {
         assert!(res.is_ok());
         let results = ctr.results(poll_id);
         assert_eq!(
-            results,
+            results.unwrap(),
             Results {
                 status: Status::Active,
                 participants: 3,
@@ -927,7 +948,7 @@ mod tests {
         assert!(res.is_ok());
         let results = ctr.results(poll_id);
         assert_eq!(
-            results,
+            results.unwrap(),
             Results {
                 status: Status::Active,
                 participants: 3,
@@ -985,7 +1006,7 @@ mod tests {
         assert!(res.is_ok());
         let results = ctr.results(poll_id);
         assert_eq!(
-            results,
+            results.unwrap(),
             Results {
                 status: Status::Active,
                 participants: 3,
@@ -993,8 +1014,10 @@ mod tests {
             }
         );
         let text_answers = ctr.result_text_answers(poll_id, 0, 0);
-        assert!(text_answers.0);
-        assert_eq!(text_answers.1, vec![answer1, answer2, answer3])
+        assert_eq!(
+            text_answers,
+            TextResponse::Ok((true, vec![answer1, answer2, answer3]))
+        );
     }
 
     #[test]
@@ -1013,7 +1036,13 @@ mod tests {
         mk_batch_text_answers(&mut ctr, alice(), poll_id, 50);
         // depending on the lenght of the answers the limit decreases rappidly
         let text_answers = ctr._result_text_answers(poll_id, 0, 0, 30);
-        assert!(!text_answers.0);
+        match text_answers {
+            TextResponse::Ok((false, _)) => {}
+            _ => panic!(
+                "Expected TextResponse::Ok with true, but got {:?}",
+                text_answers
+            ),
+        }
     }
 
     #[test]
@@ -1076,7 +1105,7 @@ mod tests {
             Err(err) => {
                 println!("Received error: {:?}", err);
                 match err {
-                    PollError::RequiredAnswer => {
+                    PollError::RequiredAnswer(1) => {
                         println!("Expected error: PollError::RequiredAnswer")
                     }
                     _ => panic!("Unexpected error: {:?}", err),

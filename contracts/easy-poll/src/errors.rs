@@ -5,20 +5,21 @@ use near_sdk::FunctionError;
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq))]
 #[derive(Debug)]
 pub enum PollError {
-    RequiredAnswer,
+    RequiredAnswer(usize),
     NoSBTs,
     NotFound,
     NotActive,
     OpinionRange,
     WrongAnswer,
     IncorrectAnswerVector,
+    AlredyAnswered,
 }
 
 impl FunctionError for PollError {
     fn panic(&self) -> ! {
         match self {
-            PollError::RequiredAnswer => {
-                panic_str("Answer to a required question was not provided")
+            PollError::RequiredAnswer(index) => {
+                panic_str(&format!("Answer to a required question index={} was not provided",index))
             }
             PollError::NoSBTs => panic_str("voter is not a verified human"),
             PollError::NotFound => panic_str("poll not found"),
@@ -27,7 +28,8 @@ impl FunctionError for PollError {
             PollError::WrongAnswer => {
                 panic_str("answer provied does not match the expected question")
             },
-            PollError::IncorrectAnswerVector => panic_str("The answer vector provided is incorrect and does not match the questions in the poll"),
+            PollError::IncorrectAnswerVector => panic_str("the answer vector provided is incorrect and does not match the questions in the poll"),
+            PollError::AlredyAnswered => panic_str("user has already answered")
         }
     }
 }

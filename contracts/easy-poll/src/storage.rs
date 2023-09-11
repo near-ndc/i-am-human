@@ -88,3 +88,11 @@ pub enum StorageKey {
     Answers,
     TextAnswers,
 }
+
+#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
+pub enum TextResponse<T> {
+    Ok(T),
+    PollNotFound,
+    QuestionNotFound,
+    QuestionWrongType,
+}
