@@ -7,8 +7,8 @@ Kudos contract for NDC
 - Init contract
 
   ```sh
-  near call $CONRTACT_ID init '{"iah_registry": "registry-unstable.i-am-human.testnet"}' --accountId rubycoptest.testnet
-  near call $CONRTACT_ID set_external_db '{"external_db_id": "v1.social08.testnet"}' --accountId rubycoptest.testnet --amount 5
+  near call $CONRTACT_ID init '{"iah_registry": "registry-unstable.i-am-human.testnet"}' --accountId YOUR_ACCOUNT.testnet
+  near call $CONRTACT_ID set_external_db '{"external_db_id": "v1.social08.testnet"}' --accountId YOUR_ACCOUNT.testnet --amount 5
   ```
 
 - Deploy it on testnet
@@ -35,7 +35,7 @@ Deposit required: 0.1 Ⓝ
 give_kudos(receiver_id, message, icon_cid, hashtags): kudos id
 
 - receiver_id: user's account id that should be awarded the kudos
-- message: followed commentary message text to the kudos granted. By default limits to 1000 characters
+- message: comment message on the kudos. Max character limit is 1000
 - icon_cid: optional valid CID for icon (image) at ipfs
 - hashtags: optional array of user-specified tags (limited to 32 characters by default, and allows to use only alphanumeric characters, underscores and gyphens). By default maximum allowed number of hashtags is 10
 ```
@@ -77,13 +77,13 @@ Example JSON written to SocialDB:
 
 ### Upvote kudos
 
-Allows caller to upvote kudos by unique id granted to a receiver NEAR account
+Allows caller to upvote kudos by unique id granted to a receiver account
 
 #### Requirements
 
 - User must be human verified (should have a valid i-am-human SBT)
-- Caller can't be a NEAR account which granted kudos
-- Caller can't be a receiver NEAR account
+- Caller can't be a account which granted kudos
+- Caller can't be a receiver account
 - Caller could upvote specified kudos only once
 - Minimum gas required: 92 TGas (300 TGas recommended)
 - Deposit required: 0.004 Ⓝ
@@ -93,8 +93,8 @@ Allows caller to upvote kudos by unique id granted to a receiver NEAR account
 ```js
 upvote_kudos(receiver_id, kudos_id): timestamp
 
-- receiver_id: user's NEAR account id whos unique kudos should be upvoted
-- kudos_id: unique kudos identified granted to a receiver NEAR account
+- receiver_id: user's account id whos unique kudos should be upvoted
+- kudos_id: unique kudos identified granted to a receiver account
 ```
 
 #### Output

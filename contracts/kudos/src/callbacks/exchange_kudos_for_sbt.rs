@@ -13,6 +13,8 @@ use near_sdk::{env, near_bindgen, AccountId, Promise, PromiseError, PromiseOrVal
 #[near_bindgen]
 impl Contract {
     #[private]
+    // This function is used to acquire number of upvotes, if successful and user have enough upvotes
+    // sbt minting process will be initiated else return deposit
     pub fn acquire_number_of_upvotes(
         &mut self,
         predecessor_account_id: AccountId,
@@ -73,6 +75,7 @@ impl Contract {
     }
 
     #[private]
+    // Callback for fetching data from kudos upvotes
     pub fn on_kudos_upvotes_acquired(
         &mut self,
         predecessor_account_id: AccountId,
@@ -131,6 +134,8 @@ impl Contract {
 
     #[private]
     #[handle_result]
+    // This function handles callback from proof of kudos sbt mint.
+    // Returns deposit amount if failed
     pub fn on_pok_sbt_mint(
         &mut self,
         predecessor_account_id: AccountId,
