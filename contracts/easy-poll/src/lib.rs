@@ -765,7 +765,7 @@ mod tests {
         assert_eq!(
             results.unwrap(),
             Results {
-                status: Status::Active,
+                status: Status::NotStarted,
                 participants: 3,
                 results: vec![PollResult::YesNo((2, 1)),]
             }
@@ -891,7 +891,7 @@ mod tests {
         assert_eq!(
             results.unwrap(),
             Results {
-                status: Status::Active,
+                status: Status::NotStarted,
                 participants: 3,
                 results: vec![PollResult::OpinionRange(OpinionRangeResult {
                     sum: 17,
@@ -948,7 +948,7 @@ mod tests {
         assert_eq!(
             results.unwrap(),
             Results {
-                status: Status::Active,
+                status: Status::NotStarted,
                 participants: 3,
                 results: vec![PollResult::TextChoices(vec![2, 1, 0]),]
             }
@@ -1006,7 +1006,7 @@ mod tests {
         assert_eq!(
             results.unwrap(),
             Results {
-                status: Status::Active,
+                status: Status::NotStarted,
                 participants: 3,
                 results: vec![PollResult::TextAnswer]
             }
