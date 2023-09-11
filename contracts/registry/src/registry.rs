@@ -350,20 +350,28 @@ impl SBTRegistry for Contract {
     }
 
     /// Revokes owners SBTs issued by the caller either by burning or updating their expire
-    /// time. The function will try to revoke at most `MAX_LIMIT` tokens (to fit into the tx
+    /// time. The function will try to revoke at most 25 tokens (to fit into the tx
     /// gas limit), so when an owner has many tokens from the issuer, the issuer may need to
-    /// call this function multiple times, until all tokens are revoked. Issuer should query
-    /// `sbt_supply_by_owner` to check if the function should be called again.
+    /// call this function multiple times, until all tokens are revoked.
+    /// Retuns true if all the tokens were revoked, false otherwise.
+    /// If false is returned issuer must call the method until true is returned
     /// Must be called by an SBT contract.
     /// Must emit `Revoke` event.
     /// Must also emit `Burn` event if the SBT tokens are burned (removed).
-    fn sbt_revoke_by_owner(&mut self, owner: AccountId, burn: bool) {
+    fn sbt_revoke_by_owner(&mut self, owner: AccountId, burn: bool) -> bool {
         let issuer = env::predecessor_account_id();
         let issuer_id = self.assert_issuer(&issuer);
-        let mut tokens_by_owner =
-            self.sbt_tokens_by_owner(owner.clone(), Some(issuer.clone()), None, None, Some(true));
+        let mut tokens_by_owner = self.sbt_tokens_by_owner(
+            owner.clone(),
+            Some(issuer.clone()),
+            None,
+            Some(25),
+            Some(true),
+        );
+        let tokens_by_owner_supply = self.sbt_supply_by_owner(owner.clone(), issuer.clone(), None);
+        let tokens_len = tokens_by_owner[0].1.len();
         if tokens_by_owner.is_empty() {
-            return;
+            return true;
         };
         let (_, tokens) = tokens_by_owner.pop().unwrap();
 
@@ -438,9 +446,13 @@ impl SBTRegistry for Contract {
         }
         SbtTokensEvent {
             issuer,
-            tokens: token_ids,
+            tokens: token_ids.clone(),
         }
         .emit_revoke();
+        if tokens_len < tokens_by_owner_supply as usize {
+            return false;
+        }
+        true
     }
 
     /// Allows issuer to update token metadata reference and reference_hash.
