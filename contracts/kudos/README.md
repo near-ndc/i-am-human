@@ -125,7 +125,7 @@ Allows caller to leave a commentary message to kudos by unique id granted to a r
 
 #### Requirements
 
-- User must be human verified (should have minted and valid i-am-human SBT)
+- User must be human verified (should have a valid i-am-human SBT)
 - User can't leave a comment for his kudos, but it can reply to other comments
 - Minimum gas required: 92 TGas (300 TGas recommended)
 - Deposit required: 0.017 Ⓝ

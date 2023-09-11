@@ -27,7 +27,7 @@ impl Contract {
             .map_err(|e| format!("IAHRegistry::is_human() call failure: {e:?}"))
             .and_then(|tokens| {
                 if tokens.is_empty() {
-                    return Err("IAHRegistry::is_human() returns result: Not a human".to_owned());
+                    return Err("IAHRegistry::is_human() result: Not a human".to_owned());
                 }
 
                 let receiver_id = env::signer_account_id();
