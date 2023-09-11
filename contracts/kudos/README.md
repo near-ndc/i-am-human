@@ -81,7 +81,7 @@ Allows caller to upvote kudos by unique id granted to a receiver NEAR account
 
 #### Requirements
 
-- User must be human verified (should have minted and valid i-am-human SBT)
+- User must be human verified (should have a valid i-am-human SBT)
 - Caller can't be a NEAR account which granted kudos
 - Caller can't be a receiver NEAR account
 - Caller could upvote specified kudos only once
