@@ -89,7 +89,9 @@ pub enum StorageKey {
     TextAnswers,
 }
 
+#[derive(Deserialize, Serialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
+#[serde(crate = "near_sdk::serde")]
 pub enum TextResponse<T> {
     Ok(T),
     PollNotFound,
