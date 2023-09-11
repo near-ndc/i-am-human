@@ -7,8 +7,8 @@ use crate::PollId;
 
 fn emit_event<T: Serialize>(event: EventPayload<T>) {
     NearEvent {
-        standard: "ndc-easy-polls",
-        version: "0.0.1",
+        standard: "ndc-easy-poll",
+        version: "1.0.0",
         event,
     }
     .emit();
@@ -21,10 +21,10 @@ pub(crate) fn emit_create_poll(poll_id: PollId) {
     });
 }
 
-pub(crate) fn emit_respond(poll_id: PollId) {
+pub(crate) fn emit_respond(poll_id: PollId, responded: AccountId) {
     emit_event(EventPayload {
         event: "respond",
-        data: json!({ "poll_id": poll_id }),
+        data: json!({ "poll_id": poll_id, "responder": responder }),
     });
 }
 

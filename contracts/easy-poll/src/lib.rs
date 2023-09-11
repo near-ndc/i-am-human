@@ -27,7 +27,7 @@ pub struct Contract {
     pub results: LookupMap<PollId, Results>,
     /// map of all answers, (poll, user) -> vec of answers
     pub answers: UnorderedMap<(PollId, AccountId), Vec<Option<Answer>>>,
-    /// text answers are stored in a separate map
+    /// text answers are stored in a separate map. Key is a (pollId, question index).
     pub text_answers: LookupMap<(PollId, usize), Vector<String>>,
     /// SBT registry.
     pub registry: AccountId,
@@ -58,7 +58,7 @@ impl Contract {
         self.polls.get(&poll_id)
     }
 
-    /// Returns caller response to the specified poll
+    /// Returns caller response to the specified poll. It doesn't return text responses of the given poll ID.
     pub fn my_response(&self, poll_id: PollId) -> Option<Vec<Option<Answer>>> {
         let caller = env::predecessor_account_id();
         self.answers.get(&(poll_id, caller))
@@ -70,7 +70,7 @@ impl Contract {
     }
 
     /// Returns text answers in rounds. Starts from the question id provided. Needs to be called until true is returned.
-    pub fn result_text_answers(
+    pub fn text_answers(
         &self,
         poll_id: u64,
         question: usize,
@@ -89,7 +89,7 @@ impl Contract {
         question: usize,
         from_answer: usize,
         limit: usize,
-    ) -> TextResponse<(bool, Vec<String>)> {
+    ) -> TextResponse<(Vec<String>, bool)> {
         let poll = match self.polls.get(&poll_id) {
             Some(poll) => poll,
             None => return TextResponse::PollNotFound,
@@ -112,7 +112,7 @@ impl Contract {
         } else {
             to_return = text_answers.to_vec()[from_answer..from_answer + limit].to_vec();
         }
-        TextResponse::Ok((finished, to_return))
+        TextResponse::Ok((to_return, finished))
     }
 
     /**********
@@ -138,7 +138,7 @@ impl Contract {
         let created_at = env::block_timestamp_ms();
         require!(
             created_at < starts_at,
-            format!("poll start must be in the future")
+            "poll start must be in the future".to_string()
         );
         let poll_id = self.next_poll_id;
         self.next_poll_id += 1;
@@ -182,18 +182,11 @@ impl Contract {
         );
         let caller = env::predecessor_account_id();
 
-        match self.assert_active(poll_id) {
-            Err(err) => return Err(err),
-            Ok(_) => (),
-        };
+        self.assert_active(poll_id)?;
 
         // TODO: I think we should add a option for the poll creator to choose whether changing
         // the answers while the poll is active is allowed or not
-        match self.assert_answered(poll_id, &caller) {
-            Err(err) => return Err(err),
-            Ok(_) => (),
-        }
-
+        self.assert_answered(poll_id, &caller)?;
         let poll = match self.polls.get(&poll_id) {
             None => return Err(PollError::NotFound),
             Some(poll) => poll,
