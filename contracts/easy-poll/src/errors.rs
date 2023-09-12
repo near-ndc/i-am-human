@@ -4,8 +4,7 @@ use near_sdk::FunctionError;
 use crate::MAX_TEXT_ANSWER_LEN;
 
 /// Contract errors
-#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq))]
-#[derive(Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 pub enum PollError {
     RequiredAnswer(usize),
     NotIAH,
