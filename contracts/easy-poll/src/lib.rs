@@ -221,7 +221,7 @@ impl Contract {
         answers: Vec<Option<Answer>>,
     ) -> Result<(), PollError> {
         if iah_only && tokens.is_empty() {
-            return Err(PollError::NoSBTs);
+            return Err(PollError::NotIAH);
         }
         let questions: Vec<Question> = self.polls.get(&poll_id).expect("poll not found").questions;
         if questions.len() != answers.len() {
@@ -1077,8 +1077,8 @@ mod tests {
             Err(err) => {
                 println!("Received error: {:?}", err);
                 match err {
-                    PollError::NoSBTs => {
-                        println!("Expected error: PollError::NoSBTs")
+                    PollError::NotIAH => {
+                        println!("Expected error: PollError::NotIAH")
                     }
                     _ => panic!("Unexpected error: {:?}", err),
                 }
