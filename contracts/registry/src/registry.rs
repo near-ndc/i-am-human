@@ -446,7 +446,7 @@ impl SBTRegistry for Contract {
         }
         SbtTokensEvent {
             issuer,
-            tokens: token_ids.clone(),
+            tokens: token_ids,
         }
         .emit_revoke();
         if tokens_len < tokens_by_owner_supply as usize {
