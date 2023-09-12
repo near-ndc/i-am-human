@@ -8,7 +8,7 @@ use crate::MAX_TEXT_ANSWER_LEN;
 #[derive(Debug)]
 pub enum PollError {
     RequiredAnswer(usize),
-    NoSBTs,
+    NotIAH,
     NotFound,
     NotActive,
     OpinionRange,
@@ -24,10 +24,10 @@ impl FunctionError for PollError {
             PollError::RequiredAnswer(index) => {
                 panic_str(&format!("Answer to a required question index={} was not provided",index))
             }
-            PollError::NoSBTs => panic_str("voter is not a verified human"),
+            PollError::NotIAH => panic_str("voter is not a verified human"),
             PollError::NotFound => panic_str("poll not found"),
             PollError::NotActive => panic_str("poll is not active"),
-            PollError::OpinionRange => panic_str("opinion must be between 0 and 10"),
+            PollError::OpinionRange => panic_str("opinion must be between 1 and 10"),
             PollError::WrongAnswer => {
                 panic_str("answer provied does not match the expected question")
             },

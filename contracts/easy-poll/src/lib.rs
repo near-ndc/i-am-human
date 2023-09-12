@@ -262,7 +262,7 @@ impl Contract {
                     poll_results.results[i] = PollResult::PictureChoices(res);
                 }
                 (Some(Answer::OpinionRange(answer)), PollResult::OpinionRange(results)) => {
-                    if *answer > 10 {
+                    if *answer < 1 || *answer > 10 {
                         return Err(PollError::OpinionRange);
                     }
                     poll_results.results[i] = PollResult::OpinionRange(OpinionRangeResult {
@@ -289,6 +289,7 @@ impl Contract {
                 (_, _) => return Err(PollError::WrongAnswer),
             }
             if answers[i].is_some() {
+                // None case is handled in the `match` statement.
                 unwrapped_answers.push(Some(answers[i].clone().unwrap()));
             }
         }
