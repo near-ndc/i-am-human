@@ -143,7 +143,7 @@ impl Contract {
         );
         let poll_id = self.next_poll_id;
         self.next_poll_id += 1;
-        self.initalize_results(poll_id, &questions);
+        self.initialize_results(poll_id, &questions);
         self.polls.insert(
             &poll_id,
             &Poll {
@@ -220,57 +220,52 @@ impl Contract {
         poll_id: PollId,
         answers: Vec<Option<Answer>>,
     ) -> Result<(), PollError> {
+        // Check for IAH requirement if iah_only is set
         if iah_only && tokens.is_empty() {
             return Err(PollError::NotIAH);
         }
+
+        // Retrieve questions and poll results
         let questions: Vec<Question> = self.polls.get(&poll_id).expect("poll not found").questions;
+        let mut poll_results = self.results.get(&poll_id).expect("results not found");
+
+        // Check if the number of answers matches the number of questions
         if questions.len() != answers.len() {
             return Err(PollError::IncorrectAnswerVector);
         }
+
+        // Initialize unwrapped_answers vector
         let mut unwrapped_answers: Vec<Option<Answer>> = Vec::new();
-        let mut poll_results = self.results.get(&poll_id).expect("results not found");
 
         for i in 0..questions.len() {
-            let mut q = &questions[i];
+            let q = &questions[i];
             let a = &answers[i];
             if q.required && a.is_none() {
                 return Err(PollError::RequiredAnswer(i));
             }
 
-            match (&answers[i], &poll_results.results[i]) {
-                (Some(Answer::YesNo(answer)), PollResult::YesNo((yes, no))) => {
-                    if *answer {
-                        poll_results.results[i] = PollResult::YesNo((*yes + 1, *no));
+            match (a, &mut poll_results.results[i]) {
+                (Some(Answer::YesNo(response)), PollResult::YesNo((yes_count, no_count))) => {
+                    if *response {
+                        *yes_count += 1;
                     } else {
-                        poll_results.results[i] = PollResult::YesNo((*yes, *no + 1));
+                        *no_count += 1;
                     }
                 }
-                (Some(Answer::TextChoices(answer)), PollResult::TextChoices(results)) => {
-                    let mut res: Vec<u32> = results.to_vec();
-                    for i in 0..answer.len() {
-                        if answer[i] == true {
-                            res[i] += 1;
+                (Some(Answer::TextChoices(choices)), PollResult::TextChoices(results))
+                | (Some(Answer::PictureChoices(choices)), PollResult::PictureChoices(results)) => {
+                    for (j, choice) in choices.iter().enumerate() {
+                        if *choice {
+                            results[j] += 1;
                         }
                     }
-                    poll_results.results[i] = PollResult::TextChoices(res);
                 }
-                (Some(Answer::PictureChoices(answer)), PollResult::PictureChoices(results)) => {
-                    let mut res: Vec<u32> = results.to_vec();
-                    for i in 0..answer.len() {
-                        if answer[i] == true {
-                            res[i] += 1;
-                        }
-                    }
-                    poll_results.results[i] = PollResult::PictureChoices(res);
-                }
-                (Some(Answer::OpinionRange(answer)), PollResult::OpinionRange(results)) => {
-                    if *answer < 1 || *answer > 10 {
+                (Some(Answer::OpinionRange(opinion)), PollResult::OpinionRange(results)) => {
+                    if *opinion < 1 || *opinion > 10 {
                         return Err(PollError::OpinionRange);
                     }
-                    poll_results.results[i] = PollResult::OpinionRange(OpinionRangeResult {
-                        sum: results.sum + *answer as u64,
-                        num: results.num + 1 as u64,
-                    });
+                    results.sum += *opinion as u64;
+                    results.num += 1;
                 }
                 (Some(Answer::TextAnswer(answer)), PollResult::TextAnswer) => {
                     let mut answers = self
@@ -295,15 +290,22 @@ impl Contract {
                 unwrapped_answers.push(Some(answers[i].clone().unwrap()));
             }
         }
-        let mut answers = self
+        // Update answers for the caller
+        let mut caller_answers = self
             .answers
             .get(&(poll_id, caller.clone()))
             .unwrap_or(Vec::new());
-        answers.append(&mut unwrapped_answers);
-        self.answers.insert(&(poll_id, caller.clone()), &answers);
+        caller_answers.append(&mut unwrapped_answers);
+        self.answers
+            .insert(&(poll_id, caller.clone()), &caller_answers);
+
+        // Update participants count and poll results
         poll_results.participants += 1;
+
+        // Update results and emit response event
         self.results.insert(&poll_id, &poll_results);
         emit_respond(poll_id, caller);
+
         Ok(())
     }
 
@@ -330,41 +332,35 @@ impl Contract {
         Ok(())
     }
 
-    fn initalize_results(&mut self, poll_id: PollId, questions: &Vec<Question>) {
-        let mut results = Vec::new();
+    fn initialize_results(&mut self, poll_id: PollId, questions: &[Question]) {
         let mut index = 0;
-        for question in questions {
-            match question.question_type {
-                Answer::YesNo(_) => results.push(PollResult::YesNo((0, 0))),
-                Answer::TextChoices(_) => results.push(PollResult::TextChoices(vec![
-                    0;
-                    question
-                        .choices
-                        .clone()
-                        .unwrap()
-                        .len()
-                ])),
-                Answer::PictureChoices(_) => results.push(PollResult::PictureChoices(Vec::new())),
-                Answer::OpinionRange(_) => {
-                    results.push(PollResult::OpinionRange(OpinionRangeResult {
-                        sum: 0,
-                        num: 0,
-                    }))
-                }
-                Answer::TextAnswer(_) => {
-                    results.push(PollResult::TextAnswer);
-                    self.text_answers
-                        .insert(&(poll_id, index), &Vector::new(StorageKey::TextAnswers));
-                }
-            };
-            index += 1;
-        }
+        let results: Vec<PollResult> = questions
+            .iter()
+            .map(|question| {
+                let result = match &question.question_type {
+                    Answer::YesNo(_) => PollResult::YesNo((0, 0)),
+                    Answer::TextChoices(choices) => PollResult::TextChoices(vec![0; choices.len()]),
+                    Answer::PictureChoices(_) => PollResult::PictureChoices(Vec::new()),
+                    Answer::OpinionRange(_) => {
+                        PollResult::OpinionRange(OpinionRangeResult { sum: 0, num: 0 })
+                    }
+                    Answer::TextAnswer(_) => {
+                        self.text_answers
+                            .insert(&(poll_id, index), &Vector::new(StorageKey::TextAnswers));
+                        PollResult::TextAnswer
+                    }
+                };
+                index += 1;
+                result
+            })
+            .collect();
+
         self.results.insert(
             &poll_id,
             &Results {
                 status: Status::NotStarted,
                 participants: 0,
-                results: results,
+                results,
             },
         );
     }
