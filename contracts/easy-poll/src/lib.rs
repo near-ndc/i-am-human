@@ -231,7 +231,9 @@ impl Contract {
         let mut poll_results = self.results.get(&poll_id).expect("results not found");
 
         for i in 0..questions.len() {
-            if questions[i].required && answers[i].is_none() {
+            let mut q = &questions[i];
+            let a = &answers[i];
+            if q.required && a.is_none() {
                 return Err(PollError::RequiredAnswer(i));
             }
 
