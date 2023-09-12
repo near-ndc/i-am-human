@@ -5,6 +5,7 @@ use near_sdk::{json_types::Base64VecU8, near_bindgen, AccountId};
 use crate::*;
 
 const MAX_LIMIT: u32 = 1000;
+const MAX_REVOKE_PER_CALL: u32 = 25;
 
 #[near_bindgen]
 impl SBTRegistry for Contract {
@@ -350,7 +351,7 @@ impl SBTRegistry for Contract {
     }
 
     /// Revokes owners SBTs issued by the caller either by burning or updating their expire
-    /// time. The function will try to revoke at most 25 tokens (to fit into the tx
+    /// time. The function will try to revoke at most `MAX_REVOKE_PER_CALL` tokens (to fit into the tx
     /// gas limit), so when an owner has many tokens from the issuer, the issuer may need to
     /// call this function multiple times, until all tokens are revoked.
     /// Retuns true if all the tokens were revoked, false otherwise.
@@ -365,7 +366,7 @@ impl SBTRegistry for Contract {
             owner.clone(),
             Some(issuer.clone()),
             None,
-            Some(25),
+            Some(MAX_REVOKE_PER_CALL),
             Some(true),
         );
         let tokens_by_owner_supply = self.sbt_supply_by_owner(owner.clone(), issuer.clone(), None);
