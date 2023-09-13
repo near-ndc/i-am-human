@@ -7,7 +7,7 @@ members = [
     "registry",
     "soulbound-class",
     "kudos",
-
+    "easy-poll",
     "human_checker",
     "ubi",
     "demo-issuer",
