@@ -6,7 +6,7 @@ members = [
     "oracle",
     "registry",
     "soulbound-class",
-
+    "easy-poll",
     "human_checker",
     "ubi",
     "demo-issuer",

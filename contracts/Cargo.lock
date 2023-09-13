@@ -861,6 +861,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "53aff6fdc1b181225acdcb5b14c47106726fd8e486707315b1b138baed68ee31"
 
 [[package]]
+name = "easy-poll"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "cost",
+ "near-primitives 0.17.0",
+ "near-sdk",
+ "near-units",
+ "pretty_assertions",
+ "sbt",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uint",
+ "workspaces",
+]
+
+[[package]]
 name = "ed25519"
 version = "1.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
