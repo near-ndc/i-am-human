@@ -9,9 +9,10 @@ use near_sdk::{env, near_bindgen, AccountId, Promise, PromiseError, PromiseOrVal
 
 #[near_bindgen]
 impl Contract {
+
+    /// This function is used to save kudos to near social,
+    /// if it fails return deposit
     #[private]
-    // This function is used to save kudos to near social,
-    // if it fails return deposit
     pub fn save_kudos(
         &mut self,
         predecessor_account_id: AccountId,
@@ -78,9 +79,9 @@ impl Contract {
         })
     }
 
+    /// This is callback function after kudos is saved,
+    /// if it fails return deposit
     #[private]
-    // This is callback function after kudos is saved,
-    // if it fails return deposit
     pub fn on_kudos_saved(
         &mut self,
         predecessor_account_id: AccountId,

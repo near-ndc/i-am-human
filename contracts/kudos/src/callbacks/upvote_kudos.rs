@@ -11,9 +11,10 @@ use near_sdk::{env, near_bindgen, AccountId, Promise, PromiseError, PromiseOrVal
 
 #[near_bindgen]
 impl Contract {
+
+    /// This funtion is used to acquire kudos info,
+    /// If failed deposit will be refunded
     #[private]
-    // This funtion is used to acquire kudos info,
-    // If failed deposit will be refunded
     pub fn acquire_kudos_sender(
         &mut self,
         predecessor_account_id: AccountId,
@@ -79,9 +80,9 @@ impl Contract {
         })
     }
 
+    /// This is callback funtion for kudos info,
+    /// If failed deposit will be refunded
     #[private]
-    // This is callback funtion for kudos info,
-    // If failed deposit will be refunded
     pub fn on_kudos_sender_acquired(
         &mut self,
         predecessor_account_id: AccountId,
@@ -133,9 +134,10 @@ impl Contract {
             )
     }
 
+
+    /// Once kudos is acquired use it to upvote
+    /// If failed deposit will be refunded
     #[private]
-    // Once kudos is acquired use it to upvote
-    // If failed deposit will be refunded
     pub fn on_kudos_upvote_saved(
         &mut self,
         predecessor_account_id: AccountId,
