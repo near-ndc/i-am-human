@@ -225,13 +225,9 @@ impl Contract {
             }
         }
 
-        // Update participants count
-        poll_results.participants_num += 1;
-
         // Update the participants lookupset to ensure user cannot answer twice
         self.participants.insert(&(poll_id, caller.clone()));
-
-        // Update results and emit response event
+        poll_results.participants_num += 1;
         self.results.insert(&poll_id, &poll_results);
         emit_respond(poll_id, caller);
 
