@@ -6,8 +6,8 @@ pub use crate::storage::*;
 use cost::MILI_NEAR;
 use ext::ext_registry;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::collections::LookupMap;
 use near_sdk::collections::LookupSet;
-use near_sdk::collections::{LookupMap, UnorderedMap};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
 use near_sdk::{Balance, Gas};
 
@@ -24,7 +24,7 @@ pub const MAX_TEXT_ANSWER_LEN: usize = 500; // TODO: decide on the maximum lengt
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
     /// map of all polls
-    pub polls: UnorderedMap<PollId, Poll>,
+    pub polls: LookupMap<PollId, Poll>,
     /// map of all results summarized
     pub results: LookupMap<PollId, Results>,
     /// lookup set of (poll_id, responder)
@@ -40,7 +40,7 @@ impl Contract {
     #[init]
     pub fn new(registry: AccountId) -> Self {
         Self {
-            polls: UnorderedMap::new(StorageKey::Polls),
+            polls: LookupMap::new(StorageKey::Polls),
             results: LookupMap::new(StorageKey::Results),
             participants: LookupSet::new(StorageKey::Participants),
             registry,
@@ -128,7 +128,7 @@ impl Contract {
 
         self.assert_active(poll_id)?;
 
-        self.assert_answered(poll_id, &caller)?;
+        self.assert_not_answered(poll_id, &caller)?;
         let poll = match self.polls.get(&poll_id) {
             None => return Err(PollError::NotFound),
             Some(poll) => poll,
@@ -169,8 +169,14 @@ impl Contract {
         }
 
         // Retrieve questions and poll results
-        let questions: Vec<Question> = self.polls.get(&poll_id).expect("poll not found").questions;
-        let mut poll_results = self.results.get(&poll_id).expect("results not found");
+        let questions = match self.polls.get(&poll_id) {
+            Some(poll) => poll.questions,
+            None => return Err(PollError::NotFound),
+        };
+        let mut poll_results = match self.results.get(&poll_id) {
+            Some(results) => results,
+            None => return Err(PollError::NotFound),
+        };
 
         // Check if the number of answers matches the number of questions
         if questions.len() != answers.len() {
@@ -180,9 +186,6 @@ impl Contract {
         for i in 0..questions.len() {
             let q = &questions[i];
             let a = &answers[i];
-            if q.required && a.is_none() {
-                return Err(PollError::RequiredAnswer(i));
-            }
 
             match (a, &mut poll_results.results[i]) {
                 (Some(Answer::YesNo(response)), PollResult::YesNo((yes_count, no_count))) => {
@@ -213,7 +216,11 @@ impl Contract {
                     }
                 }
                 // if the answer is not provided do nothing
-                (None, _) => {}
+                (None, _) => {
+                    if q.required {
+                        return Err(PollError::RequiredAnswer(i));
+                    }
+                }
                 (_, _) => return Err(PollError::WrongAnswer),
             }
         }
@@ -247,7 +254,7 @@ impl Contract {
         Ok(())
     }
 
-    fn assert_answered(&self, poll_id: PollId, caller: &AccountId) -> Result<(), PollError> {
+    fn assert_not_answered(&self, poll_id: PollId, caller: &AccountId) -> Result<(), PollError> {
         if self.participants.contains(&(poll_id, caller.clone())) {
             return Err(PollError::AlredyAnswered);
         }
