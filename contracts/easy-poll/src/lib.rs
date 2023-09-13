@@ -38,12 +38,12 @@ pub struct Contract {
 #[near_bindgen]
 impl Contract {
     #[init]
-    pub fn new(registry: AccountId) -> Self {
+    pub fn new(sbt_registry: AccountId) -> Self {
         Self {
             polls: LookupMap::new(StorageKey::Polls),
             results: LookupMap::new(StorageKey::Results),
             participants: LookupSet::new(StorageKey::Participants),
-            registry,
+            sbt_registry,
             next_poll_id: 1,
         }
     }
@@ -135,7 +135,7 @@ impl Contract {
         };
         // if iah calls the registry to verify the iah sbt
         if poll.iah_only {
-            ext_registry::ext(self.registry.clone())
+            ext_registry::ext(self.sbt_registry.clone())
                 .is_human(caller.clone())
                 .then(
                     Self::ext(env::current_account_id())
@@ -197,10 +197,8 @@ impl Contract {
                 }
                 (Some(Answer::TextChoices(choices)), PollResult::TextChoices(results))
                 | (Some(Answer::PictureChoices(choices)), PollResult::PictureChoices(results)) => {
-                    for (j, choice) in choices.iter().enumerate() {
-                        if *choice {
-                            results[j] += 1;
-                        }
+                    for choice in choices {
+                        results[*choice as usize] += 1;
                     }
                 }
                 (Some(Answer::OpinionRange(opinion)), PollResult::OpinionRange(results)) => {
@@ -349,7 +347,7 @@ mod tests {
 
     fn question_text_choices(required: bool) -> Question {
         Question {
-            question_type: Answer::TextChoices(vec![false, false, false]),
+            question_type: Answer::TextChoices(vec![0, 1, 2]),
             required,
             title: String::from("Yes and no test!"),
             description: None,
@@ -717,7 +715,7 @@ mod tests {
             false,
             ctx.predecessor_account_id,
             poll_id,
-            vec![Some(Answer::TextChoices(vec![true, false, false]))],
+            vec![Some(Answer::TextChoices(vec![0]))],
         );
         assert!(res.is_ok());
         ctx.predecessor_account_id = bob();
@@ -727,7 +725,7 @@ mod tests {
             false,
             ctx.predecessor_account_id,
             poll_id,
-            vec![Some(Answer::TextChoices(vec![true, false, false]))],
+            vec![Some(Answer::TextChoices(vec![0]))],
         );
         assert!(res.is_ok());
         ctx.predecessor_account_id = charlie();
@@ -737,7 +735,7 @@ mod tests {
             false,
             ctx.predecessor_account_id,
             poll_id,
-            vec![Some(Answer::TextChoices(vec![false, true, false]))],
+            vec![Some(Answer::TextChoices(vec![1]))],
         );
         assert!(res.is_ok());
         let results = ctr.results(poll_id);

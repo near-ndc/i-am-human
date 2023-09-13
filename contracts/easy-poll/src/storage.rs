@@ -10,9 +10,9 @@ pub type PollId = u64;
 #[serde(crate = "near_sdk::serde")]
 pub enum Answer {
     YesNo(bool),
-    TextChoices(Vec<bool>),    // should respect the min_choices, max_choices
-    PictureChoices(Vec<bool>), // should respect the min_choices, max_choices
-    OpinionRange(u8),          // should be a number between 0 and 10
+    TextChoices(Vec<u32>),    // should respect the min_choices, max_choices
+    PictureChoices(Vec<u32>), // should respect the min_choices, max_choices
+    OpinionRange(u8),         // should be a number between 0 and 10
     TextAnswer(String),
 }
 
