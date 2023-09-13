@@ -121,7 +121,7 @@ Example JSON written to SocialDB:
 
 ### Leave commentary message to kudos
 
-Allows caller to leave a commentary message to kudos by unique id granted to a receiver NEAR account
+Allows caller to leave a commentary message to kudos by unique id granted to a receiver account
 
 #### Requirements
 
@@ -181,7 +181,7 @@ Allows caller to exchange his upvoted kudos by unique id for a ProofOfKudos SBT
 ```js
 exchange_kudos_for_sbt(kudos_id): array of minted SBTs
 
-- kudos_id: unique kudos identified granted to a caller NEAR account
+- kudos_id: unique kudos identified granted to a caller account
 ```
 
 #### Output
