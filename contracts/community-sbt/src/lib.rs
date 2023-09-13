@@ -773,7 +773,7 @@ mod tests {
         let (mut ctx, ctr) = setup(&admin(), None);
 
         ctx.predecessor_account_id = alice();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
 
         ctr.assert_admin();
     }
