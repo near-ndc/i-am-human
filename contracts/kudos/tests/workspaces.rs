@@ -6,7 +6,7 @@ use workspaces::{
     Account, Contract, DevNetwork, Worker,
 };
 
-// Generate user sub-account
+/// Generate user sub-account
 pub async fn gen_user_account<T>(worker: &Worker<T>, account_id: &str) -> anyhow::Result<Account>
 where
     T: DevNetwork + Send + Sync,
@@ -31,7 +31,7 @@ pub async fn transfer_near(
         .into_result()?)
 }
 
-// Build contract from sources and initialize it
+/// Build contract from sources and initialize it
 pub async fn build_contract<T>(
     worker: &Worker<T>,
     project_path: &str,
@@ -62,7 +62,7 @@ where
     Ok(contract)
 }
 
-// Load already built contract and initialize it
+/// Load already built contract and initialize it
 pub async fn load_contract<T>(
     worker: &Worker<T>,
     contract_path: &str,
@@ -92,7 +92,7 @@ where
     Ok(contract)
 }
 
-// Get current block timestamp
+/// Get current block timestamp
 pub async fn get_block_timestamp<T>(worker: &Worker<T>) -> anyhow::Result<u64>
 where
     T: NetworkClient + Send + Sync,
