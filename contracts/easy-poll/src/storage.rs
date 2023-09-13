@@ -68,7 +68,7 @@ pub struct Poll {
 #[serde(crate = "near_sdk::serde")]
 pub struct Results {
     pub status: Status,
-    pub participants: u64,        // number of participants
+    pub participants_num: u64,    // number of participants
     pub results: Vec<PollResult>, // question_id, result (sum of yes etc.)
 }
 
@@ -85,16 +85,5 @@ pub enum Status {
 pub enum StorageKey {
     Polls,
     Results,
-    Answers,
-    TextAnswers,
-}
-
-#[derive(Deserialize, Serialize)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
-#[serde(crate = "near_sdk::serde")]
-pub enum TextResponse<T> {
-    Ok(T),
-    PollNotFound,
-    QuestionNotFound,
-    QuestionWrongType,
+    Participants,
 }

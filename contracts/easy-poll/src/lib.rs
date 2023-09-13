@@ -6,7 +6,8 @@ pub use crate::storage::*;
 use cost::MILI_NEAR;
 use ext::ext_registry;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LookupMap, UnorderedMap, Vector};
+use near_sdk::collections::LookupSet;
+use near_sdk::collections::{LookupMap, UnorderedMap};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
 use near_sdk::{Balance, Gas};
 
@@ -26,10 +27,8 @@ pub struct Contract {
     pub polls: UnorderedMap<PollId, Poll>,
     /// map of all results summarized
     pub results: LookupMap<PollId, Results>,
-    /// map of all answers, (poll, user) -> vec of answers
-    pub answers: LookupMap<(PollId, AccountId), Vec<Option<Answer>>>,
-    /// text answers are stored in a separate map. Key is a (pollId, question index).
-    pub text_answers: LookupMap<(PollId, usize), Vector<String>>,
+    /// lookup set of (poll_id, responder)
+    pub participants: LookupSet<(PollId, AccountId)>,
     /// SBT registry.
     pub registry: AccountId,
     /// next poll id
@@ -43,8 +42,7 @@ impl Contract {
         Self {
             polls: UnorderedMap::new(StorageKey::Polls),
             results: LookupMap::new(StorageKey::Results),
-            answers: LookupMap::new(StorageKey::Answers),
-            text_answers: LookupMap::new(StorageKey::TextAnswers),
+            participants: LookupSet::new(StorageKey::Participants),
             registry,
             next_poll_id: 1,
         }
@@ -59,61 +57,9 @@ impl Contract {
         self.polls.get(&poll_id)
     }
 
-    /// Returns caller response to the specified poll. It doesn't return text responses of the given poll ID.
-    pub fn my_response(&self, poll_id: PollId) -> Option<Vec<Option<Answer>>> {
-        let caller = env::predecessor_account_id();
-        self.answers.get(&(poll_id, caller))
-    }
-
     /// Returns poll results (except for text answers), if poll not found returns None.
     pub fn results(&self, poll_id: u64) -> Option<Results> {
         self.results.get(&poll_id)
-    }
-
-    /// Returns text answers in rounds. Starts from the question id provided. Needs to be called until true is returned.
-    pub fn text_answers(
-        &self,
-        poll_id: u64,
-        question: usize,
-        from_answer: usize,
-    ) -> TextResponse<(Vec<String>, bool)> {
-        // We cannot return more than 100 due to gas limit per txn.
-        self._text_answers(poll_id, question, from_answer, 100)
-    }
-
-    /// Returns a fixed value of answers
-    // Function must be called until true is returned -> meaning all the answers were returned
-    // `question` must be an index of the text question in the poll
-    pub fn _text_answers(
-        &self,
-        poll_id: u64,
-        question: usize,
-        from_answer: usize,
-        limit: usize,
-    ) -> TextResponse<(Vec<String>, bool)> {
-        let poll = match self.polls.get(&poll_id) {
-            Some(poll) => poll,
-            None => return TextResponse::PollNotFound,
-        };
-
-        match poll.questions.get(question) {
-            Some(questions) => questions,
-            None => return TextResponse::QuestionNotFound,
-        };
-
-        let text_answers = match self.text_answers.get(&(poll_id, question)) {
-            Some(text_answers) => text_answers,
-            None => return TextResponse::QuestionWrongType,
-        };
-        let to_return;
-        let mut finished = false;
-        if from_answer + limit > text_answers.len() as usize {
-            to_return = text_answers.to_vec()[from_answer..].to_vec();
-            finished = true;
-        } else {
-            to_return = text_answers.to_vec()[from_answer..from_answer + limit].to_vec();
-        }
-        TextResponse::Ok((to_return, finished))
     }
 
     /**********
@@ -137,10 +83,7 @@ impl Contract {
         link: String,
     ) -> PollId {
         let created_at = env::block_timestamp_ms();
-        require!(
-            created_at < starts_at,
-            "poll start must be in the future".to_string()
-        );
+        require!(created_at < starts_at, "poll start must be in the future");
         let poll_id = self.next_poll_id;
         self.next_poll_id += 1;
         self.initialize_results(poll_id, &questions);
@@ -234,9 +177,6 @@ impl Contract {
             return Err(PollError::IncorrectAnswerVector);
         }
 
-        // Initialize unwrapped_answers vector
-        let mut unwrapped_answers: Vec<Option<Answer>> = Vec::new();
-
         for i in 0..questions.len() {
             let q = &questions[i];
             let a = &answers[i];
@@ -268,39 +208,21 @@ impl Contract {
                     results.num += 1;
                 }
                 (Some(Answer::TextAnswer(answer)), PollResult::TextAnswer) => {
-                    let mut answers = self
-                        .text_answers
-                        .get(&(poll_id, i))
-                        .expect(&format!("question not found for index {:?}", i));
-
                     if answer.len() > MAX_TEXT_ANSWER_LEN {
                         return Err(PollError::AnswerTooLong(answer.len()));
                     }
-                    answers.push(answer);
-                    self.text_answers.insert(&(poll_id, i), &answers);
                 }
-                // if the answer is not provided for a question None is pushed as an anser to keep the integrity
-                (None, _) => {
-                    unwrapped_answers.push(None);
-                }
+                // if the answer is not provided do nothing
+                (None, _) => {}
                 (_, _) => return Err(PollError::WrongAnswer),
             }
-            if answers[i].is_some() {
-                // None case is handled in the `match` statement.
-                unwrapped_answers.push(Some(answers[i].clone().unwrap()));
-            }
         }
-        // Update answers for the caller
-        let mut caller_answers = self
-            .answers
-            .get(&(poll_id, caller.clone()))
-            .unwrap_or(Vec::new());
-        caller_answers.append(&mut unwrapped_answers);
-        self.answers
-            .insert(&(poll_id, caller.clone()), &caller_answers);
 
-        // Update participants count and poll results
-        poll_results.participants += 1;
+        // Update participants count
+        poll_results.participants_num += 1;
+
+        // Update the participants lookupset to ensure user cannot answer twice
+        self.participants.insert(&(poll_id, caller.clone()));
 
         // Update results and emit response event
         self.results.insert(&poll_id, &poll_results);
@@ -326,7 +248,7 @@ impl Contract {
     }
 
     fn assert_answered(&self, poll_id: PollId, caller: &AccountId) -> Result<(), PollError> {
-        if self.answers.get(&(poll_id, caller.clone())).is_some() {
+        if self.participants.contains(&(poll_id, caller.clone())) {
             return Err(PollError::AlredyAnswered);
         }
         Ok(())
@@ -344,11 +266,7 @@ impl Contract {
                     Answer::OpinionRange(_) => {
                         PollResult::OpinionRange(OpinionRangeResult { sum: 0, num: 0 })
                     }
-                    Answer::TextAnswer(_) => {
-                        self.text_answers
-                            .insert(&(poll_id, index), &Vector::new(StorageKey::TextAnswers));
-                        PollResult::TextAnswer
-                    }
+                    Answer::TextAnswer(_) => PollResult::TextAnswer,
                 };
                 index += 1;
                 result
@@ -359,7 +277,7 @@ impl Contract {
             &poll_id,
             &Results {
                 status: Status::NotStarted,
-                participants: 0,
+                participants_num: 0,
                 results,
             },
         );
@@ -374,8 +292,8 @@ mod tests {
     };
 
     use crate::{
-        Answer, Contract, OpinionRangeResult, PollError, PollId, PollResult, Question, Results,
-        Status, TextResponse, RESPOND_COST,
+        Answer, Contract, OpinionRangeResult, PollError, PollResult, Question, Results, Status,
+        RESPOND_COST,
     };
 
     const MILI_SECOND: u64 = 1000000; // nanoseconds
@@ -456,34 +374,6 @@ mod tests {
         }
     }
 
-    fn mk_batch_text_answers(
-        ctx: &mut VMContext,
-        ctr: &mut Contract,
-        predecessor: AccountId,
-        poll_id: PollId,
-        num_answers: u64,
-    ) {
-        for _ in 0..num_answers {
-            testing_env!(ctx.clone());
-            let res = ctr.on_human_verifed(
-                vec![],
-                false,
-                predecessor.clone(),
-                poll_id,
-                vec![Some(Answer::TextAnswer(
-                    "wRjLbQZKutS0PCDx7F9pm5HgdO2h6vYcnlzBq3sEkU1f84aMyViAXTNjIoWPeLrVGvMm8
-                    HQZ7ij4J9gKdmMIsN5FB2wXfYuEkRlLTbn3DpGePo1VSqaAhYcC6W0Ou8ztvrxXnaxVbX1
-                    lMoXJ1YKvIksRnmQHD0VdW9GZrATg28pzUhqyfcBCjaoR6xs45Lu73Fw1PtevOYINaan3
-                    wRjLbQZKutS0PCDx7F9pm5HgdO2h6vYcnlzBq3sEkU1f84aMyViAXTNjIoWPeLrVGvMm8
-                    HQZ7ij4J9gKdmMIsN5FB2wXfYuEkRlLTbn3DpGePo1VSqaAhYcC6W0Ou8ztvrxXnaxVbX1
-                    lMoXJ1YKvIksRnmQHD0VdW9GZrATg28pzUhqyfcBCjao"
-                        .to_owned(),
-                ))],
-            );
-            assert!(res.is_ok());
-        }
-    }
-
     fn setup(predecessor: &AccountId) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(alice())
@@ -532,49 +422,6 @@ mod tests {
     }
 
     #[test]
-    fn my_response_not_found() {
-        let (_, mut ctr) = setup(&alice());
-        let poll_id = ctr.create_poll(
-            false,
-            vec![question_yes_no(true)],
-            2,
-            100,
-            String::from("Hello, world!"),
-            tags(),
-            String::from(""),
-            String::from(""),
-        );
-        assert!(ctr.my_response(poll_id).is_none());
-    }
-
-    #[test]
-    fn my_response() {
-        let (mut ctx, mut ctr) = setup(&alice());
-        let poll_id = ctr.create_poll(
-            false,
-            vec![question_yes_no(false), question_yes_no(true)],
-            2,
-            100,
-            String::from("Hello, world!"),
-            tags(),
-            String::from(""),
-            String::from(""),
-        );
-        ctx.block_timestamp = MILI_SECOND * 3;
-        testing_env!(ctx.clone());
-        let res = ctr.on_human_verifed(
-            vec![],
-            false,
-            ctx.predecessor_account_id,
-            poll_id,
-            vec![None, Some(Answer::YesNo(true))],
-        );
-        assert!(res.is_ok());
-        let res = ctr.my_response(poll_id);
-        assert_eq!(res.unwrap(), vec![None, Some(Answer::YesNo(true))])
-    }
-
-    #[test]
     fn results_poll_not_found() {
         let (_, ctr) = setup(&alice());
         assert!(ctr.results(1).is_none());
@@ -596,63 +443,10 @@ mod tests {
         let res = ctr.results(poll_id);
         let expected = Results {
             status: Status::NotStarted,
-            participants: 0,
+            participants_num: 0,
             results: vec![PollResult::YesNo((0, 0))],
         };
         assert_eq!(res.unwrap(), expected);
-    }
-
-    #[test]
-    fn result_text_answers_poll_not_found() {
-        let (_, ctr) = setup(&alice());
-        match ctr.text_answers(0, 0, 0) {
-            TextResponse::PollNotFound => (),
-            other => panic!("Expected TextResponse::PollNotFound, but got {:?}", other),
-        };
-    }
-
-    #[test]
-    fn result_text_answers_question_not_found() {
-        let (_, mut ctr) = setup(&alice());
-        let poll_id = ctr.create_poll(
-            false,
-            vec![question_yes_no(true)],
-            2,
-            100,
-            String::from("Hello, world!"),
-            tags(),
-            String::from(""),
-            String::from(""),
-        );
-        match ctr.text_answers(poll_id, 1, 0) {
-            TextResponse::QuestionNotFound => (),
-            other => panic!(
-                "Expected TextResponse::QuestionNotFound, but got {:?}",
-                other
-            ),
-        };
-    }
-
-    #[test]
-    fn result_text_answers_question_wrong_type() {
-        let (_, mut ctr) = setup(&alice());
-        let poll_id = ctr.create_poll(
-            false,
-            vec![question_yes_no(true)],
-            2,
-            100,
-            String::from("Hello, world!"),
-            tags(),
-            String::from(""),
-            String::from(""),
-        );
-        match ctr.text_answers(poll_id, 0, 0) {
-            TextResponse::QuestionWrongType => (),
-            other => panic!(
-                "Expected TextResponse::QuestionWrongType, but got {:?}",
-                other
-            ),
-        };
     }
 
     #[test]
@@ -765,7 +559,7 @@ mod tests {
             results.unwrap(),
             Results {
                 status: Status::NotStarted,
-                participants: 3,
+                participants_num: 3,
                 results: vec![PollResult::YesNo((2, 1)),]
             }
         )
@@ -891,7 +685,7 @@ mod tests {
             results.unwrap(),
             Results {
                 status: Status::NotStarted,
-                participants: 3,
+                participants_num: 3,
                 results: vec![PollResult::OpinionRange(OpinionRangeResult {
                     sum: 17,
                     num: 3
@@ -948,7 +742,7 @@ mod tests {
             results.unwrap(),
             Results {
                 status: Status::NotStarted,
-                participants: 3,
+                participants_num: 3,
                 results: vec![PollResult::TextChoices(vec![2, 1, 0]),]
             }
         )
@@ -1006,48 +800,10 @@ mod tests {
             results.unwrap(),
             Results {
                 status: Status::NotStarted,
-                participants: 3,
+                participants_num: 3,
                 results: vec![PollResult::TextAnswer]
             }
         );
-        let text_answers = ctr.text_answers(poll_id, 0, 0);
-        assert_eq!(
-            text_answers,
-            TextResponse::Ok((vec![answer1, answer2, answer3], true))
-        );
-    }
-
-    #[test]
-    fn result_text_answers() {
-        let (mut ctx, mut ctr) = setup(&alice());
-        let poll_id = ctr.create_poll(
-            false,
-            vec![question_text_answers(true)],
-            2,
-            100,
-            String::from("Hello, world!"),
-            tags(),
-            String::from(""),
-            String::from(""),
-        );
-        mk_batch_text_answers(&mut ctx, &mut ctr, alice(), poll_id, 200);
-        // depending on the lenght of the answers the limit decreases rappidly
-        let text_answers = ctr._text_answers(poll_id, 0, 0, 100);
-        match text_answers {
-            TextResponse::Ok((_, false)) => {}
-            _ => panic!(
-                "Expected TextResponse::Ok with false, but got {:?}",
-                text_answers
-            ),
-        }
-        let text_answers = ctr._text_answers(poll_id, 0, 101, 100);
-        match text_answers {
-            TextResponse::Ok((_, true)) => {}
-            _ => panic!(
-                "Expected TextResponse::Ok with true, but got {:?}",
-                text_answers
-            ),
-        }
     }
 
     #[test]
