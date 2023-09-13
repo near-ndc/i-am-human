@@ -30,7 +30,7 @@ pub struct Contract {
     /// lookup set of (poll_id, responder)
     pub participants: LookupSet<(PollId, AccountId)>,
     /// SBT registry.
-    pub registry: AccountId,
+    pub sbt_registry: AccountId,
     /// next poll id
     pub next_poll_id: PollId,
 }
