@@ -1497,7 +1497,7 @@ mod tests {
         // soul transfer alice->alice2
         ctx.predecessor_account_id = alice();
         ctx.prepaid_gas = max_gas();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         let limit: u32 = 30;
         ctr._sbt_soul_transfer(alice2(), limit as usize);
     }
@@ -1517,7 +1517,7 @@ mod tests {
 
         ctx.predecessor_account_id = alice();
         ctx.prepaid_gas = max_gas();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         let limit: u32 = 30;
         ctr._sbt_soul_transfer(alice2(), limit as usize);
     }
