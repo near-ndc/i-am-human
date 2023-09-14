@@ -1612,6 +1612,7 @@ dependencies = [
  "near-sandbox-utils",
  "near-sdk",
  "near-units",
+ "test-util",
  "tokio",
  "workspaces",
 ]
@@ -3473,6 +3474,18 @@ dependencies = [
  "redox_syscall 0.3.5",
  "rustix 0.38.8",
  "windows-sys",
+]
+
+[[package]]
+name = "test-util"
+version = "1.3.0"
+dependencies = [
+ "anyhow",
+ "near-contract-standards",
+ "near-sdk",
+ "serde_json",
+ "uint",
+ "workspaces",
 ]
 
 [[package]]

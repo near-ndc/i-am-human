@@ -1,0 +1,16 @@
+[package]
+name = "test-util"
+version = "1.3.0"
+authors = ["NDC Devs"]
+edition = { workspace = true }
+repository = { workspace = true }
+
+[dependencies]
+uint.workspace = true
+near-sdk.workspace = true
+serde_json.workspace = true
+near-contract-standards.workspace = true
+workspaces.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]

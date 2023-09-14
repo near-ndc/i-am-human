@@ -1,9 +1,8 @@
 mod types;
 mod utils;
-mod workspaces;
 
 use crate::utils::*;
-use crate::workspaces::{build_contract, gen_user_account, transfer_near};
+use test_util::{build_contract, gen_user_account, transfer_near};
 use kudos_contract::utils::*;
 use kudos_contract::SOCIAL_DB_GRANT_WRITE_PERMISSION_COST;
 use near_contract_standards::storage_management::{StorageBalance, StorageBalanceBounds};

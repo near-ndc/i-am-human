@@ -1,9 +1,8 @@
 mod types;
 mod utils;
-mod workspaces;
 
 use crate::utils::*;
-use crate::workspaces::{build_contract, gen_user_account, get_block_timestamp, transfer_near};
+use test_util::{build_contract, gen_user_account, get_block_timestamp, transfer_near};
 use kudos_contract::{utils::*, WrappedCid};
 use kudos_contract::{GIVE_KUDOS_COST, LEAVE_COMMENT_COST, UPVOTE_KUDOS_COST};
 use near_sdk::serde_json::json;
