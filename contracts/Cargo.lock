@@ -979,6 +979,7 @@ dependencies = [
  "pretty_assertions",
  "sbt",
  "serde_json",
+ "test-util",
  "tokio",
  "tracing",
  "uint",

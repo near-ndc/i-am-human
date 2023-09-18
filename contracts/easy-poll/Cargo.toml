@@ -28,3 +28,4 @@ workspaces.workspace = true
 near-primitives.workspace = true
 near-units.workspace = true
 tracing.workspace = true
+test-util = { path = "../test-util" }
