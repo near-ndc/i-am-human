@@ -20,8 +20,7 @@ async fn init(worker: &Worker<Sandbox>) -> anyhow::Result<(Contract, Account, Ac
         "./../registry",
         "new",
         json!({"authority": authority_acc.id(), "authorized_flaggers": vec![flagger.id()], "iah_issuer": iah_issuer.id(), "iah_classes": [1]}),
-    )
-    .await?;
+    ).await?;
 
     // Setup easy-poll contract
     let easy_poll_contract = build_contract(
@@ -29,8 +28,7 @@ async fn init(worker: &Worker<Sandbox>) -> anyhow::Result<(Contract, Account, Ac
         "./",
         "new",
         json!({"sbt_registry": registry_contract.id()}),
-    )
-    .await?;
+    ).await?;
 
     // populate registry with mocked data
     let token_metadata = vec![TokenMetadata {
