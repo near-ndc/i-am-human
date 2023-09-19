@@ -28,7 +28,8 @@ async fn init(worker: &Worker<Sandbox>) -> anyhow::Result<(Contract, Account, Ac
         "./",
         "new",
         json!({"sbt_registry": registry_contract.id()}),
-    ).await?;
+    )
+    .await?;
 
     // populate registry with mocked data
     let token_metadata = vec![TokenMetadata {
@@ -55,6 +56,12 @@ async fn init(worker: &Worker<Sandbox>) -> anyhow::Result<(Contract, Account, Ac
 
 #[tokio::test]
 async fn flow1() -> anyhow::Result<()> {
+    // 1. create non-human gated poll
+    // 2. create human gated poll
+    // 3. vote for both polls with a human verified account
+    // 4. vote for both polls with a non-human account
+    // 5. check the responds were recorded correctly
+
     // import the registry contract from mainnet with data
     let worker = workspaces::sandbox().await?;
     let (easy_poll_contract, alice, bob) = init(&worker).await?;
