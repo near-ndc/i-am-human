@@ -54,6 +54,7 @@ See the function docs for more complete documentation.
 
 - `admin_flag_accounts(flag: AccountFlag, accounts: Vec<AccountId>, memo: String)` - sets a flag for every account in the `accounts` list, overwriting if needed. Must be called by an authorized flagger.
 - `admin_flag_accounts(flag: AccountFlag, accounts: Vec<AccountId>, memo: String)` - removes a flag for every account in the `accounts` list, overwriting if needed. Must be called by an authorized flagger.
+  Valid account flags are: "Verified", "Blacklisted".
 - `admin_add_sbt_issuer(issuer: AccountId)` - authorizes new issuer to issue SBTs.
 
 ## Soul transfer
