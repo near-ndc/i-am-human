@@ -3484,6 +3484,8 @@ dependencies = [
  "anyhow",
  "near-contract-standards",
  "near-sdk",
+ "near-units",
+ "sbt",
  "serde_json",
  "uint",
  "workspaces",

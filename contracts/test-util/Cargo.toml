@@ -12,5 +12,8 @@ serde_json.workspace = true
 near-contract-standards.workspace = true
 workspaces.workspace = true
 anyhow.workspace = true
+near-units.workspace = true
+
+sbt = { path = "../sbt" }
 
 [dev-dependencies]

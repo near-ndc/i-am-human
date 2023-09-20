@@ -1,6 +1,11 @@
+use anyhow::Ok;
+use near_units::parse_near;
+use sbt::TokenMetadata;
+use serde_json::json;
 use std::str::FromStr;
 use workspaces::network::{NetworkClient, NetworkInfo, Sandbox};
 use workspaces::result::ExecutionSuccess;
+use workspaces::AccountId;
 use workspaces::{
     types::{Balance, KeyType, SecretKey},
     Account, Contract, DevNetwork, Worker,
@@ -98,4 +103,55 @@ where
     T: NetworkClient + Send + Sync,
 {
     Ok(worker.view_block().await?.timestamp())
+}
+
+/// Helper function to issue tokens to the users for testing purposes
+pub async fn registry_mint_iah_tokens(
+    registry: &AccountId,
+    issuer: &Account,
+    class_id: u64,
+    accounts: Vec<&AccountId>,
+) -> anyhow::Result<()> {
+    // populate registry with mocked data
+    let token_metadata = vec![TokenMetadata {
+        class: class_id,
+        issued_at: Some(0),
+        expires_at: None,
+        reference: None,
+        reference_hash: None,
+    }];
+    let mut iah_token_spec = Vec::new();
+
+    for a in accounts {
+        iah_token_spec.push((a, token_metadata.clone()));
+    }
+
+    let res = issuer
+        .call(registry, "sbt_mint")
+        .args_json(json!({ "token_spec": iah_token_spec }))
+        .deposit(parse_near!("5 N"))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
+
+    Ok(())
+}
+
+/// Helper function to add issuers to the registry
+pub async fn registry_addt_issuer(
+    registry: &AccountId,
+    authority: &Account,
+    issuers: Vec<&AccountId>,
+) -> anyhow::Result<()> {
+    for i in issuers {
+        let res = authority
+            .call(registry, "admin_add_sbt_issuer")
+            .args_json(json!({ "issuer": i }))
+            .max_gas()
+            .transact()
+            .await?;
+        assert!(res.is_success());
+    }
+    Ok(())
 }
