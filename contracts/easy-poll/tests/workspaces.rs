@@ -102,7 +102,7 @@ async fn flow1() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     // This vote should not be registered since the poll is human gated and bob is not human
     let res = bob
