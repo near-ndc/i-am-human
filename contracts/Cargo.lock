@@ -3479,15 +3479,13 @@ dependencies = [
 
 [[package]]
 name = "test-util"
-version = "1.3.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
- "near-contract-standards",
  "near-sdk",
  "near-units",
  "sbt",
  "serde_json",
- "uint",
  "workspaces",
 ]
 

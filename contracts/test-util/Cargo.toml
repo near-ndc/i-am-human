@@ -1,15 +1,15 @@
 [package]
 name = "test-util"
 version = "1.0.0"
-authors = ["NDC Devs"]
+authors = [
+    "NDC GWG (https://near.social/#/mob.near/widget/ProfilePage?accountId=govworkinggroup.near)",
+]
 edition = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
-uint.workspace = true
 near-sdk.workspace = true
 serde_json.workspace = true
-near-contract-standards.workspace = true
 workspaces.workspace = true
 anyhow.workspace = true
 near-units.workspace = true
