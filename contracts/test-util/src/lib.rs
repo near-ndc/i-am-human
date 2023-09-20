@@ -139,7 +139,7 @@ pub async fn registry_mint_iah_tokens(
 }
 
 /// Helper function to add issuers to the registry
-pub async fn registry_addt_issuer(
+pub async fn registry_add_issuer(
     registry: &AccountId,
     authority: &Account,
     issuers: Vec<&AccountId>,
