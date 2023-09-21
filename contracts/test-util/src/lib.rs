@@ -155,3 +155,28 @@ pub async fn registry_add_issuer(
     }
     Ok(())
 }
+
+// Helper function to deploy, initalize and mint iah sbts to the `iah_accounts`.
+pub async fn registry_default<T>(
+    worker: &Worker<T>,
+    authority: &AccountId,
+    flaggers: Vec<&AccountId>,
+    iah_accounts: Vec<&AccountId>,
+) -> anyhow::Result<(Account, Account)>
+where
+    T: DevNetwork + Send + Sync,
+{
+    const IAH_CLASS: u64 = 1;
+    let iah_issuer = worker.dev_create_account().await?;
+    let registry_contract = build_contract(
+        &worker,
+        "./../registry",
+        "new",
+        json!({"authority": authority, "authorized_flaggers": flaggers, "iah_issuer": iah_issuer.id(), "iah_classes": [IAH_CLASS]}),
+    ).await?;
+
+    // issue iah tokens to iah_accounts
+    registry_mint_iah_tokens(registry_contract.id(), &iah_issuer, 1, iah_accounts).await?;
+
+    Ok((registry_contract.as_account().clone(), iah_issuer))
+}

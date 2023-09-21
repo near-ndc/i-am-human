@@ -1,9 +1,9 @@
 use anyhow::Ok;
 use easy_poll::{PollResult, Results, Status};
-use near_sdk::serde_json::json;
+use near_sdk::{serde_json::json, store::vec};
 use near_units::parse_near;
 use sbt::TokenMetadata;
-use test_util::{build_contract, get_block_timestamp, registry_mint_iah_tokens};
+use test_util::{build_contract, get_block_timestamp, registry_default, registry_mint_iah_tokens};
 use workspaces::{network::Sandbox, Account, AccountId, Contract, Worker};
 
 const IAH_CLASS: u64 = 1;
@@ -27,16 +27,17 @@ async fn respond(
 async fn init(worker: &Worker<Sandbox>) -> anyhow::Result<(Contract, Account, Account)> {
     let authority_acc = worker.dev_create_account().await?;
     let flagger = worker.dev_create_account().await?;
-    let iah_issuer = worker.dev_create_account().await?;
     let alice_acc = worker.dev_create_account().await?;
     let bob_acc = worker.dev_create_account().await?;
-    // Setup registry contract
-    let registry_contract = build_contract(
+
+    // Setup registry contract and issue iah to alice
+    let (registry_contract, _) = registry_default(
         &worker,
-        "./../registry",
-        "new",
-        json!({"authority": authority_acc.id(), "authorized_flaggers": vec![flagger.id()], "iah_issuer": iah_issuer.id(), "iah_classes": [1]}),
-    ).await?;
+        authority_acc.id(),
+        vec![flagger.id()],
+        vec![alice_acc.id()],
+    )
+    .await?;
 
     // Setup easy-poll contract
     let easy_poll_contract = build_contract(
@@ -44,15 +45,6 @@ async fn init(worker: &Worker<Sandbox>) -> anyhow::Result<(Contract, Account, Ac
         "./",
         "new",
         json!({"sbt_registry": registry_contract.id()}),
-    )
-    .await?;
-
-    // populate registry with mocked data
-    registry_mint_iah_tokens(
-        registry_contract.id(),
-        &iah_issuer,
-        IAH_CLASS,
-        vec![alice_acc.id()],
     )
     .await?;
 
