@@ -979,6 +979,7 @@ dependencies = [
  "pretty_assertions",
  "sbt",
  "serde_json",
+ "test-util",
  "tokio",
  "tracing",
  "uint",
@@ -1612,6 +1613,7 @@ dependencies = [
  "near-sandbox-utils",
  "near-sdk",
  "near-units",
+ "test-util",
  "tokio",
  "workspaces",
 ]
@@ -3473,6 +3475,18 @@ dependencies = [
  "redox_syscall 0.3.5",
  "rustix 0.38.8",
  "windows-sys",
+]
+
+[[package]]
+name = "test-util"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "near-sdk",
+ "near-units",
+ "sbt",
+ "serde_json",
+ "workspaces",
 ]
 
 [[package]]

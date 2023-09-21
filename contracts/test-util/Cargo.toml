@@ -1,0 +1,19 @@
+[package]
+name = "test-util"
+version = "1.0.0"
+authors = [
+    "NDC GWG (https://near.social/#/mob.near/widget/ProfilePage?accountId=govworkinggroup.near)",
+]
+edition = { workspace = true }
+repository = { workspace = true }
+
+[dependencies]
+near-sdk.workspace = true
+serde_json.workspace = true
+workspaces.workspace = true
+anyhow.workspace = true
+near-units.workspace = true
+
+sbt = { path = "../sbt" }
+
+[dev-dependencies]
