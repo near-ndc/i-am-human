@@ -2495,6 +2495,7 @@ dependencies = [
  "rand 0.7.3",
  "sbt",
  "serde_json",
+ "test-util",
  "tokio",
  "tracing",
  "uint",
@@ -3482,10 +3483,14 @@ name = "test-util"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "chrono",
+ "ed25519-dalek",
+ "near-crypto 0.14.0",
  "near-sdk",
  "near-units",
  "sbt",
  "serde_json",
+ "uuid",
  "workspaces",
 ]
 
@@ -3766,6 +3771,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79daa5ed5740825c40b389c5e50312b9c86df53fccd33f281df655642b43869d"
 dependencies = [
  "getrandom 0.2.10",
+ "rand 0.8.5",
 ]
 
 [[package]]

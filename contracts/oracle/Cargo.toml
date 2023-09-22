@@ -18,6 +18,7 @@ serde_json.workspace = true
 cost = { path = "../cost" }
 sbt = { path = "../sbt" }
 
+
 [dev-dependencies]
 rand = "^0.7"
 near-primitives.workspace = true
@@ -30,3 +31,5 @@ tokio.workspace = true
 workspaces.workspace = true
 near-units.workspace = true
 tracing.workspace = true
+
+test-util = { path = "../test-util" }

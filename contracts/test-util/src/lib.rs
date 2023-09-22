@@ -11,6 +11,9 @@ use workspaces::{
     Account, Contract, DevNetwork, Worker,
 };
 
+pub mod common;
+pub mod utils;
+
 /// Generate user sub-account
 pub async fn gen_user_account<T>(worker: &Worker<T>, account_id: &str) -> anyhow::Result<Account>
 where
