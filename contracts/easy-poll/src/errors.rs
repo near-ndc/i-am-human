@@ -1,5 +1,3 @@
-use core::panic;
-
 use near_sdk::env::panic_str;
 use near_sdk::FunctionError;
 
