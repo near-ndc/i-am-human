@@ -2266,7 +2266,6 @@ mod tests {
 
         ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m1_2.clone()])]);
 
-        // revoke (burn) tokens minted for alice from issuer2
         let res = ctr.sbt_revoke_by_owner(alice(), true);
         assert!(res);
 

@@ -450,7 +450,7 @@ impl SBTRegistry for Contract {
             tokens: token_ids,
         }
         .emit_revoke();
-        tokens_len > tokens_by_owner_supply
+        tokens_len >= remaining_supply as usize
     }
 
     /// Allows issuer to update token metadata reference and reference_hash.
