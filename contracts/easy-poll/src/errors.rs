@@ -1,3 +1,5 @@
+use core::panic;
+
 use near_sdk::env::panic_str;
 use near_sdk::FunctionError;
 
@@ -15,6 +17,7 @@ pub enum PollError {
     IncorrectAnswerVector,
     AlredyAnswered,
     AnswerTooLong(usize),
+    InsufficientDeposit(u128),
 }
 
 impl FunctionError for PollError {
@@ -32,7 +35,8 @@ impl FunctionError for PollError {
             },
             PollError::IncorrectAnswerVector => panic_str("the answer vector provided is incorrect and does not match the questions in the poll"),
             PollError::AlredyAnswered => panic_str("user has already answered"),
-            PollError::AnswerTooLong(len) => {panic_str(&format!("the answer too long, max_len:{}, got:{}", MAX_TEXT_ANSWER_LEN, len))}
+            PollError::AnswerTooLong(len) => {panic_str(&format!("the answer too long, max_len:{}, got:{}", MAX_TEXT_ANSWER_LEN, len))},
+            PollError::InsufficientDeposit(req_deposit) => {panic_str(&format!("not enough storage deposit, required: {}",req_deposit) )}
         }
     }
 }

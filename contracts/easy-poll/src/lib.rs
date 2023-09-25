@@ -120,10 +120,6 @@ impl Contract {
         poll_id: PollId,
         answers: Vec<Option<Answer>>,
     ) -> Result<(), PollError> {
-        require!(
-            env::attached_deposit() >= RESPOND_COST,
-            "attached_deposit not sufficient"
-        );
         let caller = env::predecessor_account_id();
 
         self.assert_active(poll_id)?;
@@ -163,6 +159,8 @@ impl Contract {
         poll_id: PollId,
         answers: Vec<Option<Answer>>,
     ) -> Result<(), PollError> {
+        let storage_start = env::storage_usage();
+        let storage_deposit = env::attached_deposit();
         // Check for IAH requirement if iah_only is set
         if iah_only && tokens.is_empty() {
             return Err(PollError::NotIAH);
@@ -227,6 +225,14 @@ impl Contract {
         self.participants.insert(&(poll_id, caller.clone()));
         poll_results.participants_num += 1;
         self.results.insert(&poll_id, &poll_results);
+
+        // Check the attached deposit is sufficient
+        let required_deposit =
+            (env::storage_usage() - storage_start) as u128 * env::storage_byte_cost();
+        if storage_deposit > required_deposit {
+            return Err(PollError::InsufficientDeposit(required_deposit));
+        }
+
         emit_respond(poll_id, caller);
 
         Ok(())
@@ -451,13 +457,39 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "attached_deposit not sufficient")]
     fn respond_wrong_deposit() {
         let (mut ctx, mut ctr) = setup(&alice());
+        let poll_id = ctr.create_poll(
+            false,
+            vec![question_yes_no(true)],
+            2,
+            100,
+            String::from("Hello, world!"),
+            tags(),
+            String::from(""),
+            String::from(""),
+        );
+        ctx.block_timestamp = MILI_SECOND * 3;
         ctx.attached_deposit = RESPOND_COST - 1;
-        testing_env!(ctx);
-        let res = ctr.respond(0, vec![Some(Answer::YesNo(true))]);
-        assert!(res.is_err());
+        testing_env!(ctx.clone());
+        match ctr.on_human_verifed(
+            vec![],
+            false,
+            ctx.predecessor_account_id,
+            poll_id,
+            vec![Some(Answer::YesNo(true))],
+        ) {
+            Err(err) => {
+                println!("Received error: {:?}", err);
+                match err {
+                    PollError::InsufficientDeposit(630000000000000000000) => {
+                        println!("Expected error: PollError::InsufficientDeposit")
+                    }
+                    _ => panic!("Unexpected error: {:?}", err),
+                }
+            }
+            Ok(_) => panic!("Received Ok result, but expected an error"),
+        }
     }
 
     #[test]
