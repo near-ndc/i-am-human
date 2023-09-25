@@ -8,9 +8,9 @@ use test_util::{
     gen_user_account,
     utils::{build_signed_claim, generate_keys},
 };
-use workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
+use workspaces::{types::Balance, Account, AccountId, Contract, DevNetwork, Worker};
 
-use oracle_sbt::{MINT_TOTAL_COST, MINT_TOTAL_COST_WITH_KYC};
+use oracle_sbt::MINT_TOTAL_COST;
 use sbt::ContractMetadata;
 
 const AUTHORITY_KEY: &str = "zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E=";
@@ -167,15 +167,14 @@ async fn test_mint_sbt() -> anyhow::Result<()> {
         &sec_key,
     )?;
 
-    // TODO: add check for specific error text
-    let _ = user_account
-        .call(oracle_contract.id(), "sbt_mint")
-        .args_json(signed_claim)
-        .max_gas()
-        .transact()
-        .await?
-        .into_result()
-        .expect_err("only root and implicit accounts are allowed to get SBT");
+    sbt_mint(
+        &user_account,
+        oracle_contract.id(),
+        json!(signed_claim),
+        MINT_TOTAL_COST,
+        "only root and implicit accounts are allowed to get SBT",
+    )
+    .await?;
 
     let user_account = worker.root_account()?;
     let signed_claim = build_signed_claim(
@@ -185,15 +184,14 @@ async fn test_mint_sbt() -> anyhow::Result<()> {
         &sec_key,
     )?;
 
-    // TODO: add check for specific error text
-    let _ = user_account
-        .call(oracle_contract.id(), "sbt_mint")
-        .args_json(signed_claim)
-        .max_gas()
-        .transact()
-        .await?
-        .into_result()
-        .expect_err("Requires attached deposit of exactly 0.008 NEAR");
+    sbt_mint(
+        &user_account,
+        oracle_contract.id(),
+        json!(signed_claim),
+        0,
+        "Requires attached deposit at least 9000000000000000000000 yoctoNEAR",
+    )
+    .await?;
 
     let signed_claim = build_signed_claim(
         near_sdk::AccountId::from_str(user_account.id().as_str())?,
@@ -202,29 +200,26 @@ async fn test_mint_sbt() -> anyhow::Result<()> {
         &sec_key,
     )?;
 
-    // TODO: add check for specific error text
-    let _ = user_account
-        .call(oracle_contract.id(), "sbt_mint")
-        .args_json(&signed_claim)
-        .max_gas()
-        .transact()
-        .await?
-        .into_result()
-        .expect_err("Requires attached deposit of exactly 0.015 NEAR");
+    sbt_mint(
+        &user_account,
+        oracle_contract.id(),
+        json!(signed_claim),
+        0,
+        "Requires attached deposit at least 18000000000000000000000 yoctoNEAR",
+    )
+    .await?;
 
-    // TODO: add check for specific error text
-    let _ = user_account
-        .call(oracle_contract.id(), "sbt_mint")
-        .args_json(json!({
+    sbt_mint(
+        &user_account,
+        oracle_contract.id(),
+        json!({
             "claim_b64": signed_claim.claim_b64,
             "claim_sig": format!("a{}", &signed_claim.claim_sig),
-        }))
-        .deposit(MINT_TOTAL_COST_WITH_KYC)
-        .max_gas()
-        .transact()
-        .await?
-        .into_result()
-        .expect_err("can't base64-decode claim_sig");
+        }),
+        0,
+        "can't base64-decode claim_sig",
+    )
+    .await?;
 
     let user_account = worker.root_account()?;
     let signed_claim = build_signed_claim(
@@ -234,14 +229,14 @@ async fn test_mint_sbt() -> anyhow::Result<()> {
         &sec_key,
     )?;
 
-    let _ = user_account
+    let res = user_account
         .call(oracle_contract.id(), "sbt_mint")
         .args_json(signed_claim)
         .deposit(MINT_TOTAL_COST)
         .max_gas()
         .transact()
-        .await?
-        .into_result()?;
+        .await?;
+    assert!(res.is_success());
 
     Ok(())
 }
@@ -277,5 +272,34 @@ async fn check_arithmetic_exception(oracle: Contract, alice: Account) -> anyhow:
         output
     );
 
+    Ok(())
+}
+
+async fn sbt_mint(
+    caller: &Account,
+    oracle: &AccountId,
+    args: serde_json::Value,
+    deposit: Balance,
+    expected_err: &str,
+) -> anyhow::Result<()> {
+    match caller
+        .call(oracle, "sbt_mint")
+        .args_json(args)
+        .deposit(deposit)
+        .max_gas()
+        .transact()
+        .await?
+        .into_result()
+    {
+        Ok(_) => {
+            panic!("Expected: {}, got: Ok()", expected_err)
+        }
+        Err(e) => {
+            let e_string = e.to_string();
+            if !e_string.contains(expected_err) {
+                panic!("Expected: {}, got: {}", expected_err, e)
+            }
+        }
+    };
     Ok(())
 }
