@@ -369,7 +369,7 @@ impl SBTRegistry for Contract {
             Some(MAX_REVOKE_PER_CALL),
             Some(true),
         );
-        let tokens_by_owner_supply = self.sbt_supply_by_owner(owner.clone(), issuer.clone(), None);
+        let remaining_supply = self.sbt_supply_by_owner(owner.clone(), issuer.clone(), None);
         let tokens_len = tokens_by_owner[0].1.len();
         if tokens_by_owner.is_empty() {
             return true;
