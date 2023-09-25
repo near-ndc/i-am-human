@@ -18,7 +18,6 @@ serde_json.workspace = true
 cost = { path = "../cost" }
 sbt = { path = "../sbt" }
 
-
 [dev-dependencies]
 rand = "^0.7"
 near-primitives.workspace = true
