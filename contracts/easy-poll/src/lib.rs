@@ -229,7 +229,7 @@ impl Contract {
         // Check the attached deposit is sufficient
         let required_deposit =
             (env::storage_usage() - storage_start) as u128 * env::storage_byte_cost();
-        if storage_deposit > required_deposit {
+        if storage_deposit < required_deposit {
             return Err(PollError::InsufficientDeposit(required_deposit));
         }
 
