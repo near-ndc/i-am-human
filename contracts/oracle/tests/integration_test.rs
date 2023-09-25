@@ -275,7 +275,7 @@ async fn check_arithmetic_exception(oracle: Contract, alice: Account) -> anyhow:
     Ok(())
 }
 
-async fn sbt_mint(
+async fn try_sbt_mint(
     caller: &Account,
     oracle: &AccountId,
     args: serde_json::Value,
