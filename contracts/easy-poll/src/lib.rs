@@ -3,20 +3,18 @@ use crate::events::emit_create_poll;
 use crate::events::emit_respond;
 pub use crate::ext::*;
 pub use crate::storage::*;
-use cost::MILI_NEAR;
 use ext::ext_registry;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
 use near_sdk::collections::LookupSet;
+use near_sdk::Gas;
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
-use near_sdk::{Balance, Gas};
 
 mod errors;
 mod events;
 mod ext;
 mod storage;
 
-pub const RESPOND_COST: Balance = MILI_NEAR;
 pub const RESPOND_CALLBACK_GAS: Gas = Gas(2 * Gas::ONE_TERA.0);
 pub const MAX_TEXT_ANSWER_LEN: usize = 500; // TODO: decide on the maximum length of the text answers to
 
@@ -293,16 +291,17 @@ impl Contract {
 
 #[cfg(test)]
 mod tests {
+    use cost::MILI_NEAR;
     use near_sdk::{
         test_utils::{self, VMContextBuilder},
-        testing_env, AccountId, VMContext,
+        testing_env, AccountId, Balance, VMContext,
     };
 
     use crate::{
         Answer, Contract, OpinionRangeResult, PollError, PollResult, Question, Results, Status,
-        RESPOND_COST,
     };
 
+    pub const RESPOND_COST: Balance = MILI_NEAR;
     const MILI_SECOND: u64 = 1000000; // nanoseconds
 
     fn alice() -> AccountId {
@@ -470,7 +469,7 @@ mod tests {
             String::from(""),
         );
         ctx.block_timestamp = MILI_SECOND * 3;
-        ctx.attached_deposit = RESPOND_COST - 1;
+        ctx.attached_deposit = 1;
         testing_env!(ctx.clone());
         match ctr.on_human_verifed(
             vec![],
@@ -546,6 +545,7 @@ mod tests {
             String::from(""),
             String::from(""),
         );
+        ctx.attached_deposit = RESPOND_COST;
         ctx.block_timestamp = MILI_SECOND * 3;
         testing_env!(ctx.clone());
         let mut res = ctr.on_human_verifed(
@@ -682,6 +682,7 @@ mod tests {
             String::from(""),
             String::from(""),
         );
+        ctx.attached_deposit = RESPOND_COST;
         ctx.predecessor_account_id = alice();
         ctx.block_timestamp = MILI_SECOND * 3;
         testing_env!(ctx.clone());
@@ -739,6 +740,7 @@ mod tests {
             String::from(""),
             String::from(""),
         );
+        ctx.attached_deposit = RESPOND_COST;
         ctx.predecessor_account_id = alice();
         ctx.block_timestamp = MILI_SECOND * 3;
         testing_env!(ctx.clone());
@@ -794,6 +796,7 @@ mod tests {
             String::from(""),
             String::from(""),
         );
+        ctx.attached_deposit = RESPOND_COST;
         ctx.predecessor_account_id = alice();
         ctx.block_timestamp = MILI_SECOND * 3;
         testing_env!(ctx.clone());
