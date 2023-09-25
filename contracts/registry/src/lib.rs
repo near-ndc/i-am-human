@@ -2266,8 +2266,8 @@ mod tests {
 
         ctr.sbt_mint(vec![(alice(), vec![m1_1.clone(), m1_2.clone()])]);
 
-        // revoke (burn) tokens minted for alice from issuer2
-        ctr.sbt_revoke_by_owner(alice(), true);
+        let res = ctr.sbt_revoke_by_owner(alice(), true);
+        assert!(res);
 
         let log_burn = mk_log_str(
             "burn",
@@ -2302,7 +2302,8 @@ mod tests {
         ctx.predecessor_account_id = issuer1();
         testing_env!(ctx.clone());
         assert_eq!(test_utils::get_logs().len(), 0);
-        ctr.sbt_revoke_by_owner(alice(), false);
+        let res = ctr.sbt_revoke_by_owner(alice(), false);
+        assert!(res);
 
         let log_revoke = mk_log_str(
             "revoke",
@@ -2320,7 +2321,7 @@ mod tests {
         assert!(res_with_expired.is_empty());
         let res_without_expired = ctr.sbt_tokens_by_owner(alice(), None, None, None, Some(true));
         assert!(res_without_expired.len() == 1);
-        assert_eq!(res[0].1.len(), 2);
+        assert_eq!(res_without_expired[0].1.len(), 2);
         assert_eq!(ctr.sbt_supply(issuer1()), 2);
         assert_eq!(ctr.sbt_supply(issuer2()), 0);
         assert_eq!(ctr.sbt_supply_by_class(issuer1(), 1), 1);
@@ -2379,6 +2380,49 @@ mod tests {
 
         assert_eq!(ctr.sbt_supply(issuer1()), 20);
         assert_eq!(ctr.sbt_supply(issuer2()), 9);
+    }
+
+    #[test]
+    fn sbt_revoke_by_owner_limit() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 200 * MINT_DEPOSIT);
+
+        // mint tokens to alice from issuer1
+        let batch_metadata = mk_batch_metadata(100);
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..50].to_vec())]);
+
+        // mint tokens to alice from issuer2
+        ctx.predecessor_account_id = issuer2();
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..50].to_vec())]);
+
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 50);
+        assert_eq!(res[1].1.len(), 50);
+
+        assert_eq!(ctr.sbt_supply(issuer1()), 50);
+        assert_eq!(ctr.sbt_supply(issuer2()), 50);
+
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        // revoke (burn) tokens minted for alice from issuer2
+        let res = ctr.sbt_revoke_by_owner(alice(), true);
+        assert!(!res);
+
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx);
+        // revoke (burn) tokens minted for alice from issuer2
+        let res = ctr.sbt_revoke_by_owner(alice(), true);
+        assert!(res);
+
+        // make sure the balances are updated correctly
+        let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, None);
+        assert_eq!(res[0].1.len(), 50);
+
+        assert_eq!(ctr.sbt_supply(issuer1()), 50);
+        assert_eq!(ctr.sbt_supply(issuer2()), 0);
     }
 
     #[test]
