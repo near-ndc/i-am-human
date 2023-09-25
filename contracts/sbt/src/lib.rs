@@ -158,7 +158,7 @@ pub trait SBTRegistry {
     /// Must be called by an SBT contract.
     /// Must emit `Revoke` event.
     /// Must also emit `Burn` event if the SBT tokens are burned (removed).
-    fn sbt_revoke_by_owner(&mut self, owner: AccountId, burn: bool);
+    fn sbt_revoke_by_owner(&mut self, owner: AccountId, burn: bool) -> bool;
 
     /// Allows issuer to update token metadata reference and reference_hash.
     /// * `updates` is a list of triples: (token ID, reference, reference hash).
