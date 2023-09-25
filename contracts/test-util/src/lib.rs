@@ -11,7 +11,7 @@ use workspaces::{
     Account, Contract, DevNetwork, Worker,
 };
 
-pub mod common;
+pub mod oracle;
 pub mod utils;
 
 /// Generate user sub-account

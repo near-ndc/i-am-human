@@ -1,16 +1,18 @@
 use std::str::FromStr;
 
+use chrono::Utc;
+use near_crypto::{SecretKey, Signature};
 use near_sdk::ONE_NEAR;
 use serde_json::json;
 use test_util::{
-    build_contract,
-    common::ExternalAccountId,
-    gen_user_account,
-    utils::{build_signed_claim, generate_keys},
+    build_contract, gen_user_account,
+    oracle::{ExternalAccountId, SignedClaim},
+    utils::{generate_keys, sign_bytes},
 };
 use workspaces::{types::Balance, Account, AccountId, Contract, DevNetwork, Worker};
 
-use oracle_sbt::MINT_TOTAL_COST;
+use near_sdk::borsh::BorshSerialize;
+use oracle_sbt::{Claim, MINT_TOTAL_COST};
 use sbt::ContractMetadata;
 
 const AUTHORITY_KEY: &str = "zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E=";
@@ -18,10 +20,8 @@ const CLAIM_TTL: u64 = 3600 * 24 * 365 * 100;
 
 async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<(Contract, Account, Account)> {
     // deploy contracts
-    let oracle = worker.dev_deploy(include_bytes!("../../res/oracle_sbt.wasm"));
     let registry = worker.dev_deploy(include_bytes!("../../res/registry.wasm"));
 
-    let oracle = oracle.await?;
     let registry = registry.await?;
 
     let alice = worker.dev_create_account().await?;
@@ -31,18 +31,13 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<(Contract, Acc
     //
     // we are usign same setup as in claim_sig_and_sbt_mint unit test
     //
-
-    let res1 = oracle
-        .call("new")
-        .args_json(json!({
-            "authority": AUTHORITY_KEY,
-            "admin": admin.id(),
-            "registry": registry.id(),
-            "claim_ttl": CLAIM_TTL,
-            "metadata": ContractMetadata{spec: "sbt".to_owned(), name: "oracle".to_owned(), symbol: "iah".to_owned(), icon: None, base_uri: None, reference: None, reference_hash: None},
-        }))
-        .max_gas()
-        .transact();
+    let oracle = deploy_oracle(
+        &worker,
+        &String::from(AUTHORITY_KEY),
+        registry.id(),
+        admin.id(),
+    )
+    .await?;
 
     let res2 = registry
         .call("new")
@@ -51,12 +46,9 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<(Contract, Acc
             "iah_issuer": oracle.id(), "iah_classes": [1],
             "authorized_flaggers": vec![auth_flagger.id()]}))
         .max_gas()
-        .transact();
+        .transact()
+        .await?;
 
-    let res1 = res1.await?;
-    let res2 = res2.await?;
-
-    assert!(res1.is_success(), "res oracle {:?}", res1);
     assert!(res2.is_success(), "res registry {:?}", res2);
 
     // get current block time
@@ -141,21 +133,11 @@ async fn test_mint_sbt() -> anyhow::Result<()> {
     )
     .await?;
 
-    let oracle_contract = build_contract(
+    let oracle_contract = deploy_oracle(
         &worker,
-        "../oracle/",
-        "new",
-        json!({
-            "authority": near_sdk::base64::encode(pub_key.unwrap_as_ed25519().as_ref()),
-            "metadata": {
-                "spec": "v1.0.0",
-                "name": "test-sbt",
-                "symbol": "SBT"
-            },
-            "registry": registry_contract.id(),
-            "claim_ttl": 100000000000u64,
-            "admin": authority.id(),
-        }),
+        &near_sdk::base64::encode(pub_key.unwrap_as_ed25519().as_ref()),
+        registry_contract.id(),
+        authority.id(),
     )
     .await?;
 
@@ -167,7 +149,7 @@ async fn test_mint_sbt() -> anyhow::Result<()> {
         &sec_key,
     )?;
 
-    sbt_mint(
+    try_sbt_mint(
         &user_account,
         oracle_contract.id(),
         json!(signed_claim),
@@ -184,7 +166,7 @@ async fn test_mint_sbt() -> anyhow::Result<()> {
         &sec_key,
     )?;
 
-    sbt_mint(
+    try_sbt_mint(
         &user_account,
         oracle_contract.id(),
         json!(signed_claim),
@@ -200,7 +182,7 @@ async fn test_mint_sbt() -> anyhow::Result<()> {
         &sec_key,
     )?;
 
-    sbt_mint(
+    try_sbt_mint(
         &user_account,
         oracle_contract.id(),
         json!(signed_claim),
@@ -209,7 +191,7 @@ async fn test_mint_sbt() -> anyhow::Result<()> {
     )
     .await?;
 
-    sbt_mint(
+    try_sbt_mint(
         &user_account,
         oracle_contract.id(),
         json!({
@@ -275,6 +257,59 @@ async fn check_arithmetic_exception(oracle: Contract, alice: Account) -> anyhow:
     Ok(())
 }
 
+// Helper function to deploy, initalize and mint iah sbts to the `iah_accounts`.
+pub async fn deploy_oracle<T>(
+    worker: &Worker<T>,
+    authority: &String,
+    registry: &AccountId,
+    admin: &AccountId,
+) -> anyhow::Result<Contract>
+where
+    T: DevNetwork + Send + Sync,
+{
+    let oracle_contract = build_contract(
+        &worker,
+        "./../oracle",
+        "new",
+        json!({
+            "authority": authority,
+            "admin": admin,
+            "registry": registry,
+            "claim_ttl": CLAIM_TTL,
+            "metadata": ContractMetadata{spec: "sbt".to_owned(), name: "oracle".to_owned(), symbol: "iah".to_owned(), icon: None, base_uri: None, reference: None, reference_hash: None},
+        }),
+    ).await?;
+
+    Ok(oracle_contract)
+}
+
+pub fn build_signed_claim(
+    claimer: near_sdk::AccountId,
+    external_id: ExternalAccountId,
+    verified_kyc: bool,
+    sec_key: &SecretKey,
+) -> anyhow::Result<SignedClaim> {
+    let claim_raw = Claim {
+        claimer,
+        external_id: external_id.to_string(),
+        verified_kyc,
+        timestamp: Utc::now().timestamp() as u64,
+    }
+    .try_to_vec()?;
+
+    let sign = sign_bytes(&claim_raw, sec_key);
+
+    assert!(
+        Signature::ED25519(ed25519_dalek::Signature::from_bytes(&sign)?)
+            .verify(&claim_raw, &sec_key.public_key())
+    );
+
+    Ok(SignedClaim {
+        claim_b64: near_sdk::base64::encode(claim_raw),
+        claim_sig: near_sdk::base64::encode(sign),
+    })
+}
+
 async fn try_sbt_mint(
     caller: &Account,
     oracle: &AccountId,
@@ -282,24 +317,29 @@ async fn try_sbt_mint(
     deposit: Balance,
     expected_err: &str,
 ) -> anyhow::Result<()> {
-    match caller
+    let result = caller
         .call(oracle, "sbt_mint")
         .args_json(args)
         .deposit(deposit)
         .max_gas()
         .transact()
-        .await?
-        .into_result()
-    {
-        Ok(_) => {
-            panic!("Expected: {}, got: Ok()", expected_err)
-        }
+        .await?;
+
+    match result.into_result() {
+        Ok(_) => Err(anyhow::Error::msg(format!(
+            "Expected: {}, got: Ok()",
+            expected_err
+        ))),
         Err(e) => {
             let e_string = e.to_string();
             if !e_string.contains(expected_err) {
-                panic!("Expected: {}, got: {}", expected_err, e)
+                Err(anyhow::Error::msg(format!(
+                    "Expected: {}, got: {}",
+                    expected_err, e_string
+                )))
+            } else {
+                Ok(())
             }
         }
-    };
-    Ok(())
+    }
 }
