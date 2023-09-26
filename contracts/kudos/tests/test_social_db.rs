@@ -2,7 +2,6 @@ mod types;
 mod utils;
 
 use crate::utils::*;
-use test_util::{build_contract, gen_user_account, transfer_near};
 use kudos_contract::utils::*;
 use kudos_contract::SOCIAL_DB_GRANT_WRITE_PERMISSION_COST;
 use near_contract_standards::storage_management::{StorageBalance, StorageBalanceBounds};
@@ -10,6 +9,7 @@ use near_sdk::json_types::U128;
 use near_sdk::serde_json::{self, json, Value};
 use near_sdk::ONE_YOCTO;
 use near_units::parse_near;
+use test_util::{deploy_contract, gen_user_account, transfer_near};
 
 #[tokio::test]
 async fn test_social_db_required_deposit() -> anyhow::Result<()> {
@@ -71,7 +71,7 @@ async fn test_social_db_required_deposit() -> anyhow::Result<()> {
         .into_result()?;
 
     // Setup NDC Kudos Contract
-    let kudos_contract = build_contract(
+    let kudos_contract = deploy_contract(
         &worker,
         "./",
         "init",

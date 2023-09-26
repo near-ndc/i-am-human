@@ -5,7 +5,7 @@ use near_crypto::{SecretKey, Signature};
 use near_sdk::ONE_NEAR;
 use serde_json::json;
 use test_util::{
-    build_contract, gen_user_account,
+    deploy_contract, gen_user_account,
     oracle::{ExternalAccountId, SignedClaim},
     utils::{generate_keys, sign_bytes},
 };
@@ -265,7 +265,7 @@ pub async fn deploy_oracle<T>(
 where
     T: DevNetwork + Send + Sync,
 {
-    let oracle_contract = build_contract(
+    let oracle_contract = deploy_contract(
         &worker,
         "./../oracle",
         "new",

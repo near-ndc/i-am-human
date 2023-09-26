@@ -2,7 +2,7 @@ use anyhow::Ok;
 use easy_poll::{PollResult, Results, Status};
 use near_sdk::serde_json::json;
 use near_units::parse_near;
-use test_util::{build_contract, get_block_timestamp, registry_default};
+use test_util::{deploy_contract, get_block_timestamp, registry_default};
 use workspaces::{network::Sandbox, Account, AccountId, Contract, Worker};
 
 async fn respond(
@@ -37,7 +37,7 @@ async fn init(worker: &Worker<Sandbox>) -> anyhow::Result<(Contract, Account, Ac
     .await?;
 
     // Setup easy-poll contract
-    let easy_poll_contract = build_contract(
+    let easy_poll_contract = deploy_contract(
         &worker,
         "./",
         "new",
