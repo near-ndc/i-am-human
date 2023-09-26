@@ -3,20 +3,18 @@ use crate::events::emit_create_poll;
 use crate::events::emit_respond;
 pub use crate::ext::*;
 pub use crate::storage::*;
-use cost::MILI_NEAR;
 use ext::ext_registry;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
 use near_sdk::collections::LookupSet;
+use near_sdk::Gas;
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
-use near_sdk::{Balance, Gas};
 
 mod errors;
 mod events;
 mod ext;
 mod storage;
 
-pub const RESPOND_COST: Balance = MILI_NEAR;
 pub const RESPOND_CALLBACK_GAS: Gas = Gas(2 * Gas::ONE_TERA.0);
 pub const MAX_TEXT_ANSWER_LEN: usize = 500; // TODO: decide on the maximum length of the text answers to
 
@@ -120,11 +118,9 @@ impl Contract {
         poll_id: PollId,
         answers: Vec<Option<Answer>>,
     ) -> Result<(), PollError> {
-        require!(
-            env::attached_deposit() >= RESPOND_COST,
-            "attached_deposit not sufficient"
-        );
         let caller = env::predecessor_account_id();
+        let storage_start = env::storage_usage();
+        let storage_deposit = env::attached_deposit();
 
         self.assert_active(poll_id)?;
 
@@ -144,6 +140,12 @@ impl Contract {
                 );
         } else {
             self.on_human_verifed(vec![], false, caller, poll_id, answers)?
+        }
+
+        let required_deposit =
+            (env::storage_usage() - storage_start) as u128 * env::storage_byte_cost();
+        if storage_deposit < required_deposit {
+            return Err(PollError::InsufficientDeposit(required_deposit));
         }
         Ok(())
     }
@@ -287,16 +289,17 @@ impl Contract {
 
 #[cfg(test)]
 mod tests {
+    use cost::MILI_NEAR;
     use near_sdk::{
         test_utils::{self, VMContextBuilder},
-        testing_env, AccountId, VMContext,
+        testing_env, AccountId, Balance, VMContext,
     };
 
     use crate::{
         Answer, Contract, OpinionRangeResult, PollError, PollResult, Question, Results, Status,
-        RESPOND_COST,
     };
 
+    pub const RESPOND_COST: Balance = MILI_NEAR;
     const MILI_SECOND: u64 = 1000000; // nanoseconds
 
     fn alice() -> AccountId {
@@ -451,16 +454,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "attached_deposit not sufficient")]
-    fn respond_wrong_deposit() {
-        let (mut ctx, mut ctr) = setup(&alice());
-        ctx.attached_deposit = RESPOND_COST - 1;
-        testing_env!(ctx);
-        let res = ctr.respond(0, vec![Some(Answer::YesNo(true))]);
-        assert!(res.is_err());
-    }
-
-    #[test]
     fn respond_poll_not_active() {
         let (mut ctx, mut ctr) = setup(&alice());
         let poll_id = ctr.create_poll(
@@ -514,6 +507,7 @@ mod tests {
             String::from(""),
             String::from(""),
         );
+        ctx.attached_deposit = RESPOND_COST;
         ctx.block_timestamp = MILI_SECOND * 3;
         testing_env!(ctx.clone());
         let mut res = ctr.on_human_verifed(
@@ -650,6 +644,7 @@ mod tests {
             String::from(""),
             String::from(""),
         );
+        ctx.attached_deposit = RESPOND_COST;
         ctx.predecessor_account_id = alice();
         ctx.block_timestamp = MILI_SECOND * 3;
         testing_env!(ctx.clone());
@@ -707,6 +702,7 @@ mod tests {
             String::from(""),
             String::from(""),
         );
+        ctx.attached_deposit = RESPOND_COST;
         ctx.predecessor_account_id = alice();
         ctx.block_timestamp = MILI_SECOND * 3;
         testing_env!(ctx.clone());
@@ -762,6 +758,7 @@ mod tests {
             String::from(""),
             String::from(""),
         );
+        ctx.attached_deposit = RESPOND_COST;
         ctx.predecessor_account_id = alice();
         ctx.block_timestamp = MILI_SECOND * 3;
         testing_env!(ctx.clone());
