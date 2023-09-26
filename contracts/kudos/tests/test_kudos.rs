@@ -3,7 +3,6 @@ mod utils;
 
 use crate::types::*;
 use crate::utils::*;
-use test_util::{build_contract, gen_user_account, get_block_timestamp, transfer_near};
 use kudos_contract::WrappedCid;
 use kudos_contract::{utils::*, CommentId};
 use kudos_contract::{Commentary, PROOF_OF_KUDOS_SBT_CLASS_ID};
@@ -11,6 +10,7 @@ use near_sdk::serde_json::{self, json, Value};
 use near_sdk::AccountId;
 use near_units::parse_near;
 use std::collections::{BTreeMap, HashMap};
+use test_util::{deploy_contract, gen_user_account, get_block_timestamp, transfer_near};
 
 #[tokio::test]
 async fn test_give_kudos() -> anyhow::Result<()> {
@@ -72,7 +72,7 @@ async fn test_give_kudos() -> anyhow::Result<()> {
         .into_result()?;
 
     // Setup NDC Kudos Contract
-    let kudos_contract = build_contract(
+    let kudos_contract = deploy_contract(
         &worker,
         "./",
         "init",
@@ -169,9 +169,7 @@ async fn test_give_kudos() -> anyhow::Result<()> {
             kudos_contract.id(),
             user2_account.id(),
             user1_account.id(),
-            serde_json::to_string(&hashtags)
-                .unwrap()
-                .escape_default(),
+            serde_json::to_string(&hashtags).unwrap().escape_default(),
         )
     );
 
@@ -342,7 +340,7 @@ async fn test_mint_proof_of_kudos_sbt() -> anyhow::Result<()> {
         .into_result()?;
 
     // Setup NDC Kudos Contract
-    let kudos_contract = build_contract(
+    let kudos_contract = deploy_contract(
         &worker,
         "./",
         "init",
@@ -416,11 +414,13 @@ async fn test_mint_proof_of_kudos_sbt() -> anyhow::Result<()> {
     let _ = mint_fv_sbt(
         &iah_registry_id,
         &admin_account,
-        &[user1_account.id(),
+        &[
+            user1_account.id(),
             user2_account.id(),
             user3_account.id(),
             user4_account.id(),
-            user5_account.id()],
+            user5_account.id(),
+        ],
         now_ms,
         now_ms + 86_400_000,
     )
@@ -539,7 +539,7 @@ async fn test_mass_give_kudos() -> anyhow::Result<()> {
         .into_result()?;
 
     // Setup NDC Kudos Contract
-    let kudos_contract = build_contract(
+    let kudos_contract = deploy_contract(
         &worker,
         "./",
         "init",

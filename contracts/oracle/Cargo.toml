@@ -30,3 +30,7 @@ tokio.workspace = true
 workspaces.workspace = true
 near-units.workspace = true
 tracing.workspace = true
+near-crypto = "^0"
+chrono = "0.4.26"
+
+test-util = { path = "../test-util" }

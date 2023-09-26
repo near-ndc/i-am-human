@@ -11,6 +11,9 @@ use workspaces::{
     Account, Contract, DevNetwork, Worker,
 };
 
+pub mod oracle;
+pub mod utils;
+
 /// Generate user sub-account
 pub async fn gen_user_account<T>(worker: &Worker<T>, account_id: &str) -> anyhow::Result<Account>
 where
@@ -37,7 +40,7 @@ pub async fn transfer_near(
 }
 
 /// Build contract from sources and initialize it
-pub async fn build_contract<T>(
+pub async fn deploy_contract<T>(
     worker: &Worker<T>,
     project_path: &str,
     init_method: &str,
@@ -168,7 +171,7 @@ where
 {
     const IAH_CLASS: u64 = 1;
     let iah_issuer = worker.dev_create_account().await?;
-    let registry_contract = build_contract(
+    let registry_contract = deploy_contract(
         &worker,
         "./../registry",
         "new",

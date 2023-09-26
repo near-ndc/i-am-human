@@ -2,11 +2,11 @@ mod types;
 mod utils;
 
 use crate::utils::*;
-use test_util::{build_contract, gen_user_account, get_block_timestamp, transfer_near};
 use kudos_contract::{utils::*, WrappedCid};
 use kudos_contract::{GIVE_KUDOS_COST, LEAVE_COMMENT_COST, UPVOTE_KUDOS_COST};
 use near_sdk::serde_json::json;
 use near_units::parse_near;
+use test_util::{deploy_contract, gen_user_account, get_block_timestamp, transfer_near};
 
 #[tokio::test]
 async fn test_required_deposit() -> anyhow::Result<()> {
@@ -68,7 +68,7 @@ async fn test_required_deposit() -> anyhow::Result<()> {
         .into_result()?;
 
     // Setup NDC Kudos Contract
-    let kudos_contract = build_contract(
+    let kudos_contract = deploy_contract(
         &worker,
         "./",
         "init",
