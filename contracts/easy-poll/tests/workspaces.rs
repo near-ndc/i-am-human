@@ -1,12 +1,9 @@
 use anyhow::Ok;
 use easy_poll::{PollResult, Results, Status};
-use near_sdk::{serde_json::json, store::vec};
+use near_sdk::serde_json::json;
 use near_units::parse_near;
-use sbt::TokenMetadata;
-use test_util::{build_contract, get_block_timestamp, registry_default, registry_mint_iah_tokens};
+use test_util::{build_contract, get_block_timestamp, registry_default};
 use workspaces::{network::Sandbox, Account, AccountId, Contract, Worker};
-
-const IAH_CLASS: u64 = 1;
 
 async fn respond(
     easy_poll_contract: &AccountId,
