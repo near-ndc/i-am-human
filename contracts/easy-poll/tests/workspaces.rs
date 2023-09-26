@@ -13,7 +13,7 @@ async fn respond(
     let res = responder
         .call(easy_poll_contract, "respond")
         .args_json(json!({"poll_id": poll_id, "answers": [{"YesNo": true}]}))
-        .deposit(parse_near!(" 1 N"))
+        .deposit(parse_near!("1 N"))
         .max_gas()
         .transact()
         .await?;
