@@ -34,7 +34,7 @@ impl FunctionError for PollError {
             PollError::IncorrectAnswerVector => panic_str("the answer vector provided is incorrect and does not match the questions in the poll"),
             PollError::AlredyAnswered => panic_str("user has already answered"),
             PollError::AnswerTooLong(len) => {panic_str(&format!("the answer too long, max_len:{}, got:{}", MAX_TEXT_ANSWER_LEN, len))},
-            PollError::InsufficientDeposit(req_deposit) => {panic_str(&format!("not enough storage deposit, required: {}",req_deposit) )}
+            PollError::InsufficientDeposit(req_deposit) => {panic_str(&format!("not enough storage deposit, required: {}", req_deposit))}
         }
     }
 }
