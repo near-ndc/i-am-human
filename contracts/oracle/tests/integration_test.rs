@@ -123,7 +123,7 @@ async fn test_mint_sbt() -> anyhow::Result<()> {
     let iah_issuer = gen_user_account(&worker, "iah_issuer.test.near").await?;
     let flagger = gen_user_account(&worker, "flagger.test.near").await?;
 
-    let registry_contract = build_contract(
+    let registry_contract = deploy_contract(
         &worker,
         "../registry/",
         "new",
