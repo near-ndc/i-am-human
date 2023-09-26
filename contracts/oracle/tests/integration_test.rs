@@ -118,9 +118,7 @@ async fn check_arithmetic_exception_mainnet() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_mint_sbt() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-
     let (sec_key, pub_key) = generate_keys();
-
     let authority = gen_user_account(&worker, "admin.test.near").await?;
     let iah_issuer = gen_user_account(&worker, "iah_issuer.test.near").await?;
     let flagger = gen_user_account(&worker, "flagger.test.near").await?;
