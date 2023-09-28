@@ -31,6 +31,8 @@ pub enum AccountFlag {
     /// Account is "blacklisted" when it was marked as a scam or breaking the IAH rules.
     Blacklisted,
     Verified,
+    /// Account can't participate in future Governance Terms (but can vote).
+    GovBan,
 }
 
 /// Composition of issuer address and token id used for indexing

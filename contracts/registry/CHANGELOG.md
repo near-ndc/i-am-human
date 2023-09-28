@@ -21,6 +21,8 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Features
 
+- New `GovBan` flag. Account with such flag should be refused to have a governance role, however will still be able to vote as a Voting Body member.
+
 ### Breaking Changes
 
 ### Bug Fixes
