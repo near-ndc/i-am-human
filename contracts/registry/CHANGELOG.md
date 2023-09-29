@@ -21,6 +21,8 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Features
 
+- New `GovBan` flag. Reserved for accounts with a history of misconduct, limiting their governance role while maintaining their voting rights as valued members of the Voting Body.
+
 ### Breaking Changes
 
 ### Bug Fixes
