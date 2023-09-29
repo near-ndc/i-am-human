@@ -855,6 +855,26 @@ impl Contract {
         }
         true
     }
+
+    /// Helper function for `sbt_revoke_by_owner`
+    fn sbt_token_ids_by_owner(
+        &self,
+        account: AccountId,
+        issuer_id: u32,
+        limit: Option<u32>,
+    ) -> Vec<(TokenId, ClassId)> {
+        let first_key = balance_key(account.clone(), issuer_id, 0);
+
+        let limit = limit.unwrap_or(1000);
+        assert!(limit > 0, "limit must be bigger than 0");
+
+        self.balances
+            .iter_from(first_key)
+            .take_while(|(key, _)| key.owner == account && key.issuer_id == issuer_id)
+            .map(|(key, token_id)| (token_id, key.class_id))
+            .take(limit as usize)
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -2534,6 +2554,37 @@ mod tests {
             res[0].1.iter().map(|t| t.token).collect::<Vec<u64>>(),
             (1..=20).collect::<Vec<u64>>()
         );
+    }
+
+    #[test]
+    fn sbt_token_ids_by_owner() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 20 * MINT_DEPOSIT);
+        let batch_metadata = mk_batch_metadata(20);
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+
+        ctx.predecessor_account_id = issuer3();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata[..10].to_vec())]);
+
+        let alice_tokens: Vec<(u64, u64)> = (1..=20).map(|i| (i, i)).collect();
+
+        let res = ctr.sbt_token_ids_by_owner(alice(), ctr.assert_issuer(&issuer1()), None);
+        assert_eq!(res, &alice_tokens[0..10]);
+        let res = ctr.sbt_token_ids_by_owner(alice(), ctr.assert_issuer(&issuer2()), None);
+        assert_eq!(res, &alice_tokens[0..10]);
+        let res = ctr.sbt_token_ids_by_owner(alice(), ctr.assert_issuer(&issuer2()), None);
+        assert_eq!(res, &alice_tokens[0..10]);
+
+        // mint more tokens for issuer1()
+        ctx.predecessor_account_id = issuer1();
+        testing_env!(ctx);
+        ctr.sbt_mint(vec![(alice(), batch_metadata[10..20].to_vec())]);
+        let res = ctr.sbt_token_ids_by_owner(alice(), ctr.assert_issuer(&issuer1()), None);
+        assert_eq!(res, alice_tokens);
     }
 
     #[test]
