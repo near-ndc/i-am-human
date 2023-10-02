@@ -363,7 +363,11 @@ impl SBTRegistry for Contract {
         let issuer = env::predecessor_account_id();
         let issuer_id = self.assert_issuer(&issuer);
         let tokens_by_owner =
-            self.sbt_token_ids_by_owner(owner.clone(), issuer_id, Some(MAX_REVOKE_PER_CALL));
+            self.sbt_token_ids_by_owner(owner.clone(), issuer_id, MAX_REVOKE_PER_CALL);
+
+        if tokens_by_owner.is_empty() {
+            return true;
+        }
 
         let non_expired_count =
             self.sbt_tokens_by_owner(owner.clone(), Some(issuer.clone()), None, None, Some(false))
@@ -371,11 +375,7 @@ impl SBTRegistry for Contract {
             .1
             .len();
 
-        if tokens_by_owner.is_empty() {
-            return true;
-        }
-
-        let mut is_finished: bool;
+        let is_finished: bool;
 
         if burn {
             let mut burned_per_class: HashMap<u64, u64> = HashMap::new();

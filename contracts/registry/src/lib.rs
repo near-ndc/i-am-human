@@ -856,11 +856,10 @@ impl Contract {
         &self,
         account: AccountId,
         issuer_id: u32,
-        limit: Option<u32>,
+        limit: u32,
     ) -> Vec<(TokenId, ClassId)> {
         let first_key = balance_key(account.clone(), issuer_id, 0);
 
-        let limit = limit.unwrap_or(1000);
         assert!(limit > 0, "limit must be bigger than 0");
 
         self.balances
@@ -995,6 +994,7 @@ mod tests {
         ctr.admin_add_sbt_issuer(issuer1());
         ctr.admin_add_sbt_issuer(issuer2());
         ctr.admin_add_sbt_issuer(issuer3());
+        ctr.admin_add_sbt_issuer(issuer4());
         ctr.admin_set_authorized_flaggers([predecessor.clone()].to_vec());
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
@@ -2398,6 +2398,45 @@ mod tests {
     }
 
     #[test]
+    fn sbt_revoke_by_owner_benchmark() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 20 * MINT_DEPOSIT);
+
+        // mint tokens to alice and bob from issuer1
+        let batch_metadata = mk_batch_metadata(20);
+        ctr.sbt_mint(vec![(alice(), batch_metadata.clone())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata.clone())]);
+
+        // mint tokens to alice and bob from issuer2
+        ctx.predecessor_account_id = issuer2();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata.clone())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata.clone())]);
+
+        // mint tokens to alice and bob from issuer3
+        ctx.predecessor_account_id = issuer3();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata.clone())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata.clone())]);
+
+        // mint tokens to alice and bob from issuer4
+        ctx.predecessor_account_id = issuer4();
+        testing_env!(ctx.clone());
+        ctr.sbt_mint(vec![(alice(), batch_metadata.clone())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata.clone())]);
+
+        // revoke (burn) tokens minted for alice from issuer2
+        ctx.predecessor_account_id = issuer2();
+        ctx.prepaid_gas = Gas::ONE_TERA.mul(125);
+        testing_env!(ctx);
+        let res = ctr.sbt_revoke_by_owner(alice(), true);
+        assert!(res);
+
+        // make sure the balances are updated correctly
+        let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer2()), None, None, None);
+        assert_eq!(res.len(), 0);
+    }
+
+    #[test]
     fn sbt_revoke_by_owner_limit() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 200 * MINT_DEPOSIT);
 
@@ -2567,18 +2606,18 @@ mod tests {
 
         let alice_tokens: Vec<(u64, u64)> = (1..=20).map(|i| (i, i)).collect();
 
-        let res = ctr.sbt_token_ids_by_owner(alice(), ctr.assert_issuer(&issuer1()), None);
+        let res = ctr.sbt_token_ids_by_owner(alice(), ctr.assert_issuer(&issuer1()), 20);
         assert_eq!(res, &alice_tokens[0..10]);
-        let res = ctr.sbt_token_ids_by_owner(alice(), ctr.assert_issuer(&issuer2()), None);
+        let res = ctr.sbt_token_ids_by_owner(alice(), ctr.assert_issuer(&issuer2()), 20);
         assert_eq!(res, &alice_tokens[0..10]);
-        let res = ctr.sbt_token_ids_by_owner(alice(), ctr.assert_issuer(&issuer2()), None);
+        let res = ctr.sbt_token_ids_by_owner(alice(), ctr.assert_issuer(&issuer2()), 20);
         assert_eq!(res, &alice_tokens[0..10]);
 
         // mint more tokens for issuer1()
         ctx.predecessor_account_id = issuer1();
         testing_env!(ctx);
         ctr.sbt_mint(vec![(alice(), batch_metadata[10..20].to_vec())]);
-        let res = ctr.sbt_token_ids_by_owner(alice(), ctr.assert_issuer(&issuer1()), None);
+        let res = ctr.sbt_token_ids_by_owner(alice(), ctr.assert_issuer(&issuer1()), 20);
         assert_eq!(res, alice_tokens);
     }
 
