@@ -994,7 +994,6 @@ mod tests {
         ctr.admin_add_sbt_issuer(issuer1());
         ctr.admin_add_sbt_issuer(issuer2());
         ctr.admin_add_sbt_issuer(issuer3());
-        ctr.admin_add_sbt_issuer(issuer4());
         ctr.admin_set_authorized_flaggers([predecessor.clone()].to_vec());
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
@@ -2417,6 +2416,11 @@ mod tests {
         testing_env!(ctx.clone());
         ctr.sbt_mint(vec![(alice(), batch_metadata.clone())]);
         ctr.sbt_mint(vec![(bob(), batch_metadata.clone())]);
+
+        // add 4th issuer
+        ctx.predecessor_account_id = admin();
+        testing_env!(ctx.clone());
+        ctr.admin_add_sbt_issuer(issuer4());
 
         // mint tokens to alice and bob from issuer4
         ctx.predecessor_account_id = issuer4();
