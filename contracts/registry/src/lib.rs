@@ -208,18 +208,13 @@ impl Contract {
 
     pub(crate) fn _transfer_flag(&mut self, from: &AccountId, recipient: &AccountId) {
         if let Some(flag_from) = self.flagged.get(from) {
-            match self.flagged.get(recipient) {
-                Some(AccountFlag::Verified) => require!(
-                    flag_from != AccountFlag::Blacklisted,
-                    "can't transfer soul from a blacklisted account to a verified account"
-                ),
-                Some(AccountFlag::Blacklisted) => require!(
-                    flag_from != AccountFlag::Verified,
-                    "can't transfer soul from a verified account to a blacklisted account"
-                ),
-                None => {
-                    self.flagged.insert(recipient, &flag_from);
-                }
+            if let Some(flag_to) = self.flagged.get(recipient) {
+                require!(
+                    flag_from == flag_to,
+                    "can't transfer soul when there is a flag conflict"
+                )
+            } else {
+                self.flagged.insert(recipient, &flag_from);
             }
         }
     }
@@ -3017,9 +3012,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "can't transfer soul from a blacklisted account to a verified account"
-    )]
+    #[should_panic(expected = "can't transfer soul when there is a flag conflict")]
     fn flagged_soul_transfer() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
 
@@ -3056,9 +3049,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "can't transfer soul from a verified account to a blacklisted account"
-    )]
+    #[should_panic(expected = "can't transfer soul when there is a flag conflict")]
     fn flagged_soul_transfer2() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 2 * MINT_DEPOSIT);
 
