@@ -2430,7 +2430,7 @@ mod tests {
 
         // revoke (burn) tokens minted for alice from issuer2
         ctx.predecessor_account_id = issuer2();
-        ctx.prepaid_gas = Gas::ONE_TERA.mul(125);
+        ctx.prepaid_gas = Gas::ONE_TERA.mul(110);
         testing_env!(ctx);
         let res = ctr.sbt_revoke_by_owner(alice(), true);
         assert!(res);

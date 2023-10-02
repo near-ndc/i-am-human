@@ -369,12 +369,6 @@ impl SBTRegistry for Contract {
             return true;
         }
 
-        let non_expired_count =
-            self.sbt_tokens_by_owner(owner.clone(), Some(issuer.clone()), None, None, Some(false))
-                [0]
-            .1
-            .len();
-
         let is_finished: bool;
 
         if burn {
@@ -435,6 +429,16 @@ impl SBTRegistry for Contract {
 
             is_finished = self.sbt_supply_by_owner(owner.clone(), issuer.clone(), None) == 0;
         } else {
+            let non_expired_count = self.sbt_tokens_by_owner(
+                owner.clone(),
+                Some(issuer.clone()),
+                None,
+                None,
+                Some(false),
+            )[0]
+            .1
+            .len();
+
             // Revoke: Update expire date for all tokens to current_timestamp
             let now = env::block_timestamp_ms();
             for (token_id, _) in &tokens_by_owner {
