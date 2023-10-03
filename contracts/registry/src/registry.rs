@@ -362,16 +362,13 @@ impl SBTRegistry for Contract {
     fn sbt_revoke_by_owner(&mut self, owner: AccountId, burn: bool) -> bool {
         let issuer = env::predecessor_account_id();
         let issuer_id = self.assert_issuer(&issuer);
-        let tokens_by_owner =
-            self.sbt_token_ids_by_owner(owner.clone(), issuer_id, MAX_REVOKE_PER_CALL);
-
-        if tokens_by_owner.is_empty() {
-            return true;
-        }
-
-        let is_finished: bool;
 
         if burn {
+            let tokens_by_owner = self.sbt_token_ids_by_owner(owner.clone(), issuer_id, 25);
+
+            if tokens_by_owner.is_empty() {
+                return true;
+            }
             let mut burned_per_class: HashMap<u64, u64> = HashMap::new();
 
             // Batch updates for balances and issuer_tokens
@@ -418,31 +415,44 @@ impl SBTRegistry for Contract {
                 self.supply_by_class.insert(class_key, &new_supply_class);
             }
 
+            let token_ids_burned: Vec<TokenId> = tokens_by_owner
+                .iter()
+                .map(|(token_id, _)| *token_id)
+                .collect();
+
             SbtTokensEvent {
                 issuer: issuer.clone(),
-                tokens: tokens_by_owner
-                    .iter()
-                    .map(|(token_id, _)| *token_id)
-                    .collect(),
+                tokens: token_ids_burned.clone(),
             }
             .emit_burn();
 
-            is_finished = self.sbt_supply_by_owner(owner.clone(), issuer.clone(), None) == 0;
+            SbtTokensEvent {
+                issuer: issuer.clone(),
+                tokens: token_ids_burned,
+            }
+            .emit_revoke();
+
+            // Check if all tokens were burned
+            return self.sbt_supply_by_owner(owner.clone(), issuer, None) == 0;
         } else {
-            let non_expired_count = self.sbt_tokens_by_owner(
+            let non_expired_tokens = &self.sbt_tokens_by_owner(
                 owner.clone(),
                 Some(issuer.clone()),
                 None,
-                None,
+                Some(MAX_REVOKE_PER_CALL),
                 Some(false),
             )[0]
-            .1
-            .len();
+            .1;
+
+            if non_expired_tokens.is_empty() {
+                return true;
+            }
+
+            let mut token_ids: Vec<TokenId> = Vec::new();
 
             // Revoke: Update expire date for all tokens to current_timestamp
             let now = env::block_timestamp_ms();
-            for (token_id, _) in &tokens_by_owner {
-                let mut token = self.get_token(issuer_id, *token_id).to_token(*token_id);
+            for mut token in non_expired_tokens.clone() {
                 token.metadata.expires_at = Some(now);
                 let token_data = TokenData {
                     owner: owner.clone(),
@@ -451,25 +461,22 @@ impl SBTRegistry for Contract {
                 self.issuer_tokens.insert(
                     &IssuerTokenId {
                         issuer_id,
-                        token: *token_id,
+                        token: token.token,
                     },
                     &token_data,
                 );
+                token_ids.push(token.token.clone());
             }
+
+            SbtTokensEvent {
+                issuer,
+                tokens: token_ids,
+            }
+            .emit_revoke();
+
             // Check if all tokens were revoked
-            is_finished = non_expired_count <= tokens_by_owner.len();
+            return non_expired_tokens.len() < MAX_REVOKE_PER_CALL as usize;
         }
-
-        SbtTokensEvent {
-            issuer,
-            tokens: tokens_by_owner
-                .iter()
-                .map(|(token_id, _)| *token_id)
-                .collect(),
-        }
-        .emit_revoke();
-
-        is_finished
     }
 
     /// Allows issuer to update token metadata reference and reference_hash.

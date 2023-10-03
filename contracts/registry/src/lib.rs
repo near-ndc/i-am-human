@@ -2441,6 +2441,34 @@ mod tests {
     }
 
     #[test]
+    fn sbt_revoke_by_owner_burn_false() {
+        let (mut ctx, mut ctr) = setup(&issuer1(), 20 * MINT_DEPOSIT);
+
+        // mint tokens to alice and bob from issuer1
+        let batch_metadata = mk_batch_metadata(30);
+        ctr.sbt_mint(vec![(alice(), batch_metadata.clone())]);
+        ctr.sbt_mint(vec![(bob(), batch_metadata.clone())]);
+
+        // revoke (burn = false) tokens minted for alice from issuer2
+        ctx.prepaid_gas = max_gas();
+        testing_env!(ctx.clone());
+        let res = ctr.sbt_revoke_by_owner(alice(), false);
+        assert!(!res);
+        ctx.block_timestamp = (START + 1) * MILI_SECOND;
+        testing_env!(ctx.clone());
+
+        let res = ctr.sbt_revoke_by_owner(alice(), false);
+        assert!(res);
+
+        ctx.block_timestamp = (START + 5) * MILI_SECOND;
+        testing_env!(ctx);
+
+        // make sure the balances are updated correctly
+        let res = ctr.sbt_tokens_by_owner(alice(), Some(issuer1()), None, None, Some(false));
+        assert_eq!(res.len(), 0);
+    }
+
+    #[test]
     fn sbt_revoke_by_owner_limit() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 200 * MINT_DEPOSIT);
 
