@@ -362,74 +362,101 @@ impl SBTRegistry for Contract {
     fn sbt_revoke_by_owner(&mut self, owner: AccountId, burn: bool) -> bool {
         let issuer = env::predecessor_account_id();
         let issuer_id = self.assert_issuer(&issuer);
-        let mut tokens_by_owner = self.sbt_tokens_by_owner(
-            owner.clone(),
-            Some(issuer.clone()),
-            None,
-            Some(MAX_REVOKE_PER_CALL),
-            Some(true),
-        );
-        let remaining_supply = self.sbt_supply_by_owner(owner.clone(), issuer.clone(), None);
-        let tokens_len = tokens_by_owner[0].1.len();
-        if tokens_by_owner.is_empty() {
-            return true;
-        };
-        let (_, tokens) = tokens_by_owner.pop().unwrap();
-
-        let mut token_ids = Vec::new();
 
         if burn {
+            let tokens_by_owner = self.sbt_token_ids_by_owner(owner.clone(), issuer_id, 25);
+
+            if tokens_by_owner.is_empty() {
+                return true;
+            }
             let mut burned_per_class: HashMap<u64, u64> = HashMap::new();
-            let tokens_burned = tokens.len() as u64;
-            for t in tokens {
-                token_ids.push(t.token);
-                let class_id = t.metadata.class;
-                self.balances.remove(&BalanceKey {
+
+            // Batch updates for balances and issuer_tokens
+            for (token_id, class_id) in &tokens_by_owner {
+                let balance_key = BalanceKey {
                     issuer_id,
                     owner: owner.clone(),
-                    class_id,
-                });
+                    class_id: *class_id,
+                };
 
-                // collect the info about the tokens revoked per class
-                // to update the balance accordingly
+                self.balances.remove(&balance_key);
+
+                // Collect info about tokens revoked per class to update the balance accordingly
                 burned_per_class
-                    .entry(class_id)
+                    .entry(*class_id)
                     .and_modify(|key_value| *key_value += 1)
                     .or_insert(1);
 
                 self.issuer_tokens.remove(&IssuerTokenId {
                     issuer_id,
-                    token: t.token,
+                    token: *token_id,
                 });
             }
 
-            let key = &(owner, issuer_id);
-            let old_supply = self.supply_by_owner.get(key).unwrap();
-            self.supply_by_owner
-                .insert(key, &(old_supply - tokens_burned));
+            // Batch updates for supply values
+            let supply_update = tokens_by_owner.len() as u64;
 
-            let supply_by_issuer = self.supply_by_issuer.get(&issuer_id).unwrap_or(0);
-            self.supply_by_issuer
-                .insert(&issuer_id, &(supply_by_issuer - tokens_burned));
+            // Update supply_by_owner
+            let owner_key = &(owner.clone(), issuer_id);
+            let supply_owner = self.supply_by_owner.get(owner_key).unwrap_or(0);
+            let new_supply_owner = supply_owner - supply_update;
+            self.supply_by_owner.insert(owner_key, &new_supply_owner);
 
-            // update supply by class
+            // Update supply_by_issuer
+            let supply_issuer = self.supply_by_issuer.get(&issuer_id).unwrap_or(0);
+            let new_supply_issuer = supply_issuer - supply_update;
+            self.supply_by_issuer.insert(&issuer_id, &new_supply_issuer);
+
+            // Update supply_by_class
             for (class_id, tokens_revoked) in burned_per_class {
-                let key = &(issuer_id, class_id);
-                let old_supply = self.supply_by_class.get(key).unwrap();
-                self.supply_by_class
-                    .insert(key, &(old_supply - tokens_revoked));
+                let class_key = &(issuer_id, class_id);
+                let supply_class = self.supply_by_class.get(class_key).unwrap_or(0);
+                let new_supply_class = supply_class - tokens_revoked;
+                self.supply_by_class.insert(class_key, &new_supply_class);
             }
+
+            let token_ids_burned: Vec<TokenId> = tokens_by_owner
+                .iter()
+                .map(|(token_id, _)| *token_id)
+                .collect();
 
             SbtTokensEvent {
                 issuer: issuer.clone(),
-                tokens: token_ids.clone(),
+                tokens: token_ids_burned.clone(),
             }
             .emit_burn();
+
+            SbtTokensEvent {
+                issuer: issuer.clone(),
+                tokens: token_ids_burned,
+            }
+            .emit_revoke();
+
+            // Check if all tokens were burned
+            return self.sbt_supply_by_owner(owner.clone(), issuer, None) == 0;
         } else {
-            // revoke
-            // update expire date for all tokens to current_timestamp
+            let (_, non_expired_tokens) = self
+                .sbt_tokens_by_owner(
+                    owner.clone(),
+                    Some(issuer.clone()),
+                    None,
+                    Some(MAX_REVOKE_PER_CALL),
+                    Some(false),
+                )
+                .pop()
+                .unwrap();
+
+            if non_expired_tokens.is_empty() {
+                return true;
+            }
+
+            let is_finished = non_expired_tokens.len() < MAX_REVOKE_PER_CALL as usize;
+
+            let mut token_ids: Vec<TokenId> = Vec::new();
+
+            // Revoke: Update expire date for all tokens to current_timestamp
             let now = env::block_timestamp_ms();
-            for mut t in tokens {
+            for mut t in non_expired_tokens {
                 token_ids.push(t.token);
                 t.metadata.expires_at = Some(now);
                 let token_data = TokenData {
@@ -444,13 +471,16 @@ impl SBTRegistry for Contract {
                     &token_data,
                 );
             }
+
+            SbtTokensEvent {
+                issuer,
+                tokens: token_ids,
+            }
+            .emit_revoke();
+
+            // Check if all tokens were revoked
+            return is_finished;
         }
-        SbtTokensEvent {
-            issuer,
-            tokens: token_ids,
-        }
-        .emit_revoke();
-        tokens_len >= remaining_supply as usize
     }
 
     /// Allows issuer to update token metadata reference and reference_hash.
