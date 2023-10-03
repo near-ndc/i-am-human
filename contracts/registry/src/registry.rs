@@ -435,37 +435,41 @@ impl SBTRegistry for Contract {
             // Check if all tokens were burned
             return self.sbt_supply_by_owner(owner.clone(), issuer, None) == 0;
         } else {
-            let non_expired_tokens = &self.sbt_tokens_by_owner(
-                owner.clone(),
-                Some(issuer.clone()),
-                None,
-                Some(MAX_REVOKE_PER_CALL),
-                Some(false),
-            )[0]
-            .1;
+            let (_, non_expired_tokens) = self
+                .sbt_tokens_by_owner(
+                    owner.clone(),
+                    Some(issuer.clone()),
+                    None,
+                    Some(MAX_REVOKE_PER_CALL),
+                    Some(false),
+                )
+                .pop()
+                .unwrap();
 
             if non_expired_tokens.is_empty() {
                 return true;
             }
 
+            let is_finished = non_expired_tokens.len() < MAX_REVOKE_PER_CALL as usize;
+
             let mut token_ids: Vec<TokenId> = Vec::new();
 
             // Revoke: Update expire date for all tokens to current_timestamp
             let now = env::block_timestamp_ms();
-            for mut token in non_expired_tokens.clone() {
-                token.metadata.expires_at = Some(now);
+            for mut t in non_expired_tokens {
+                token_ids.push(t.token);
+                t.metadata.expires_at = Some(now);
                 let token_data = TokenData {
                     owner: owner.clone(),
-                    metadata: token.metadata.into(),
+                    metadata: t.metadata.into(),
                 };
                 self.issuer_tokens.insert(
                     &IssuerTokenId {
                         issuer_id,
-                        token: token.token,
+                        token: t.token,
                     },
                     &token_data,
                 );
-                token_ids.push(token.token.clone());
             }
 
             SbtTokensEvent {
@@ -475,7 +479,7 @@ impl SBTRegistry for Contract {
             .emit_revoke();
 
             // Check if all tokens were revoked
-            return non_expired_tokens.len() < MAX_REVOKE_PER_CALL as usize;
+            return is_finished;
         }
     }
 
