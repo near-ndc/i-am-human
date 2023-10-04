@@ -1,5 +1,5 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LazyOption, UnorderedSet};
+use near_sdk::collections::{LazyOption, LookupMap, UnorderedSet};
 use near_sdk::serde::Serialize;
 use near_sdk::{
     env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
@@ -20,6 +20,7 @@ pub use crate::storage::*;
 pub use crate::util::*;
 
 mod errors;
+mod migrate;
 mod storage;
 mod util;
 
@@ -52,6 +53,9 @@ pub struct Contract {
 
     /// used for backend key rotation
     pub admins: UnorderedSet<AccountId>,
+
+    /// class metadata
+    pub class_metadata: LookupMap<ClassId, ClassMetadata>,
 }
 
 // Implement the contract structure
@@ -85,6 +89,7 @@ impl Contract {
             authority_pubkey: pubkey_from_b64(authority),
             used_identities: UnorderedSet::new(StorageKey::UsedIdentities),
             admins,
+            class_metadata: LookupMap::new(StorageKey::ClassMetadata),
         }
     }
 
@@ -104,6 +109,11 @@ impl Contract {
     pub fn is_used_identity(&self, external_id: String) -> bool {
         let normalised_id = normalize_external_id(external_id).expect("failed to normalize id");
         self.used_identities.contains(&normalised_id)
+    }
+
+    /// Returns `ClassMetadata` by class. Returns none if the class is not found.
+    pub fn class_metadata(&self, class: ClassId) -> Option<ClassMetadata> {
+        self.class_metadata.get(&class)
     }
 
     // all SBT queries should be done through registry
@@ -305,6 +315,14 @@ impl Contract {
             self.admins.contains(&env::predecessor_account_id()),
             "not an admin"
         );
+    }
+
+    /// Allows admin to update class metadata.
+    /// Panics if the class is not found (Currently oracle only supports classes: [1,2])
+    pub fn set_class_metadata(&mut self, class: ClassId, metadata: ClassMetadata) {
+        self.assert_admin();
+        require!(class == 1 || class == 2, "class not found");
+        self.class_metadata.insert(&class, &metadata);
     }
 
     // TODO:

@@ -9,4 +9,5 @@ pub enum StorageKey {
     ContractMetadata,
     UsedIdentities,
     Admins,
+    ClassMetadata,
 }
