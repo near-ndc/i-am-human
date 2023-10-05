@@ -353,6 +353,7 @@ mod checks;
 pub mod tests {
     use crate::*;
     use ed25519_dalek::Keypair;
+    use near_sdk::test_utils::test_env::alice;
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::{testing_env, VMContext};
 
@@ -385,6 +386,16 @@ pub mod tests {
 
     fn start() -> u64 {
         11 * SECOND
+    }
+
+    fn class_metadata() -> ClassMetadata {
+        ClassMetadata {
+            name: "test_1".to_string(),
+            symbol: None,
+            icon: None,
+            reference: None,
+            reference_hash: None,
+        }
     }
 
     /// SBT claim ttl in seconds
@@ -627,5 +638,26 @@ pub mod tests {
         let res = ctr.sbt_mint(c_str, sig, None);
         assert!(res.is_err());
         assert_bad_request(res, "IAH SBT cannot be mint during the elections period");
+    }
+
+    #[test]
+    #[should_panic(expected = "not an admin")]
+    fn set_class_metadata_not_admin() {
+        let (_, mut ctr, _) = setup(&alice(), &alice());
+        ctr.set_class_metadata(1, class_metadata())
+    }
+
+    #[test]
+    #[should_panic(expected = "class not found")]
+    fn set_class_metadata_wrong_class() {
+        let (_, mut ctr, _) = setup(&alice(), &acc_admin());
+        ctr.set_class_metadata(3, class_metadata())
+    }
+
+    #[test]
+    fn set_class_metadata() {
+        let (_, mut ctr, _) = setup(&alice(), &acc_admin());
+        ctr.set_class_metadata(1, class_metadata());
+        assert_eq!(ctr.class_metadata(1).unwrap(), class_metadata());
     }
 }

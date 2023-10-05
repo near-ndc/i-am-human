@@ -378,7 +378,7 @@ async fn migration_mainnet() -> anyhow::Result<()> {
         .as_account()
         .deploy(include_bytes!("../../res/oracle_sbt.wasm"))
         .await?;
-    // .into_result()?;
+
     assert!(res.is_success());
 
     let new_oracle = res.into_result()?;
