@@ -32,7 +32,7 @@ jobs:
           toolchain: 1.69.0
           override: true
           components: rustfmt, clippy
-    
+
       - name: Install wasm32 toolchain
         if: env.GIT_DIFF
         run: rustup target add wasm32-unknown-unknown
@@ -46,5 +46,6 @@ jobs:
         run: cargo clippy
       - name: Run tests
         if: env.GIT_DIFF
+        timeout-minutes: 10
         working-directory: ./contracts
         run: cargo test --verbose
