@@ -318,11 +318,19 @@ impl Contract {
     }
 
     /// Allows admin to update class metadata.
-    /// Panics if the class is not found (Currently oracle only supports classes: [1,2])
-    pub fn set_class_metadata(&mut self, class: ClassId, metadata: ClassMetadata) {
+    /// Panics if not admin or the class is not found (Currently oracle only supports classes: [1,2])
+    #[handle_result]
+    pub fn set_class_metadata(
+        &mut self,
+        class: ClassId,
+        metadata: ClassMetadata,
+    ) -> Result<(), CtrError> {
         self.assert_admin();
-        require!(class == 1 || class == 2, "class not found");
+        if class != 1 && class != 2 {
+            return Err(CtrError::BadRequest("class not found".to_string()));
+        }
         self.class_metadata.insert(&class, &metadata);
+        Ok(())
     }
 
     // TODO:
@@ -644,20 +652,26 @@ pub mod tests {
     #[should_panic(expected = "not an admin")]
     fn set_class_metadata_not_admin() {
         let (_, mut ctr, _) = setup(&alice(), &alice());
-        ctr.set_class_metadata(1, class_metadata())
+        let _ = ctr.set_class_metadata(1, class_metadata());
     }
 
     #[test]
-    #[should_panic(expected = "class not found")]
     fn set_class_metadata_wrong_class() {
         let (_, mut ctr, _) = setup(&alice(), &acc_admin());
-        ctr.set_class_metadata(3, class_metadata())
+        match ctr.set_class_metadata(3, class_metadata()) {
+            Err(CtrError::BadRequest(_)) => (),
+            Err(error) => panic!("expected BadRequest, got: {:?}", error),
+            Ok(_) => panic!("expected BadRequest, got: Ok"),
+        }
     }
 
     #[test]
     fn set_class_metadata() {
         let (_, mut ctr, _) = setup(&alice(), &acc_admin());
-        ctr.set_class_metadata(1, class_metadata());
+        match ctr.set_class_metadata(1, class_metadata()) {
+            Ok(_) => (),
+            Err(error) => panic!("expected Ok, got: {:?}", error),
+        }
         assert_eq!(ctr.class_metadata(1).unwrap(), class_metadata());
     }
 }
