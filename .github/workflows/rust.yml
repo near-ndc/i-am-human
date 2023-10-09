@@ -32,7 +32,7 @@ jobs:
           toolchain: 1.69.0
           override: true
           components: rustfmt, clippy
-    
+
       - name: Install wasm32 toolchain
         if: env.GIT_DIFF
         run: rustup target add wasm32-unknown-unknown
