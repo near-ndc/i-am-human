@@ -715,6 +715,7 @@ impl Contract {
         let ret_token_ids = (token..token + num_tokens).collect();
         let mut supply_by_class = HashMap::new();
         let mut per_recipient: HashMap<AccountId, Vec<TokenId>> = HashMap::new();
+        let now = env::block_timestamp_ms();
 
         for (owner, metadatas) in token_spec {
             // no need to check ongoing_soult_tx, because it will automatically ban the source account
@@ -723,8 +724,11 @@ impl Contract {
             let recipient_tokens = per_recipient.entry(owner.clone()).or_default();
             let metadatas_len = metadatas.len();
 
-            for metadata in metadatas {
+            for mut metadata in metadatas {
                 require!(metadata.class > 0, "Class must be > 0");
+                if metadata.issued_at.is_none() {
+                    metadata.issued_at = Some(now);
+                }
                 let prev = self.balances.insert(
                     &balance_key(owner.clone(), issuer_id, metadata.class),
                     &token,
@@ -937,7 +941,7 @@ mod tests {
     fn mk_metadata(class: ClassId, expires_at: Option<u64>) -> TokenMetadata {
         TokenMetadata {
             class,
-            issued_at: None,
+            issued_at: Some(START),
             expires_at,
             reference: Some("abc".to_owned()),
             reference_hash: Some(vec![61, 61].into()),
