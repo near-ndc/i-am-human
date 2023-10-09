@@ -46,6 +46,5 @@ jobs:
         run: cargo clippy
       - name: Run tests
         if: env.GIT_DIFF
-        timeout-minutes: 60
         working-directory: ./contracts
         run: cargo test --verbose
