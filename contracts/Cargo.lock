@@ -624,13 +624,13 @@ dependencies = [
  "near-primitives 0.17.0",
  "near-sdk",
  "near-units",
+ "near-workspaces",
  "pretty_assertions",
  "sbt",
  "serde_json",
  "tokio",
  "tracing",
  "uint",
- "workspaces",
 ]
 
 [[package]]
@@ -976,6 +976,7 @@ dependencies = [
  "near-primitives 0.17.0",
  "near-sdk",
  "near-units",
+ "near-workspaces",
  "pretty_assertions",
  "sbt",
  "serde_json",
@@ -983,7 +984,6 @@ dependencies = [
  "tokio",
  "tracing",
  "uint",
- "workspaces",
 ]
 
 [[package]]
@@ -1613,9 +1613,9 @@ dependencies = [
  "near-sandbox-utils",
  "near-sdk",
  "near-units",
+ "near-workspaces",
  "test-util",
  "tokio",
- "workspaces",
 ]
 
 [[package]]
@@ -2354,6 +2354,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "near-workspaces"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dcd3394d2e96f0d527310951a2f4d04b22cc82d567f2e0fc898305e1900c8eaf"
+dependencies = [
+ "async-process",
+ "async-trait",
+ "base64 0.13.1",
+ "borsh 0.9.3",
+ "bs58",
+ "cargo_metadata",
+ "chrono",
+ "dirs 3.0.2",
+ "hex 0.4.3",
+ "libc",
+ "near-account-id 0.15.0",
+ "near-crypto 0.15.0",
+ "near-jsonrpc-client",
+ "near-jsonrpc-primitives",
+ "near-primitives 0.15.0",
+ "near-sandbox-utils",
+ "portpicker",
+ "rand 0.8.5",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tokio-retry",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "num-bigint"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2489,10 +2523,11 @@ dependencies = [
  "chrono",
  "cost",
  "ed25519-dalek",
- "near-crypto 0.14.0",
+ "near-crypto 0.17.0",
  "near-primitives 0.17.0",
  "near-sdk",
  "near-units",
+ "near-workspaces",
  "pretty_assertions",
  "rand 0.7.3",
  "sbt",
@@ -2501,7 +2536,6 @@ dependencies = [
  "tokio",
  "tracing",
  "uint",
- "workspaces",
 ]
 
 [[package]]
@@ -2898,12 +2932,12 @@ dependencies = [
  "near-primitives 0.17.0",
  "near-sdk",
  "near-units",
+ "near-workspaces",
  "pretty_assertions",
  "sbt",
  "tokio",
  "tracing",
  "uint",
- "workspaces",
 ]
 
 [[package]]
@@ -3486,13 +3520,13 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "ed25519-dalek",
- "near-crypto 0.14.0",
+ "near-crypto 0.17.0",
  "near-sdk",
  "near-units",
+ "near-workspaces",
  "sbt",
  "serde_json",
  "uuid",
- "workspaces",
 ]
 
 [[package]]

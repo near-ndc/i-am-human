@@ -1,8 +1,8 @@
 use anyhow::Ok;
 use near_units::parse_near;
+use near_workspaces::{network::Sandbox, Account, AccountId, Contract, Worker};
 use sbt::{ClassMetadata, Token, TokenMetadata};
 use serde_json::json;
-use workspaces::{network::Sandbox, Account, AccountId, Contract, Worker};
 
 const MAINNET_REGISTRY_ID: &str = "registry-v1.gwg-testing.near";
 const MAINNET_COMMUNITY_SBT_ID: &str = "community.i-am-human.near";
@@ -15,7 +15,7 @@ async fn init(
     let community_contract: Contract;
     if migration {
         // import the registry contract from mainnet
-        let worker_mainnet = workspaces::mainnet().await?;
+        let worker_mainnet = near_workspaces::mainnet().await?;
         let contract_id: AccountId = MAINNET_REGISTRY_ID.parse()?;
         registry_contract = worker
             .import_contract(&contract_id, &worker_mainnet)
@@ -185,7 +185,7 @@ async fn init(
 #[ignore = "This test is not valid after the migration"]
 #[tokio::test]
 async fn migration_mainnet() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (_, community_sbt, _, admin, _) = init(&worker, true).await?;
 
     // deploy the new contract
@@ -234,7 +234,7 @@ async fn migration_mainnet() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn sbt_renew() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (registry, community_sbt, _, admin, minter) = init(&worker, false).await?;
 
     let sbts: Vec<Option<Token>> = admin
@@ -281,7 +281,7 @@ async fn sbt_renew() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn sbt_renew_fail() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (registry, community_sbt, _, admin, _) = init(&worker, false).await?;
 
     let sbts: Vec<Option<Token>> = admin
@@ -335,7 +335,7 @@ async fn sbt_renew_fail() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn sbt_revoke() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (registry, community_sbt, _, admin, minter) = init(&worker, false).await?;
 
     let sbts: Vec<Option<Token>> = admin
@@ -383,7 +383,7 @@ async fn sbt_revoke() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn sbt_revoke_fail() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (registry, community_sbt, _, admin, _) = init(&worker, false).await?;
 
     let sbts: Vec<Option<Token>> = admin
@@ -422,7 +422,7 @@ async fn sbt_revoke_fail() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn sbt_mint_many() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (registry, community_sbt, _, admin, minter) = init(&worker, false).await?;
 
     let bob = worker.dev_create_account().await?;
