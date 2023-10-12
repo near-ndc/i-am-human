@@ -1,8 +1,8 @@
 use anyhow::Ok;
 use near_units::parse_near;
+use near_workspaces::{network::Sandbox, result::ExecutionFinalResult, Account, Contract, Worker};
 use sbt::{SBTs, TokenMetadata};
 use serde_json::json;
-use workspaces::{network::Sandbox, result::ExecutionFinalResult, Account, Contract, Worker};
 
 use human_checker::RegisterHumanPayload;
 
@@ -132,7 +132,7 @@ async fn init(
 
 #[tokio::test]
 async fn is_human_call() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (registry, human_checker, alice, bob, john, issuer) = init(&worker).await?;
     let issuer_id = near_sdk::AccountId::try_from(issuer.id().as_str().to_owned())?;
 
