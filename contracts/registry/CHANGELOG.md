@@ -21,6 +21,9 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Features
 
+- Added `authorized_flaggers` query.
+- Added `admin_add_authorized_flagger` method.
+
 ### Breaking Changes
 
 ### Bug Fixes

@@ -154,6 +154,10 @@ impl Contract {
         self.authority
     }
 
+    pub fn authorized_flaggers(self) -> Vec<AccountId> {
+        self.authorized_flaggers.get().unwrap_or_default()
+    }
+
     //
     // Transactions
     //
@@ -583,6 +587,26 @@ impl Contract {
     pub fn admin_set_authorized_flaggers(&mut self, authorized_flaggers: Vec<AccountId>) {
         self.assert_authority();
         self.authorized_flaggers.set(&authorized_flaggers);
+    }
+
+    /// Returns true if account was added. Returns false if account was already authorized.
+    pub fn admin_add_authorized_flagger(&mut self, account: AccountId) -> bool {
+        self.assert_authority();
+        match self.authorized_flaggers.get() {
+            None => {
+                self.authorized_flaggers.set(&vec![account]);
+                true
+            }
+            Some(mut a) => {
+                if a.contains(&account) {
+                    false
+                } else {
+                    a.push(account);
+                    self.authorized_flaggers.set(&a);
+                    true
+                }
+            }
+        }
     }
 
     /// Sets a flag for every account in the `accounts` list, overwriting if needed.
