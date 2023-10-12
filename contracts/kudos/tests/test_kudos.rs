@@ -14,9 +14,9 @@ use test_util::{deploy_contract, gen_user_account, get_block_timestamp, transfer
 
 #[tokio::test]
 async fn test_give_kudos() -> anyhow::Result<()> {
-    let worker_mainnet = ::workspaces::mainnet_archival().await?;
+    let worker_mainnet = ::near_workspaces::mainnet_archival().await?;
     let near_social_id = "social.near".parse()?;
-    let worker = ::workspaces::sandbox().await?;
+    let worker = ::near_workspaces::sandbox().await?;
 
     let admin_account = worker.root_account()?;
 
@@ -310,9 +310,9 @@ async fn test_give_kudos() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_mint_proof_of_kudos_sbt() -> anyhow::Result<()> {
-    let worker_mainnet = ::workspaces::mainnet_archival().await?;
+    let worker_mainnet = ::near_workspaces::mainnet_archival().await?;
     let near_social_id = "social.near".parse()?;
-    let worker = ::workspaces::sandbox().await?;
+    let worker = ::near_workspaces::sandbox().await?;
 
     let admin_account = worker.root_account()?;
     let iah_registry_id = "registry.i-am-human.near".parse()?;
@@ -481,9 +481,9 @@ async fn test_mint_proof_of_kudos_sbt() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_mass_give_kudos() -> anyhow::Result<()> {
-    let worker_mainnet = ::workspaces::mainnet_archival().await?;
+    let worker_mainnet = ::near_workspaces::mainnet_archival().await?;
     let near_social_id = "social.near".parse()?;
-    let worker = ::workspaces::sandbox().await?;
+    let worker = ::near_workspaces::sandbox().await?;
 
     let admin_account = worker.root_account()?;
 

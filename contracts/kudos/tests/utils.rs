@@ -8,12 +8,12 @@ use near_contract_standards::storage_management::{StorageBalance, StorageBalance
 use near_sdk::json_types::U64;
 use near_sdk::serde_json::json;
 use near_sdk::{AccountId, ONE_YOCTO};
-use workspaces::result::ExecutionOutcome;
+use near_workspaces::result::ExecutionOutcome;
 
 pub async fn mint_fv_sbt(
-    iah_registry_id: &workspaces::AccountId,
-    issuer: &workspaces::Account,
-    receivers: &[&workspaces::AccountId],
+    iah_registry_id: &near_workspaces::AccountId,
+    issuer: &near_workspaces::Account,
+    receivers: &[&near_workspaces::AccountId],
     issued_at: u64,  // SBT issued at in millis
     expires_at: u64, // SBT expires at in millis
 ) -> anyhow::Result<Vec<u64>> {
@@ -55,9 +55,9 @@ pub async fn mint_fv_sbt(
 }
 
 pub async fn verify_is_human(
-    iah_registry_id: &workspaces::AccountId,
-    issuer_id: &workspaces::AccountId,
-    users_accounts: &[&workspaces::Account],
+    iah_registry_id: &near_workspaces::AccountId,
+    issuer_id: &near_workspaces::AccountId,
+    users_accounts: &[&near_workspaces::Account],
     tokens: &Vec<u64>,
 ) -> anyhow::Result<()> {
     for (i, &user_account) in users_accounts.iter().enumerate() {
@@ -87,9 +87,9 @@ pub async fn verify_is_human(
 }
 
 pub async fn verify_kudos_sbt_tokens_by_owner(
-    iah_registry_id: &workspaces::AccountId,
-    issuer_id: &workspaces::AccountId,
-    owner: &workspaces::Account,
+    iah_registry_id: &near_workspaces::AccountId,
+    issuer_id: &near_workspaces::AccountId,
+    owner: &near_workspaces::Account,
     tokens_ids: &[u64],
 ) -> anyhow::Result<()> {
     let res = owner
@@ -122,9 +122,9 @@ pub async fn verify_kudos_sbt_tokens_by_owner(
 }
 
 pub async fn give_kudos(
-    kudos_contract_id: &workspaces::AccountId,
-    sender: &workspaces::Account,
-    receiver_id: &workspaces::AccountId,
+    kudos_contract_id: &near_workspaces::AccountId,
+    sender: &near_workspaces::Account,
+    receiver_id: &near_workspaces::AccountId,
     message: &str,
     icon_cid: Option<&WrappedCid>,
     hashtags: Vec<&str>,
@@ -161,9 +161,9 @@ pub async fn give_kudos(
 }
 
 pub async fn upvote_kudos(
-    kudos_contract_id: &workspaces::AccountId,
-    sender: &workspaces::Account,
-    receiver_id: &workspaces::AccountId,
+    kudos_contract_id: &near_workspaces::AccountId,
+    sender: &near_workspaces::Account,
+    receiver_id: &near_workspaces::AccountId,
     kudos_id: &KudosId,
 ) -> anyhow::Result<U64> {
     let res = sender
@@ -196,9 +196,9 @@ pub async fn upvote_kudos(
 }
 
 pub async fn leave_comment(
-    kudos_contract_id: &workspaces::AccountId,
-    sender: &workspaces::Account,
-    receiver_id: &workspaces::AccountId,
+    kudos_contract_id: &near_workspaces::AccountId,
+    sender: &near_workspaces::Account,
+    receiver_id: &near_workspaces::AccountId,
     kudos_id: &KudosId,
     parent_comment_id: Option<CommentId>,
     message: &str,
@@ -235,8 +235,8 @@ pub async fn leave_comment(
 }
 
 pub async fn exchange_kudos_for_sbt(
-    kudos_contract_id: &workspaces::AccountId,
-    requestor: &workspaces::Account,
+    kudos_contract_id: &near_workspaces::AccountId,
+    requestor: &near_workspaces::Account,
     kudos_id: &KudosId,
 ) -> anyhow::Result<Vec<u64>> {
     let res = requestor
@@ -267,9 +267,9 @@ pub async fn exchange_kudos_for_sbt(
 }
 
 pub async fn set_external_db(
-    kudos_contract_id: &workspaces::AccountId,
-    owner: &workspaces::Account,
-    near_social: &workspaces::Contract,
+    kudos_contract_id: &near_workspaces::AccountId,
+    owner: &near_workspaces::Account,
+    near_social: &near_workspaces::Contract,
 ) -> anyhow::Result<()> {
     let balance_bounds: StorageBalanceBounds = near_social
         .view("storage_balance_bounds")
@@ -298,9 +298,9 @@ pub async fn set_external_db(
 }
 
 pub async fn update_iah_registry(
-    kudos_contract_id: &workspaces::AccountId,
-    owner: &workspaces::Account,
-    iah_registry: &workspaces::AccountId,
+    kudos_contract_id: &near_workspaces::AccountId,
+    owner: &near_workspaces::Account,
+    iah_registry: &near_workspaces::AccountId,
 ) -> anyhow::Result<()> {
     let _ = owner
         .call(kudos_contract_id, "update_iah_registry")
@@ -321,8 +321,8 @@ pub async fn update_iah_registry(
 }
 
 pub async fn storage_balance_of(
-    contract_id: &workspaces::AccountId,
-    user: &workspaces::Account,
+    contract_id: &near_workspaces::AccountId,
+    user: &near_workspaces::Account,
 ) -> anyhow::Result<Option<StorageBalance>> {
     user.view(contract_id, "storage_balance_of")
         .args_json(json!({

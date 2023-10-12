@@ -1,15 +1,15 @@
 use anyhow::Ok;
 use near_units::parse_near;
-use sbt::TokenMetadata;
-use serde_json::json;
-use std::str::FromStr;
-use workspaces::network::{NetworkClient, NetworkInfo, Sandbox};
-use workspaces::result::ExecutionSuccess;
-use workspaces::AccountId;
-use workspaces::{
+use near_workspaces::network::{NetworkClient, NetworkInfo, Sandbox};
+use near_workspaces::result::ExecutionSuccess;
+use near_workspaces::AccountId;
+use near_workspaces::{
     types::{Balance, KeyType, SecretKey},
     Account, Contract, DevNetwork, Worker,
 };
+use sbt::TokenMetadata;
+use serde_json::json;
+use std::str::FromStr;
 
 pub mod oracle;
 pub mod utils;
@@ -19,7 +19,7 @@ pub async fn gen_user_account<T>(worker: &Worker<T>, account_id: &str) -> anyhow
 where
     T: DevNetwork + Send + Sync,
 {
-    let id = workspaces::AccountId::from_str(account_id)?;
+    let id = near_workspaces::AccountId::from_str(account_id)?;
     let sk = SecretKey::from_random(KeyType::ED25519);
 
     let account = worker.create_tla(id, sk).await?.into_result()?;
@@ -29,7 +29,7 @@ where
 
 pub async fn transfer_near(
     worker: &Worker<Sandbox>,
-    account_id: &workspaces::AccountId,
+    account_id: &near_workspaces::AccountId,
     deposit: Balance,
 ) -> anyhow::Result<ExecutionSuccess> {
     Ok(worker
@@ -49,7 +49,7 @@ pub async fn deploy_contract<T>(
 where
     T: NetworkInfo + NetworkClient + DevNetwork + Send + Sync,
 {
-    let wasm = workspaces::compile_project(project_path).await?;
+    let wasm = near_workspaces::compile_project(project_path).await?;
 
     let (id, sk) = worker.dev_generate().await;
 

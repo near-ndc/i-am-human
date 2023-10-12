@@ -10,7 +10,7 @@ repository = { workspace = true }
 [dependencies]
 near-sdk.workspace = true
 serde_json.workspace = true
-workspaces.workspace = true
+near-workspaces.workspace = true
 anyhow.workspace = true
 near-units.workspace = true
 ed25519-dalek.workspace = true
