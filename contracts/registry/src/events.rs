@@ -16,6 +16,7 @@ pub(crate) fn emit_iah_flag_accounts(flag: crate::AccountFlag, accounts: Vec<Acc
     let event = match flag {
         AccountFlag::Blacklisted => "flag_blacklisted",
         AccountFlag::Verified => "flag_verified",
+        AccountFlag::GovBan => "flag_govban",
     };
     emit_iah_event(EventPayload {
         event,

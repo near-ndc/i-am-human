@@ -23,10 +23,20 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Breaking Changes
 
-- Contract field type for `admin` changed from `AccoundId` -> `LazyOption<Vec<AccountId>>`
-- Recommended `cost.mint_deposit` is decreased by 0.001 miliNEAR (in total).
+- The registry method `sbt_revoke_by_owner` now returns `boolean` indicating if all the tokens were revoked. `true` if all the tokens were revoked succesfully or `false` if not and the method needs to be called agian.
 
 ### Bug Fixes
+
+## v4.3.0 (2023-09-07)
+
+### Features
+
+- Added support for multiple admins authorized to manage issuers.
+
+### Breaking Changes
+
+- Contract field type for `admin` changed from `AccoundId` -> `LazyOption<Vec<AccountId>>`
+- Recommended `cost.mint_deposit` is decreased by 0.001 miliNEAR (in total).
 
 ## v4.2.0 (2023-08-25)
 

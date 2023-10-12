@@ -29,7 +29,7 @@ The goal of the oracle contract is to attest off chain fact, and mint SBT. The g
 1. User has an external (off the NEAR blockchain) account, with properties we want to attest. Examples:
 
    - [GoodDollar verified account](https://help.gooddollar.org/kb/getting-started/how-to-complete-face-verification-process), used for verifying unique humans to receive $GD UBI
-   - Twitter [blue checkmark](https://help.twitter.com/en/managing-your-account/about-twitter-verified-accounts).
+   - Twitter blue checkmark
    - GitCoin passport
    - Fractal ID, attesting various verification levels: Face Scan, Proof of Address...
 

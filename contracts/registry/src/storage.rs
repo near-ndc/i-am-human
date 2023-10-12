@@ -28,9 +28,13 @@ pub enum StorageKey {
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 pub enum AccountFlag {
-    /// Account is "blacklisted" when it was marked as a scam or breaking the IAH rules.
+    /// Account is "blacklisted" when it was marked as a scam or suspectible to be a mnipulated account or not a human.
     Blacklisted,
+    /// Manually verified account.
     Verified,
+    /// Account misbehaved and should be refused to have a significant governance role. However
+    /// it will be able to vote as a Voting Body member.
+    GovBan,
 }
 
 /// Composition of issuer address and token id used for indexing

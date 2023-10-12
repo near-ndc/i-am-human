@@ -15,7 +15,7 @@ build-abi: res
 
 
 build-all: res
-	@RUSTFLAGS='-C link-arg=-s' cargo build --all --target wasm32-unknown-unknown --release
+	@RUSTFLAGS='-C link-arg=-s' cargo build --workspace --exclude test-util --target wasm32-unknown-unknown --release
 	@cp ../target/wasm32-unknown-unknown/release/*.wasm ../res/
 	@cargo near abi
 	@cp ../target/near/*/*_abi.json ../res

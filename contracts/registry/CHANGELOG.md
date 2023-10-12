@@ -25,6 +25,17 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Bug Fixes
 
+## v1.6.0 (2023-10-08)
+
+### Features
+
+- New `GovBan` flag. Reserved for accounts with a history of misconduct, limiting their governance role while maintaining their voting rights as valued members of the Voting Body.
+- `sbt_revoke_by_owner` returns true if the issuer should continue to call the method to revoke all tokens. Otherwise the function return false. Moreover, the method has been improved and optimized.
+
+### Breaking Changes
+
+- `sbt_mint` will set `issue_at` to the current time in milliseconds, if the value was not provided.
+
 ## v1.5.0 (2023-09-07)
 
 ### Features
