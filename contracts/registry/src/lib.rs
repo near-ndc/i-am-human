@@ -409,11 +409,11 @@ impl Contract {
 
         for (key, token) in self
             .balances
-            .iter_from(balance_key(from.clone(), start.issuer_id, start.token))
+            .iter_from(balance_key(from.clone(), issuer_id, start.token))
             .take(limit)
         {
             if key.owner != from || key.issuer_id != issuer_id {
-                continue;
+                break;
             }
             tokens_recovered += 1;
             let mut t = self.get_token(key.issuer_id, token);
