@@ -33,7 +33,12 @@ The IAH Registry supports the following extra queries, which are not part of the
 See the function docs for more complete documentation.
 
 - `sbt_mint_iah(token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>` is a wrapper around `sbt_mint` and `is_human`. It mints SBTs only when all recipients are humans.
-- `is_human_call(ctr: AccountId, function: String, payload: JSONString)` checks if the predecessor account (_caller_) account is human (using `is_human` method). If it's not, then it panics and returns the deposit. Otherwise it makes a cross contract call passing the deposit:
+
+- `sbt_burn(issuer: AccountId, tokens: Vec<TokenId>, memo: Option<String>)` - every holder can burn some of his tokens.
+
+- `sbt_burn_all()` - method to burn all caller tokens (from all issuers). To efficiently burn all tokens, the method must be called repeatedly until true is returned.
+
+- `is_human_call(ctr: AccountId, function: String, payload: JSONString)` checks if the predecessor account (_caller_) account is human (using `is_human` method). If it's not, then it panics and returns the deposit. Otherwise it makes a cross contract call passing the provided deposit:
 
   ```python
   ctr.function(caller=predecessor_account_id,
@@ -44,11 +49,19 @@ See the function docs for more complete documentation.
   Classical example will registering an action (for poll participation), only when a user is a human.
   Instead of `Poll --is_human--> Registry -> Poll`, we can simplify and do `Registry.is_human_call --> Poll`.
 
-  See the function documentation for more details and [integration test](https://github.com/near-ndc/i-am-human/blob/780e8cf8326fd0a7976c48afbbafd4553cc7b639/contracts/human_checker/tests/workspaces.rs#L131) for usage.o
+  See the function documentation for more details and [integration test](https://github.com/near-ndc/i-am-human/blob/780e8cf8326fd0a7976c48afbbafd4553cc7b639/contracts/human_checker/tests/workspaces.rs#L131) for usage.
 
-- `sbt_burn(issuer: AccountId, tokens: Vec<TokenId>, memo: Option<String>)` - every holder can burn some of his tokens.
+- `is_human_call_lock(ctr: AccountId, function: String, lock_duration: u64, with_proof: bool)` checks if the predecessor account (_caller_) account is human (using `is_human` method). If it's not, then it panics and returns the deposit. Otherwise it will extend the _account soul transfer lock_ (blocking account ability to execute soul transfers) and make a cross contract call passing the provided deposit:
 
-- `sbt_burn_all()` - method to burn all caller tokens (from all issuers). To efficiently burn all tokens, the method must be called repeatedly until true is returned.
+  ```python
+  ctr.function(caller=predecessor_account_id,
+               locked_until: time_in_ms_until_when_the_account_is_locked,
+               iah_proof=tokens_prooving_caller_humanity,
+               payload)
+  ```
+
+  Classical example will be a voting: we need to assure that an account won't migrate to other one using a soul transfer, and vote from two different accounts. Alternative would be to records humanity proof (SBTs) - this approach
+  may be more difficult to implement, especially if we are going to supply more humanity proofs.
 
 ### Admin functions
 
@@ -61,3 +74,5 @@ See the function docs for more complete documentation.
 
 The registry enables atomic `soul_transfers`. It Transfers all SBT tokens from one account to another account.
 Additionally, it attempts to transfer the associated account flags. For example, if the 'from' account is blacklisted and initiates a soul transfer, the recipient account will also be flagged as blacklisted. If a conflict arises between the caller's and recipient's flags, the transfer will fail.
+
+Soul transfer is blocked, if there is an active soul transfer lock. The lock may be requested by dapps, that relay on unique personhood linked to an account over a period of time (for example: voting, games).

@@ -31,7 +31,6 @@ pub struct Contract {
     /// map accounts -> unix timestamp in milliseconds until when any transfer is blocked
     /// for the given account.
     pub(crate) transfer_lock: LookupMap<AccountId, u64>,
-
     /// registry of banned accounts created through `Nep393Event::Ban` (eg: soul transfer).
     pub(crate) banlist: UnorderedSet<AccountId>,
     /// Map of accounts that are marked by a committee to have a special status (eg: blacklist,
@@ -321,7 +320,8 @@ impl Contract {
         (token_counter as u32, completed)
     }
 
-    /// Checks if the `predecessor_account_id` is a human. If yes, then calls:
+    /// Checks if the `predecessor_account_id` is a human. If yes, then calls, passing the
+    /// provided deposit:
     ///
     ///    ctr.function({caller: predecessor_account_id(),
     ///                 iah_proof: SBTs,
@@ -355,13 +355,12 @@ impl Contract {
     /// Example use cases: voting, staking, games.
     /// Dapps should make it clear that they extend user lock for a given amount of time.
     /// Parameters are similar to `is_human_call`:
-    /// * `ctr` and `function`: the contract function we will call if and only if the caller
-    ///   has a valid humanity proof.
+    /// * `ctr` and `function`: the contract function we will call, passing the provided deposit,
+    ///   if and only if the caller has a valid humanity proof.
     ///
     ///    ctr.function({caller: predecessor_account_id(),
-    ///                 duration: u64,
+    ///                 locked_until: time_in_ms_until_when_the_account_is_locked,
     ///                 iah_proof: SBTs,
-    ///                 locked_until,
     ///                 payload: payload})
     ///
     ///   Note the additional arguments provided to the recipient function call, that are not
@@ -372,7 +371,7 @@ impl Contract {
     ///   - `iah_proof` will be set to an empty list if `with_proof=false`.
     /// * `payload`: must be a JSON string, and it will be passed through the default interface.
     /// * `lock_duration`: duration in milliseconds to extend the predecessor account lock for
-    ///    soul transfers.
+    ///    soul transfers. Can be zero, if no lock is needed.
     /// * `with_proof`: when false - doesn't send iah_proof (SBTs) to the contract call.
     /// Panics if the predecessor is not a human.
     #[payable]
