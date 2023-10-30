@@ -28,6 +28,10 @@ pub struct Contract {
     /// store ongoing soul transfers by "old owner"
     pub(crate) ongoing_soul_tx: LookupMap<AccountId, IssuerTokenId>,
 
+    /// map accounts -> unix timestamp in milliseconds until when any transfer is blocked
+    /// for the given account.
+    pub(crate) transfer_lock: LookupMap<AccountId, u64>,
+
     /// registry of banned accounts created through `Nep393Event::Ban` (eg: soul transfer).
     pub(crate) banlist: UnorderedSet<AccountId>,
     /// Map of accounts that are marked by a committee to have a special status (eg: blacklist,
@@ -74,6 +78,7 @@ impl Contract {
             authority,
             sbt_issuers: UnorderedMap::new(StorageKey::SbtIssuers),
             issuer_id_map: LookupMap::new(StorageKey::SbtIssuersRev),
+            transfer_lock: LookupMap::new(StorageKey::TransferLock),
             banlist: UnorderedSet::new(StorageKey::Banlist),
             supply_by_owner: LookupMap::new(StorageKey::SupplyByOwner),
             supply_by_class: LookupMap::new(StorageKey::SupplyByClass),
@@ -316,7 +321,7 @@ impl Contract {
         (token_counter as u32, completed)
     }
 
-    /// Checks if the `predecessor_account_id` is human. If yes, then calls:
+    /// Checks if the `predecessor_account_id` is a human. If yes, then calls:
     ///
     ///    ctr.function({caller: predecessor_account_id(),
     ///                 iah_proof: SBTs,
@@ -336,6 +341,70 @@ impl Contract {
             iah_proof,
             payload: &RawValue::from_string(payload).unwrap(),
         };
+        Promise::new(ctr).function_call(
+            function,
+            serde_json::to_vec(&args).unwrap(),
+            env::attached_deposit(),
+            env::prepaid_gas() - IS_HUMAN_GAS,
+        )
+    }
+
+    /// Apps should use this function to ask a user to lock his account for soul transfer.
+    /// This is useful when a dapp relays on user account ID (rather set of potential SBTs)
+    /// being a unique human over a period of time (there is no soul transfer in between).
+    /// Example use cases: voting, staking, games.
+    /// Dapps should make it clear that they extend user lock for a given amount of time.
+    /// Parameters are similar to `is_human_call`:
+    /// * `ctr` and `function`: the contract function we will call if and only if the caller
+    ///   has a valid humanity proof.
+    ///
+    ///    ctr.function({caller: predecessor_account_id(),
+    ///                 duration: u64,
+    ///                 iah_proof: SBTs,
+    ///                 locked_until,
+    ///                 payload: payload})
+    ///
+    ///   Note the additional arguments provided to the recipient function call, that are not
+    ///   present in `is_human_call`:
+    ///   - `locked_until`: time in milliseconds until when the account is locked for soul
+    ///      transfers. It may be bigger than `now + lock_duration` (this is a case when there
+    ///      is already an existing lock with a longer duration).
+    ///   - `iah_proof` will be set to an empty list if `with_proof=false`.
+    /// * `payload`: must be a JSON string, and it will be passed through the default interface.
+    /// * `lock_duration`: duration in milliseconds to extend the predecessor account lock for
+    ///    soul transfers.
+    /// * `with_proof`: when false - doesn't send iah_proof (SBTs) to the contract call.
+    /// Panics if the predecessor is not a human.
+    #[payable]
+    pub fn is_human_call_lock(
+        &mut self,
+        ctr: AccountId,
+        function: String,
+        payload: String,
+        lock_duration: u64,
+        with_proof: bool,
+    ) -> Promise {
+        let caller = env::predecessor_account_id();
+        let proof = self._is_human(&caller);
+        require!(!proof.is_empty(), "caller not a human");
+
+        let now = env::block_timestamp_ms();
+        let mut lock = self.transfer_lock.get(&caller).unwrap_or(now);
+        if lock_duration > 0 {
+            if lock < now + lock_duration {
+                lock = now + lock_duration;
+                self.transfer_lock.insert(&caller, &lock);
+                events::emit_transfer_lock(caller.clone(), lock)
+            }
+        }
+
+        let args = IsHumanLockCallbackArgs {
+            caller,
+            locked_until: lock,
+            iah_proof: if with_proof { Some(proof) } else { None },
+            payload: &RawValue::from_string(payload).unwrap(),
+        };
+
         Promise::new(ctr).function_call(
             function,
             serde_json::to_vec(&args).unwrap(),

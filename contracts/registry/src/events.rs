@@ -1,4 +1,4 @@
-use near_sdk::{serde::Serialize, AccountId};
+use near_sdk::{serde::Serialize, serde_json::json, AccountId};
 use sbt::{EventPayload, NearEvent};
 
 use crate::storage::AccountFlag;
@@ -28,6 +28,14 @@ pub(crate) fn emit_iah_unflag_accounts(accounts: Vec<AccountId>) {
     emit_iah_event(EventPayload {
         event: "unflag",
         data: accounts, // data is a simple list of accounts to unflag
+    });
+}
+
+/// `locked_until`: time in milliseconds until when the new account lock is established.
+pub(crate) fn emit_transfer_lock(account: AccountId, locked_until: u64) {
+    emit_iah_event(EventPayload {
+        event: "transfer_lock",
+        data: json!({ "account": account, "locked_until": locked_until}),
     });
 }
 
