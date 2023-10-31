@@ -23,7 +23,7 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 - Added `authorized_flaggers` query.
 - Added `admin_add_authorized_flagger` method.
-- added `is_human_call_lock` method: allows dapp to lock an account for soul transfers and call a recipient contract when the predecessor has a proof of personhood.
+- added `is_human_call_lock` method: allows dapp to lock an account for soul transfers and calls a recipient contract when the predecessor has a proof of personhood.
 
 ### Breaking Changes
 

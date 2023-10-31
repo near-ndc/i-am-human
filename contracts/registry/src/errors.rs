@@ -9,7 +9,7 @@ pub enum IsHumanCallErr {
 impl FunctionError for IsHumanCallErr {
     fn panic(&self) -> ! {
         match self {
-            IsHumanCallErr::NotHuman => panic_str("caller not a human"),
+            IsHumanCallErr::NotHuman => panic_str("caller is not a human"),
         }
     }
 }
@@ -23,7 +23,7 @@ impl FunctionError for SoulTransferErr {
     fn panic(&self) -> ! {
         match self {
             SoulTransferErr::TransferLocked => {
-                panic_str("soul transfer not possible: owner has an transfer lock")
+                panic_str("soul transfer not possible: owner has a transfer lock")
             }
         }
     }

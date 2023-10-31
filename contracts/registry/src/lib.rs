@@ -30,7 +30,7 @@ pub struct Contract {
     /// store ongoing soul transfers by "old owner"
     pub(crate) ongoing_soul_tx: LookupMap<AccountId, IssuerTokenId>,
 
-    /// map accounts -> unix timestamp in milliseconds until when any transfer is blocked
+    /// map accounts -> unix timestamp in milliseconds until when any soul transfer is blocked
     /// for the given account.
     pub(crate) transfer_lock: LookupMap<AccountId, u64>,
     /// registry of banned accounts created through `Nep393Event::Ban` (eg: soul transfer).
@@ -385,7 +385,7 @@ impl Contract {
     ///
     ///   Note the additional arguments provided to the recipient function call, that are not
     ///   present in `is_human_call`:
-    ///   - `locked_until`: time in milliseconds until when the account is locked for soul
+    ///   - `locked_until`: time in milliseconds (duration) until when the account is locked for soul
     ///      transfers. It may be bigger than `now + lock_duration` (this is a case when there
     ///      is already an existing lock with a longer duration).
     ///   - `iah_proof` will be set to an empty list if `with_proof=false`.
