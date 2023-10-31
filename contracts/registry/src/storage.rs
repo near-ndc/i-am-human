@@ -22,6 +22,7 @@ pub enum StorageKey {
     OngoingSoultTx,
     Flagged,
     AdminsFlagged,
+    TransferLock,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, BorshStorageKey, Serialize, Deserialize, PartialEq)]
@@ -67,6 +68,18 @@ pub(crate) fn balance_key(owner: AccountId, issuer_id: IssuerId, class_id: Class
 pub struct IsHumanCallbackArgs<'a> {
     pub caller: AccountId,
     pub iah_proof: SBTs,
+    pub payload: &'a RawValue,
+}
+
+/// `is_human_call_lock` wrapper for passing the payload args to the callback.
+#[derive(Serialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug,))]
+#[serde(crate = "near_sdk::serde")]
+pub struct IsHumanLockCallbackArgs<'a> {
+    pub caller: AccountId,
+    /// time in milliseconds,
+    pub locked_until: u64,
+    pub iah_proof: Option<SBTs>,
     pub payload: &'a RawValue,
 }
 

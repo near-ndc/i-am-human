@@ -7,8 +7,10 @@ use near_sdk::{env, near_bindgen, require, serde_json, AccountId, Gas, PanicOnDe
 
 use sbt::*;
 
+use crate::errors::*;
 use crate::storage::*;
 
+pub mod errors;
 pub mod events;
 pub mod migrate;
 pub mod registry;
@@ -28,6 +30,9 @@ pub struct Contract {
     /// store ongoing soul transfers by "old owner"
     pub(crate) ongoing_soul_tx: LookupMap<AccountId, IssuerTokenId>,
 
+    /// map accounts -> unix timestamp in milliseconds until when any soul transfer is blocked
+    /// for the given account.
+    pub(crate) transfer_lock: LookupMap<AccountId, u64>,
     /// registry of banned accounts created through `Nep393Event::Ban` (eg: soul transfer).
     pub(crate) banlist: UnorderedSet<AccountId>,
     /// Map of accounts that are marked by a committee to have a special status (eg: blacklist,
@@ -74,6 +79,7 @@ impl Contract {
             authority,
             sbt_issuers: UnorderedMap::new(StorageKey::SbtIssuers),
             issuer_id_map: LookupMap::new(StorageKey::SbtIssuersRev),
+            transfer_lock: LookupMap::new(StorageKey::TransferLock),
             banlist: UnorderedSet::new(StorageKey::Banlist),
             supply_by_owner: LookupMap::new(StorageKey::SupplyByOwner),
             supply_by_class: LookupMap::new(StorageKey::SupplyByClass),
@@ -201,11 +207,12 @@ impl Contract {
     /// See https://github.com/near/NEPs/pull/393 for more details and rationality about
     /// soul transfer.
     #[payable]
+    #[handle_result]
     pub fn sbt_soul_transfer(
         &mut self,
         recipient: AccountId,
         #[allow(unused_variables)] memo: Option<String>,
-    ) -> (u32, bool) {
+    ) -> Result<(u32, bool), SoulTransferErr> {
         // TODO: test what is the max safe amount of updates
         self._sbt_soul_transfer(recipient, 20)
     }
@@ -225,8 +232,17 @@ impl Contract {
 
     // execution of the sbt_soul_transfer in this function to parametrize `max_updates` in
     // order to facilitate tests.
-    pub(crate) fn _sbt_soul_transfer(&mut self, recipient: AccountId, limit: usize) -> (u32, bool) {
+    #[handle_result]
+    pub(crate) fn _sbt_soul_transfer(
+        &mut self,
+        recipient: AccountId,
+        limit: usize,
+    ) -> Result<(u32, bool), SoulTransferErr> {
         let owner = env::predecessor_account_id();
+        let transfer_lock = self.transfer_lock.get(&owner).unwrap_or(0);
+        if transfer_lock >= env::block_timestamp_ms() {
+            return Err(SoulTransferErr::TransferLocked);
+        }
 
         let (resumed, start) = self.transfer_continuation(&owner, &recipient, true);
         if !resumed {
@@ -313,10 +329,11 @@ impl Contract {
             );
         }
 
-        (token_counter as u32, completed)
+        Ok((token_counter as u32, completed))
     }
 
-    /// Checks if the `predecessor_account_id` is human. If yes, then calls:
+    /// Checks if the `predecessor_account_id` is a human. If yes, then calls, passing the
+    /// provided deposit:
     ///
     ///    ctr.function({caller: predecessor_account_id(),
     ///                 iah_proof: SBTs,
@@ -326,22 +343,97 @@ impl Contract {
     /// hence it will be JSON deserialized when using SDK.
     /// Panics if the predecessor is not a human.
     #[payable]
-    pub fn is_human_call(&mut self, ctr: AccountId, function: String, payload: String) -> Promise {
+    #[handle_result]
+    pub fn is_human_call(
+        &mut self,
+        ctr: AccountId,
+        function: String,
+        payload: String,
+    ) -> Result<Promise, IsHumanCallErr> {
         let caller = env::predecessor_account_id();
         let iah_proof = self._is_human(&caller);
-        require!(!iah_proof.is_empty(), "caller not a human");
+        if iah_proof.is_empty() {
+            return Err(IsHumanCallErr::NotHuman);
+        }
 
         let args = IsHumanCallbackArgs {
             caller,
             iah_proof,
             payload: &RawValue::from_string(payload).unwrap(),
         };
-        Promise::new(ctr).function_call(
+        Ok(Promise::new(ctr).function_call(
             function,
             serde_json::to_vec(&args).unwrap(),
             env::attached_deposit(),
             env::prepaid_gas() - IS_HUMAN_GAS,
-        )
+        ))
+    }
+
+    /// Apps should use this function to ask a user to lock his account for soul transfer.
+    /// This is useful when a dapp relays on user account ID (rather set of potential SBTs)
+    /// being a unique human over a period of time (there is no soul transfer in between).
+    /// Example use cases: voting, staking, games.
+    /// Dapps should make it clear that they extend user lock for a given amount of time.
+    /// Parameters are similar to `is_human_call`:
+    /// * `ctr` and `function`: the contract function we will call, passing the provided deposit,
+    ///   if and only if the caller has a valid humanity proof.
+    ///
+    ///    ctr.function({caller: predecessor_account_id(),
+    ///                 locked_until: time_in_ms_until_when_the_account_is_locked,
+    ///                 iah_proof: SBTs,
+    ///                 payload: payload})
+    ///
+    ///   Note the additional arguments provided to the recipient function call, that are not
+    ///   present in `is_human_call`:
+    ///   - `locked_until`: time in milliseconds (duration) until when the account is locked for soul
+    ///      transfers. It may be bigger than `now + lock_duration` (this is a case when there
+    ///      is already an existing lock with a longer duration).
+    ///   - `iah_proof` will be set to an empty list if `with_proof=false`.
+    /// * `payload`: must be a JSON string, and it will be passed through the default interface.
+    /// * `lock_duration`: duration in milliseconds to extend the predecessor account lock for
+    ///    soul transfers. Can be zero, if no lock is needed.
+    /// * `with_proof`: when false - doesn't send iah_proof (SBTs) to the contract call.
+    /// Emits transfer_lock if the transfer_lock is extended.
+    /// Panics if the predecessor is not a human.
+    #[payable]
+    #[handle_result]
+    pub fn is_human_call_lock(
+        &mut self,
+        ctr: AccountId,
+        function: String,
+        payload: String,
+        lock_duration: u64,
+        with_proof: bool,
+    ) -> Result<Promise, IsHumanCallErr> {
+        let caller = env::predecessor_account_id();
+        let proof = self._is_human(&caller);
+        if proof.is_empty() {
+            return Err(IsHumanCallErr::NotHuman);
+        }
+
+        let now = env::block_timestamp_ms();
+        let mut lock = self.transfer_lock.get(&caller).unwrap_or(now);
+        if lock_duration > 0 {
+            if lock < now + lock_duration {
+                lock = now + lock_duration;
+                self.transfer_lock.insert(&caller, &lock);
+                events::emit_transfer_lock(caller.clone(), lock)
+            }
+        }
+
+        let args = IsHumanLockCallbackArgs {
+            caller,
+            locked_until: lock,
+            iah_proof: if with_proof { Some(proof) } else { None },
+            payload: &RawValue::from_string(payload).unwrap(),
+        };
+
+        Ok(Promise::new(ctr).function_call(
+            function,
+            serde_json::to_vec(&args).unwrap(),
+            env::attached_deposit(),
+            env::prepaid_gas() - IS_HUMAN_GAS,
+        ))
     }
 
     // NOTE: we are using IssuerTokenId to return Issuer and ClassId. This works as expected
@@ -1004,14 +1096,14 @@ mod tests {
         Gas::ONE_TERA.mul(300)
     }
 
-    const MILI_SECOND: u64 = 1_000_000; // milisecond in ns
+    const MSECOND: u64 = 1_000_000; // milisecond in ns
     const START: u64 = 10;
     const MINT_DEPOSIT: Balance = 9 * MILI_NEAR;
 
     fn setup(predecessor: &AccountId, deposit: Balance) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
-            .block_timestamp(START * MILI_SECOND) // multiplying by mili seconds for easier testing
+            .block_timestamp(START * MSECOND) // multiplying by mili seconds for easier testing
             .is_view(false)
             .build();
         if deposit > 0 {
@@ -1384,8 +1476,7 @@ mod tests {
         // make soul transfer
         ctx.predecessor_account_id = alice();
         testing_env!(ctx);
-        let ret = ctr.sbt_soul_transfer(alice2(), None);
-        assert_eq!((3, true), ret);
+        assert_eq!(ctr.sbt_soul_transfer(alice2(), None).unwrap(), (3, true));
 
         let log1 = mk_log_str("ban", &format!(r#"["{}"]"#, alice()));
         let log2 = mk_log_str(
@@ -1434,11 +1525,9 @@ mod tests {
         // make soul transfer
         ctx.predecessor_account_id = alice();
         testing_env!(ctx);
-        let mut result = ctr._sbt_soul_transfer(alice2(), 3);
-        assert_eq!((3, false), result);
+        assert_eq!(ctr._sbt_soul_transfer(alice2(), 3).unwrap(), (3, false));
         assert!(test_utils::get_logs().len() == 1);
-        result = ctr._sbt_soul_transfer(alice2(), 3);
-        assert_eq!((1, true), result);
+        assert_eq!(ctr._sbt_soul_transfer(alice2(), 3).unwrap(), (1, true));
         assert!(test_utils::get_logs().len() == 2);
 
         let log_soul_transfer = mk_log_str(
@@ -1461,7 +1550,7 @@ mod tests {
         testing_env!(ctx);
         assert!(!ctr.is_banned(alice()));
         assert!(!ctr.is_banned(alice2()));
-        ctr.sbt_soul_transfer(alice2(), None);
+        ctr.sbt_soul_transfer(alice2(), None).unwrap();
         assert!(ctr.is_banned(alice()));
         assert!(!ctr.is_banned(alice2()));
         // assert ban even is being emited after the caller with zero tokens has invoked the soul_transfer
@@ -1515,10 +1604,10 @@ mod tests {
         testing_env!(ctx.clone());
         let limit: u32 = 20; //anything above this limit will fail due to exceeding maximum gas usage per call
 
-        let mut result = ctr._sbt_soul_transfer(alice2(), limit as usize);
+        let mut result = ctr._sbt_soul_transfer(alice2(), limit as usize).unwrap();
         while !result.1 {
             testing_env!(ctx.clone()); // reset gas
-            result = ctr._sbt_soul_transfer(alice2(), limit as usize);
+            result = ctr._sbt_soul_transfer(alice2(), limit as usize).unwrap();
         }
 
         // check all the balances afterwards
@@ -1541,7 +1630,7 @@ mod tests {
         ctx.prepaid_gas = max_gas();
         testing_env!(ctx);
         let limit: u32 = 30;
-        ctr._sbt_soul_transfer(alice2(), limit as usize);
+        ctr._sbt_soul_transfer(alice2(), limit as usize).unwrap();
     }
 
     #[test]
@@ -1561,7 +1650,7 @@ mod tests {
         ctx.prepaid_gas = max_gas();
         testing_env!(ctx);
         let limit: u32 = 30;
-        ctr._sbt_soul_transfer(alice2(), limit as usize);
+        ctr._sbt_soul_transfer(alice2(), limit as usize).unwrap();
     }
 
     #[test]
@@ -1585,30 +1674,40 @@ mod tests {
         ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
 
-        let limit: u32 = 10;
-        let mut result = ctr._sbt_soul_transfer(alice2(), limit as usize);
-        assert_eq!((limit, false), result);
+        let limit: usize = 10;
+        assert_eq!(
+            ctr._sbt_soul_transfer(alice2(), limit).unwrap(),
+            (limit as u32, false)
+        );
 
         ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
-        result = ctr._sbt_soul_transfer(alice2(), limit as usize);
-        assert_eq!((limit, false), result);
+        assert_eq!(
+            ctr._sbt_soul_transfer(alice2(), limit).unwrap(),
+            (limit as u32, false)
+        );
 
         ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
-        result = ctr._sbt_soul_transfer(alice2(), limit as usize);
-        assert_eq!((limit, false), result);
+        assert_eq!(
+            ctr._sbt_soul_transfer(alice2(), limit as usize).unwrap(),
+            (limit as u32, false)
+        );
 
         ctx.prepaid_gas = max_gas();
         testing_env!(ctx.clone());
-        result = ctr._sbt_soul_transfer(alice2(), limit as usize);
-        assert_eq!((limit, false), result);
+        assert_eq!(
+            ctr._sbt_soul_transfer(alice2(), limit as usize).unwrap(),
+            (limit as u32, false)
+        );
 
         // resumed transfer but no more tokens to transfer
         ctx.prepaid_gas = max_gas();
         testing_env!(ctx);
-        result = ctr._sbt_soul_transfer(alice2(), limit as usize);
-        assert_eq!((0, true), result);
+        assert_eq!(
+            ctr._sbt_soul_transfer(alice2(), limit as usize).unwrap(),
+            (0, true)
+        );
 
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer1(), None), 0);
         assert_eq!(ctr.sbt_supply_by_owner(alice(), issuer2(), None), 0);
@@ -1903,7 +2002,7 @@ mod tests {
         let m2_1 = mk_metadata(2, Some(START + 11));
         let m3_1 = mk_metadata(3, Some(START + 21));
 
-        let current_timestamp = ctx.block_timestamp / MILI_SECOND; // convert nano to mili seconds
+        let current_timestamp = ctx.block_timestamp / MSECOND; // convert nano to mili seconds
 
         let m1_1_revoked = mk_metadata(1, Some(current_timestamp));
         let m2_1_revoked = mk_metadata(2, Some(current_timestamp));
@@ -2039,7 +2138,7 @@ mod tests {
 
         ctx.predecessor_account_id = alice();
         testing_env!(ctx);
-        ctr.sbt_soul_transfer(alice2(), None);
+        ctr.sbt_soul_transfer(alice2(), None).unwrap();
 
         assert!(ctr.is_banned(alice()));
         assert!(!ctr.is_banned(alice2()));
@@ -2172,7 +2271,7 @@ mod tests {
 
         ctx.predecessor_account_id = alice();
         testing_env!(ctx);
-        ctr.sbt_soul_transfer(alice2(), None);
+        ctr.sbt_soul_transfer(alice2(), None).unwrap();
     }
 
     #[test]
@@ -2189,7 +2288,7 @@ mod tests {
 
         ctx.predecessor_account_id = alice();
         testing_env!(ctx);
-        ctr.sbt_soul_transfer(alice2(), None);
+        ctr.sbt_soul_transfer(alice2(), None).unwrap();
     }
 
     #[test]
@@ -2201,9 +2300,7 @@ mod tests {
 
         ctx.predecessor_account_id = alice();
         testing_env!(ctx.clone());
-        // soul transfer
-        let result: (u32, bool) = ctr.sbt_soul_transfer(alice2(), None);
-        assert!(!result.1);
+        assert!(!ctr.sbt_soul_transfer(alice2(), None).unwrap().1);
 
         // assert the from account is banned after the first soul transfer execution
         assert!(ctr.is_banned(alice()));
@@ -2211,9 +2308,8 @@ mod tests {
 
         ctx.prepaid_gas = max_gas();
         testing_env!(ctx);
-        ctr.sbt_soul_transfer(alice2(), None);
-        let result: (u32, bool) = ctr.sbt_soul_transfer(alice2(), None);
-        assert!(result.1);
+        ctr.sbt_soul_transfer(alice2(), None).unwrap();
+        assert!(ctr.sbt_soul_transfer(alice2(), None).unwrap().1);
 
         // assert it stays banned after the soul transfer has been completed
         assert!(ctr.is_banned(alice()));
@@ -2252,7 +2348,7 @@ mod tests {
     #[test]
     fn sbt_tokens_by_owner_non_expired() {
         let (mut ctx, mut ctr) = setup(&issuer1(), 4 * MINT_DEPOSIT);
-        ctx.block_timestamp = START * MILI_SECOND; // 11 seconds
+        ctx.block_timestamp = START * MSECOND; // 11 seconds
         testing_env!(ctx.clone());
 
         let m1_1 = mk_metadata(1, Some(START));
@@ -2274,7 +2370,7 @@ mod tests {
         assert_eq!(res.len(), 4);
 
         // fast forward so the first two sbts are expired
-        ctx.block_timestamp = (START + 50) * MILI_SECOND;
+        ctx.block_timestamp = (START + 50) * MSECOND;
         testing_env!(ctx);
 
         let res = ctr.sbt_tokens_by_owner(alice(), None, None, None, Some(true));
@@ -2355,7 +2451,7 @@ mod tests {
         assert_eq!(test_utils::get_logs()[0], log_revoke[0]);
 
         // fast forward
-        ctx.block_timestamp = (START + 50) * MILI_SECOND;
+        ctx.block_timestamp = (START + 50) * MSECOND;
         testing_env!(ctx);
 
         // make sure the balances are updated correctly
@@ -2482,13 +2578,13 @@ mod tests {
         testing_env!(ctx.clone());
         let res = ctr.sbt_revoke_by_owner(alice(), false);
         assert!(!res);
-        ctx.block_timestamp = (START + 1) * MILI_SECOND;
+        ctx.block_timestamp = (START + 1) * MSECOND;
         testing_env!(ctx.clone());
 
         let res = ctr.sbt_revoke_by_owner(alice(), false);
         assert!(res);
 
-        ctx.block_timestamp = (START + 5) * MILI_SECOND;
+        ctx.block_timestamp = (START + 5) * MSECOND;
         testing_env!(ctx);
 
         // make sure the balances are updated correctly
@@ -2554,7 +2650,7 @@ mod tests {
         assert_eq!(ctr.is_human(bob()), vec![]);
 
         // step forward, so the tokens will expire
-        ctx.block_timestamp = (START + 1) * MILI_SECOND;
+        ctx.block_timestamp = (START + 1) * MSECOND;
         testing_env!(ctx);
         assert_eq!(ctr.is_human(alice()), vec![]);
         assert_eq!(ctr.is_human(bob()), vec![]);
@@ -2695,7 +2791,7 @@ mod tests {
 
         assert_eq!(ctr.is_human(alice()), vec![(fractal_mainnet(), vec![1, 3])]);
         // step forward, so token class==3 will expire
-        ctx.block_timestamp = (START + 1) * MILI_SECOND;
+        ctx.block_timestamp = (START + 1) * MSECOND;
         testing_env!(ctx);
         assert_eq!(ctr.is_human(alice()), vec![]);
     }
@@ -2970,19 +3066,22 @@ mod tests {
             AccountId::new_unchecked("registry.i-am-human.near".to_string()),
             "function_name".to_string(),
             "{}".to_string(),
-        );
+        )
+        .unwrap();
     }
 
     #[test]
-    #[should_panic(expected = "caller not a human")]
     fn is_human_call_fail() {
         let (_, mut ctr) = setup(&alice(), MINT_DEPOSIT);
 
-        ctr.is_human_call(
+        match ctr.is_human_call(
             AccountId::new_unchecked("registry.i-am-human.near".to_string()),
             "function_name".to_string(),
             "{}".to_string(),
-        );
+        ) {
+            Err(err) => assert_eq!(err, IsHumanCallErr::NotHuman),
+            Ok(_) => panic!("expecting Err(IsHumanCallErr::NotHuman)"),
+        };
     }
 
     #[test]
@@ -3123,7 +3222,7 @@ mod tests {
         // make soul transfer
         ctx.predecessor_account_id = alice();
         testing_env!(ctx.clone());
-        ctr.sbt_soul_transfer(alice2(), None);
+        ctr.sbt_soul_transfer(alice2(), None).unwrap();
 
         assert_eq!(
             ctr.flagged.get(&alice()),
@@ -3144,7 +3243,7 @@ mod tests {
         // transferring from blacklisted to verified account should fail
         ctx.predecessor_account_id = alice2();
         testing_env!(ctx);
-        ctr.sbt_soul_transfer(bob(), None);
+        ctr.sbt_soul_transfer(bob(), None).unwrap();
     }
 
     #[test]
@@ -3159,6 +3258,89 @@ mod tests {
 
         ctx.predecessor_account_id = alice();
         testing_env!(ctx);
-        ctr.sbt_soul_transfer(alice2(), None);
+        ctr.sbt_soul_transfer(alice2(), None).unwrap();
+    }
+
+    #[test]
+    fn is_human_call_lock() {
+        let (mut ctx, mut ctr) = setup(&fractal_mainnet(), MINT_DEPOSIT);
+        ctx.prepaid_gas = ctx.prepaid_gas * 10; // add more gas
+
+        let m1_1 = mk_metadata(1, None);
+        ctr.sbt_mint(vec![(alice(), vec![m1_1.clone()])]);
+        ctr.sbt_mint(vec![(bob(), vec![m1_1.clone()])]);
+
+        let fun = || "call_me".to_owned();
+        let payload = || "{}".to_owned();
+        let lock_duration = 5000; // in ms
+
+        //
+        // Should fail on not a human
+        ctx.predecessor_account_id = carol();
+        testing_env!(ctx.clone());
+        match ctr.is_human_call_lock(bob(), fun(), payload(), lock_duration, false) {
+            Err(err) => assert_eq!(err, IsHumanCallErr::NotHuman),
+            Ok(_) => panic!("expects Err(IsHumanCallErr::NotHuman)"),
+        };
+
+        //
+        // Test transfer lock
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        ctr.is_human_call_lock(bob(), fun(), payload(), lock_duration, false)
+            .unwrap();
+        assert_eq!(
+            ctr.sbt_soul_transfer(alice2(), None),
+            Err(SoulTransferErr::TransferLocked)
+        );
+        // at the lock_duration we should still fail
+        ctx.block_timestamp += lock_duration * MSECOND;
+        testing_env!(ctx.clone());
+        assert_eq!(
+            ctr.sbt_soul_transfer(alice2(), None),
+            Err(SoulTransferErr::TransferLocked)
+        );
+        // add one more millisecond, now it transfer should work.
+        ctx.block_timestamp += MSECOND;
+        testing_env!(ctx.clone());
+        assert_eq!(ctr.sbt_soul_transfer(alice2(), None), Ok((1, true)));
+
+        //
+        // Test 2: is_human_call_lock should extend the lock
+        ctx.predecessor_account_id = bob();
+        testing_env!(ctx.clone());
+        ctr.is_human_call_lock(bob(), fun(), payload(), lock_duration, false)
+            .unwrap();
+        // call again -> should extend the lock to the max
+        testing_env!(ctx.clone()); // reset gas
+        ctr.is_human_call_lock(alice(), fun(), payload(), lock_duration * 3, false)
+            .unwrap();
+
+        // try to call after the initial lock, but before the extended lock
+        ctx.block_timestamp += (2 * lock_duration + 1) * MSECOND;
+        testing_env!(ctx.clone());
+        assert_eq!(
+            ctr.sbt_soul_transfer(carol(), None),
+            Err(SoulTransferErr::TransferLocked)
+        );
+
+        // move forward, now it should work
+        ctx.block_timestamp += lock_duration * MSECOND;
+        testing_env!(ctx.clone());
+        assert_eq!(ctr.sbt_soul_transfer(carol(), None), Ok((1, true)));
+
+        //
+        // Test 3: is_human_call_lock should extend the lock only if it's bigger than the previous one
+        // use carol to transfer dylan
+        ctx.predecessor_account_id = carol();
+        testing_env!(ctx.clone());
+        ctr.is_human_call_lock(bob(), fun(), payload(), lock_duration, false)
+            .unwrap();
+        testing_env!(ctx.clone()); // reset gas
+        ctr.is_human_call_lock(bob(), fun(), payload(), lock_duration / 2, false)
+            .unwrap();
+        ctx.block_timestamp += (lock_duration + 1) * MSECOND;
+        testing_env!(ctx.clone());
+        assert_eq!(ctr.sbt_soul_transfer(dan(), None), Ok((1, true)));
     }
 }
