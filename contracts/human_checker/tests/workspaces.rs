@@ -150,7 +150,7 @@ async fn is_human_call() -> anyhow::Result<()> {
     };
 
     // Call using Alice. Should register tokens, because Alice is a human
-    let r = suite.is_human_call(&alice, &payload, ONE_NEAR).await?;
+    let r = suite.is_human_call(&alice, &payload, 2 * ONE_NEAR).await?;
     assert!(r.is_success());
     let result: bool = r.json()?; // the final receipt is register_human_token, which return boolean
     assert!(result, "should register tokens to alice");
@@ -160,7 +160,7 @@ async fn is_human_call() -> anyhow::Result<()> {
 
     // call the is_human_call method with bob (has sbts but not a human)
     // should panic in the human_checker
-    let r = suite.is_human_call(&bob, &payload, ONE_NEAR).await?;
+    let r = suite.is_human_call(&bob, &payload, 2 * ONE_NEAR).await?;
     assert!(r.is_failure());
 
     tokens = suite.query_sbts(&bob).await?;
@@ -168,7 +168,7 @@ async fn is_human_call() -> anyhow::Result<()> {
 
     // call the is_human_call method john (doesn't have sbts)
     // should panic in the registry
-    let r = suite.is_human_call(&john, &payload, ONE_NEAR).await?;
+    let r = suite.is_human_call(&john, &payload, 2 * ONE_NEAR).await?;
     assert!(r.is_failure());
 
     tokens = suite.query_sbts(&john).await?;
