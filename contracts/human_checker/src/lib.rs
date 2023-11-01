@@ -1,12 +1,14 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{env, near_bindgen, require, AccountId, Balance, NearSchema, PanicOnDefault};
+use near_sdk::{env, near_bindgen, require, AccountId, Balance, PanicOnDefault};
 
 use sbt::*;
 
 pub const MILI_NEAR: Balance = 1_000_000_000_000_000_000_000;
 pub const REG_HUMAN_DEPOSIT: Balance = 3 * MILI_NEAR;
+/// maximum time for proposal voting in milliseconds.
+pub const VOTING_DURATION: u64 = 20_000;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -63,14 +65,62 @@ impl Contract {
     pub fn recorded_sbts(&self, user: AccountId) -> Option<SBTs> {
         self.used_tokens.get(&user)
     }
+
+    /// Simulates a governance voting. Every valid human (as per IAH registry) can vote.
+    /// To avoid double voting by an account who is doing soul_transfer while a proposal is
+    /// active, we reqiore that voing must be called through `iah_registry.is_human_call_lock`.
+    /// We check that the caller set enough `lock_duration` for soul transfers.
+    /// Arguments:
+    /// * `caller`: account ID making a vote (passed by `iah_registry.is_human_call`)
+    /// * `locked_until`: time in milliseconds, untile when the caller is locked for soul
+    ///   transfers (reported by `iah_registry.is_human_call`).
+    /// * `iah_proof`: proof of humanity. It's not required and will be ignored.
+    /// * `payload`: the proposal ID and the vote (approve or reject).
+    #[payable]
+    pub fn vote(
+        &mut self,
+        caller: AccountId,
+        locked_until: u64,
+        #[allow(unused_variables)] iah_proof: Option<SBTs>,
+        payload: VotePayload,
+    ) {
+        // for this simulation we imagine that every proposal ID is valid and it's finishing
+        // at "now" + VOTING_DURATION
+        require!(
+            env::predecessor_account_id() == self.registry,
+            "must be called by registry"
+        );
+        require!(
+            locked_until >= env::block_timestamp_ms() + VOTING_DURATION,
+            "account not locked for soult transfer for sufficient amount of time"
+        );
+        require!(payload.prop_id > 0, "invalid proposal id");
+        require!(
+            payload.vote == "approve" || payload.vote == "reject",
+            "invalid vote: must be either 'approve' or 'reject'"
+        );
+
+        env::log_str(&format!(
+            "VOTED: voter={}, proposal={}, vote={}",
+            caller, payload.prop_id, payload.vote,
+        ));
+    }
 }
 
 #[derive(Serialize, Deserialize)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, NearSchema, Clone))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
 #[serde(crate = "near_sdk::serde")]
 pub struct RegisterHumanPayload {
     pub memo: String,
     pub numbers: Vec<u32>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
+#[serde(crate = "near_sdk::serde")]
+pub struct VotePayload {
+    pub prop_id: u32,
+    pub vote: String,
 }
 
 pub(crate) fn expected_vec_payload() -> Vec<u32> {

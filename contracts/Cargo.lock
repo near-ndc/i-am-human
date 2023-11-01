@@ -1645,6 +1645,7 @@ dependencies = [
  "near-sdk",
  "near-units",
  "near-workspaces",
+ "registry",
  "sbt",
  "serde_json",
  "tokio",
