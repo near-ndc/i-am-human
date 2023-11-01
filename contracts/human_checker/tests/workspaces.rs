@@ -4,7 +4,7 @@ use near_workspaces::{network::Sandbox, result::ExecutionFinalResult, Account, C
 use sbt::{SBTs, TokenMetadata};
 use serde_json::json;
 
-use human_checker::RegisterHumanPayload;
+use human_checker::{RegisterHumanPayload, VotePayload, VOTING_DURATION};
 
 const REGISTER_HUMAN_TOKEN: &str = "register_human_token";
 
@@ -28,6 +28,23 @@ impl Suite {
         println!(">>> is_human_call logs {:?}\n", res.logs());
         Ok(res)
     }
+
+    pub async fn is_human_call_lock(
+        &self,
+        caller: &Account,
+        lock_duration: u64,
+        payload: &VotePayload,
+    ) -> anyhow::Result<ExecutionFinalResult> {
+        let res = caller
+        .call(self.registry.id(), "is_human_call_lock")
+        .args_json(json!({"ctr": self.human_checker.id(), "function": "vote", "payload": serde_json::to_string(payload).unwrap(), "lock_duration": lock_duration, "with_proof": false}))
+        .max_gas()
+        .transact()
+        .await?;
+        println!(">>> is_human_call_lock logs {:?}\n", res.logs());
+        Ok(res)
+    }
+
 
     pub async fn query_sbts(&self, user: &Account) -> anyhow::Result<Option<SBTs>> {
         // check the key does not exists in human checker
@@ -170,6 +187,38 @@ async fn is_human_call() -> anyhow::Result<()> {
 
     tokens = suite.query_sbts(&john).await?;
     assert_eq!(tokens, None);
+
+
+    //
+    // Test Vote with lock duration
+    //
+
+    //
+    // test1: too short lock duration: should fail
+    let mut payload = VotePayload{prop_id: 10, vote: "wrong_option".to_string()};
+    let r = suite.is_human_call_lock(&john, VOTING_DURATION / 2 *3,  &payload).await?;
+    assert!(r.is_failure());
+    let failure_str = format!("{:?}",r.failures());
+    assert!(failure_str.contains("sufficient amount of time"));
+
+    //
+    // test2: second call, should not change
+    let r = suite.is_human_call_lock(&john, VOTING_DURATION / 2*3,  &payload).await?;
+    assert!(r.is_failure());
+    let failure_str = format!("{:?}",r.failures());
+    assert!(failure_str.contains("sufficient amount of time"));
+
+    //
+    // test3: longer call should be accepted, but should fail on wrong payload (vote option)
+    let r = suite.is_human_call_lock(&john, VOTING_DURATION +100,  &payload).await?;
+    assert!(r.is_failure());
+    let failure_str = format!("{:?}",r.failures());
+    assert!(failure_str.contains("invalid vote: must be either"));
+
+    // should work with correct input
+    payload.vote = "approve".to_string();
+    let r = suite.is_human_call_lock(&john, VOTING_DURATION +100,  &payload).await?;
+    assert!(r.is_success());
 
     Ok(())
 }
