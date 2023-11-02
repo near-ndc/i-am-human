@@ -68,7 +68,7 @@ impl Contract {
 
     /// Simulates a governance voting. Every valid human (as per IAH registry) can vote.
     /// To avoid double voting by an account who is doing soul_transfer while a proposal is
-    /// active, we reqiore that voing must be called through `iah_registry.is_human_call_lock`.
+    /// active, we require that voing must be called through `iah_registry.is_human_call_lock`.
     /// We check that the caller set enough `lock_duration` for soul transfers.
     /// Arguments:
     /// * `caller`: account ID making a vote (passed by `iah_registry.is_human_call`)
@@ -92,7 +92,7 @@ impl Contract {
         );
         require!(
             locked_until >= env::block_timestamp_ms() + VOTING_DURATION,
-            "account not locked for soult transfer for sufficient amount of time"
+            "account not locked for soul transfer for sufficient amount of time"
         );
         require!(payload.prop_id > 0, "invalid proposal id");
         require!(
