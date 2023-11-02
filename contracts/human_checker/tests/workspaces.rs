@@ -7,6 +7,7 @@ use serde_json::json;
 use human_checker::{RegisterHumanPayload, VotePayload, VOTING_DURATION};
 
 const REGISTER_HUMAN_TOKEN: &str = "register_human_token";
+const MSECOND : u64 = 1000;
 
 struct Suite {
     registry: Contract,
@@ -195,30 +196,39 @@ async fn is_human_call() -> anyhow::Result<()> {
 
     //
     // test1: too short lock duration: should fail
-    let mut payload = VotePayload{prop_id: 10, vote: "wrong_option".to_string()};
-    let r = suite.is_human_call_lock(&john, VOTING_DURATION / 2 *3,  &payload).await?;
+    let mut payload = VotePayload{prop_id: 10, vote: "approve".to_string()};
+    let r = suite.is_human_call_lock(&alice, VOTING_DURATION / 3 *2,  &payload).await?;
     assert!(r.is_failure());
     let failure_str = format!("{:?}",r.failures());
-    assert!(failure_str.contains("sufficient amount of time"));
+    assert!(failure_str.contains("sufficient amount of time"), "{}", failure_str);
 
     //
     // test2: second call, should not change
-    let r = suite.is_human_call_lock(&john, VOTING_DURATION / 2*3,  &payload).await?;
+    let r = suite.is_human_call_lock(&alice, VOTING_DURATION / 3*2,  &payload).await?;
     assert!(r.is_failure());
     let failure_str = format!("{:?}",r.failures());
-    assert!(failure_str.contains("sufficient amount of time"));
+    assert!(failure_str.contains("sufficient amount of time"), "{}", failure_str);
 
     //
     // test3: longer call should be accepted, but should fail on wrong payload (vote option)
-    let r = suite.is_human_call_lock(&john, VOTING_DURATION +100,  &payload).await?;
+    payload.vote = "wrong-wrong".to_string();
+    let r = suite.is_human_call_lock(&alice, VOTING_DURATION +MSECOND,  &payload).await?;
     assert!(r.is_failure());
     let failure_str = format!("{:?}",r.failures());
-    assert!(failure_str.contains("invalid vote: must be either"));
+    assert!(failure_str.contains("invalid vote: must be either"), "{}", failure_str);
 
-    // should work with correct input
+    //
+    // test4: should work with correct input
     payload.vote = "approve".to_string();
-    let r = suite.is_human_call_lock(&john, VOTING_DURATION +100,  &payload).await?;
+    let r = suite.is_human_call_lock(&alice, VOTING_DURATION +MSECOND,  &payload).await?;
     assert!(r.is_success());
+
+    //
+    // test5: should fail with not a human
+    let r = suite.is_human_call_lock(&john, VOTING_DURATION + MSECOND,  &payload).await?;
+    assert!(r.is_failure());
+    let failure_str = format!("{:?}",r.failures());
+    assert!(failure_str.contains("is not a human"), "{}", failure_str);
 
     Ok(())
 }
