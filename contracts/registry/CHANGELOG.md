@@ -21,6 +21,14 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Features
 
+### Breaking Changes
+
+### Bug Fixes
+
+## v1.7.0 (2023-11-02)
+
+### Features
+
 - Added `authorized_flaggers` query.
 - Added `admin_add_authorized_flagger` method.
 - added `is_human_call_lock` method: allows dapp to lock an account for soul transfers and calls a recipient contract when the predecessor has a proof of personhood.
@@ -29,8 +37,6 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 - New contract field: `transfer_lock`.
 - `sbt_soul_transfer` will fail if an account has an active transfer lock.
-
-### Bug Fixes
 
 ## v1.6.0 (2023-10-08)
 
