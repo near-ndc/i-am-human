@@ -29,10 +29,10 @@ jobs:
         if: env.GIT_DIFF
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: 1.69.0
+          toolchain: 1.73.0
           override: true
           components: rustfmt, clippy
-    
+
       - name: Install wasm32 toolchain
         if: env.GIT_DIFF
         run: rustup target add wasm32-unknown-unknown
@@ -40,6 +40,10 @@ jobs:
         if: env.GIT_DIFF
         working-directory: ./contracts
         run: make build
+      - name: Create near dirs
+        if: env.GIT_DIFF
+        working-directory: ./contracts
+        run: make create-near-dirs
       - name: Clippy
         if: env.GIT_DIFF
         working-directory: ./contracts

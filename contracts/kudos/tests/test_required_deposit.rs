@@ -10,9 +10,9 @@ use test_util::{deploy_contract, gen_user_account, get_block_timestamp, transfer
 
 #[tokio::test]
 async fn test_required_deposit() -> anyhow::Result<()> {
-    let worker_mainnet = ::workspaces::mainnet_archival().await?;
+    let worker_mainnet = ::near_workspaces::mainnet_archival().await?;
     let near_social_id = "social.near".parse()?;
-    let worker = ::workspaces::sandbox().await?;
+    let worker = ::near_workspaces::sandbox().await?;
 
     let admin_account = worker.root_account()?;
 

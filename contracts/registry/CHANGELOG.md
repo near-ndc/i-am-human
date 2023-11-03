@@ -25,6 +25,19 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Bug Fixes
 
+## v1.7.0 (2023-11-02)
+
+### Features
+
+- Added `authorized_flaggers` query.
+- Added `admin_add_authorized_flagger` method.
+- added `is_human_call_lock` method: allows dapp to lock an account for soul transfers and calls a recipient contract when the predecessor has a proof of personhood.
+
+### Breaking Changes
+
+- New contract field: `transfer_lock`.
+- `sbt_soul_transfer` will fail if an account has an active transfer lock.
+
 ## v1.6.0 (2023-10-08)
 
 ### Features
@@ -45,7 +58,7 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Breaking Changes
 
-- Recommended `cost.mint_deposit` is decreased by 0.001 miliNEAR (in total).
+- Recommended `cost.mint_deposit` is decreased by 0.001 milliNEAR (in total).
 - `soul_transfer` conflict resolution is updated to panic.
 - Default `registry.sbt_soul_transfer` limit is decreased from 25 to 20.
 

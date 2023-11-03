@@ -1,9 +1,9 @@
 use anyhow::Ok;
 use near_sdk::serde_json::json;
 use near_units::parse_near;
+use near_workspaces::{network::Sandbox, Account, AccountId, Contract, Worker};
 use registry::storage::AccountFlag;
 use sbt::{ClassSet, TokenMetadata};
-use workspaces::{network::Sandbox, Account, AccountId, Contract, Worker};
 
 const MAINNET_REGISTRY_ID: &str = "registry.i-am-human.near";
 const BLOCK_HEIGHT: u64 = 92042705;
@@ -108,7 +108,7 @@ async fn init(
     worker: &Worker<Sandbox>,
 ) -> anyhow::Result<(Account, Account, Account, Contract, Account, Account)> {
     // import the contract from mainnet
-    let worker_mainnet = workspaces::mainnet().await?;
+    let worker_mainnet = near_workspaces::mainnet().await?;
     let contract_id: AccountId = MAINNET_REGISTRY_ID.parse()?;
     let registry_contract = worker
         .import_contract(&contract_id, &worker_mainnet)
@@ -208,7 +208,7 @@ async fn init(
 #[ignore = "this test is not valid after the migration"]
 #[tokio::test]
 async fn migration_mainnet() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (registry, iah_issuer, og_issuer, old_registry_contract, alice, bob) =
         init(&worker).await?;
 
@@ -287,8 +287,8 @@ async fn migration_mainnet() -> anyhow::Result<()> {
 #[tokio::test]
 async fn migration_mainnet_real_data() -> anyhow::Result<()> {
     // import the registry contract from mainnet with data
-    let worker = workspaces::sandbox().await?;
-    let worker_mainnet = workspaces::mainnet_archival().await?;
+    let worker = near_workspaces::sandbox().await?;
+    let worker_mainnet = near_workspaces::mainnet_archival().await?;
     let contract_id: AccountId = MAINNET_REGISTRY_ID.parse()?;
     let old_registry_contract = worker
         .import_contract(&contract_id, &worker_mainnet)

@@ -3,17 +3,18 @@ use std::str::FromStr;
 use chrono::Utc;
 use near_crypto::{SecretKey, Signature};
 use near_sdk::ONE_NEAR;
+use near_units::parse_near;
+use near_workspaces::{types::Balance, Account, AccountId, Contract, DevNetwork, Worker};
 use serde_json::json;
 use test_util::{
     deploy_contract, gen_user_account,
     oracle::{ExternalAccountId, SignedClaim},
     utils::{generate_keys, sign_bytes},
 };
-use workspaces::{types::Balance, Account, AccountId, Contract, DevNetwork, Worker};
 
 use near_sdk::borsh::BorshSerialize;
 use oracle_sbt::{Claim, MINT_TOTAL_COST};
-use sbt::ContractMetadata;
+use sbt::{ClassMetadata, ContractMetadata};
 
 const AUTHORITY_KEY: &str = "zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E=";
 const CLAIM_TTL: u64 = 3600 * 24 * 365 * 100;
@@ -60,7 +61,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<(Contract, Acc
 
 #[tokio::test]
 async fn check_arithmetic_exception_dev() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (oracle, _, alice) = init(&worker).await?;
     check_arithmetic_exception(oracle, alice).await?;
 
@@ -70,8 +71,8 @@ async fn check_arithmetic_exception_dev() -> anyhow::Result<()> {
 #[ignore]
 #[tokio::test]
 async fn check_arithmetic_exception_mainnet() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
-    let worker_mainnet = workspaces::mainnet_archival().await?;
+    let worker = near_workspaces::sandbox().await?;
+    let worker_mainnet = near_workspaces::mainnet_archival().await?;
 
     let oracle_id: AccountId = "fractal.i-am-human.near".parse()?;
     const BLOCK_HEIGHT: u64 = 97933983; // this is around when the claims start to fail in the mainnet
@@ -117,7 +118,7 @@ async fn check_arithmetic_exception_mainnet() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_mint_sbt() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (sec_key, pub_key) = generate_keys();
     let authority = gen_user_account(&worker, "admin.test.near").await?;
     let iah_issuer = gen_user_account(&worker, "iah_issuer.test.near").await?;
@@ -340,4 +341,91 @@ async fn try_sbt_mint(
             }
         }
     }
+}
+
+#[tokio::test]
+async fn migration_mainnet() -> anyhow::Result<()> {
+    let worker_sandbox = near_workspaces::sandbox().await?;
+    let worker_mainnet = near_workspaces::mainnet().await?;
+    let oracle_address: AccountId = "fractal.i-am-human.near".parse()?;
+    let oracle = worker_sandbox
+        .import_contract(&oracle_address, &worker_mainnet)
+        .initial_balance(parse_near!("10000000 N"))
+        .transact()
+        .await?;
+
+    let admin = worker_sandbox.dev_create_account().await?;
+    let registry = worker_sandbox.dev_create_account().await?;
+
+    // init the contract
+    let res = oracle
+        .call("new")
+        .args_json(json!({
+            "authority": &String::from(AUTHORITY_KEY),
+            "admin": admin.id(),
+            "registry": registry.id(),
+            "claim_ttl": CLAIM_TTL,
+            "metadata": ContractMetadata{spec: "sbt".to_owned(), name: "oracle".to_owned(), symbol: "iah".to_owned(), icon: None, base_uri: None, reference: None, reference_hash: None},
+        }))
+        .max_gas()
+        .transact()
+        .await?;
+
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
+
+    // deploy the new contract
+    let res = oracle
+        .as_account()
+        .deploy(include_bytes!("../../res/oracle_sbt.wasm"))
+        .await?;
+
+    assert!(res.is_success());
+
+    let new_oracle = res.into_result()?;
+
+    let class_metadata_1 = ClassMetadata {
+        name: "test_1".to_string(),
+        symbol: None,
+        icon: None,
+        reference: None,
+        reference_hash: None,
+    };
+    let class_metadata_2 = ClassMetadata {
+        name: "test_2".to_string(),
+        symbol: None,
+        icon: None,
+        reference: None,
+        reference_hash: None,
+    };
+
+    // call the migrate method
+    let res = new_oracle
+        .call("migrate")
+        .args_json(json!({"class_metadata": [[1, class_metadata_1], [2, class_metadata_2]]}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
+
+    let class_metdata: Option<ClassMetadata> = new_oracle
+        .call("class_metadata")
+        .args_json(json!({"class": 1}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+
+    assert_eq!(class_metdata, Some(class_metadata_1));
+
+    let class_metdata: Option<ClassMetadata> = new_oracle
+        .call("class_metadata")
+        .args_json(json!({"class": 2}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+
+    assert_eq!(class_metdata, Some(class_metadata_2));
+
+    Ok(())
 }

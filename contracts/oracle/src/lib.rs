@@ -1,5 +1,5 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LazyOption, UnorderedSet};
+use near_sdk::collections::{LazyOption, LookupMap, UnorderedSet};
 use near_sdk::serde::Serialize;
 use near_sdk::{
     env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
@@ -20,6 +20,7 @@ pub use crate::storage::*;
 pub use crate::util::*;
 
 mod errors;
+mod migrate;
 mod storage;
 mod util;
 
@@ -52,6 +53,9 @@ pub struct Contract {
 
     /// used for backend key rotation
     pub admins: UnorderedSet<AccountId>,
+
+    /// class metadata
+    pub class_metadata: LookupMap<ClassId, ClassMetadata>,
 }
 
 // Implement the contract structure
@@ -85,6 +89,7 @@ impl Contract {
             authority_pubkey: pubkey_from_b64(authority),
             used_identities: UnorderedSet::new(StorageKey::UsedIdentities),
             admins,
+            class_metadata: LookupMap::new(StorageKey::ClassMetadata),
         }
     }
 
@@ -104,6 +109,11 @@ impl Contract {
     pub fn is_used_identity(&self, external_id: String) -> bool {
         let normalised_id = normalize_external_id(external_id).expect("failed to normalize id");
         self.used_identities.contains(&normalised_id)
+    }
+
+    /// Returns `ClassMetadata` by class. Returns none if the class is not found.
+    pub fn class_metadata(&self, class: ClassId) -> Option<ClassMetadata> {
+        self.class_metadata.get(&class)
     }
 
     // all SBT queries should be done through registry
@@ -307,6 +317,22 @@ impl Contract {
         );
     }
 
+    /// Allows admin to update class metadata.
+    /// Panics if not admin or the class is not found (Currently oracle only supports classes: [1,2])
+    #[handle_result]
+    pub fn set_class_metadata(
+        &mut self,
+        class: ClassId,
+        metadata: ClassMetadata,
+    ) -> Result<(), CtrError> {
+        self.assert_admin();
+        if class != 1 && class != 2 {
+            return Err(CtrError::BadRequest("class not found".to_string()));
+        }
+        self.class_metadata.insert(&class, &metadata);
+        Ok(())
+    }
+
     // TODO:
     // - fn sbt_renew
 }
@@ -335,6 +361,7 @@ mod checks;
 pub mod tests {
     use crate::*;
     use ed25519_dalek::Keypair;
+    use near_sdk::test_utils::test_env::alice;
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::{testing_env, VMContext};
 
@@ -367,6 +394,16 @@ pub mod tests {
 
     fn start() -> u64 {
         11 * SECOND
+    }
+
+    fn class_metadata() -> ClassMetadata {
+        ClassMetadata {
+            name: "test_1".to_string(),
+            symbol: None,
+            icon: None,
+            reference: None,
+            reference_hash: None,
+        }
     }
 
     /// SBT claim ttl in seconds
@@ -609,5 +646,32 @@ pub mod tests {
         let res = ctr.sbt_mint(c_str, sig, None);
         assert!(res.is_err());
         assert_bad_request(res, "IAH SBT cannot be mint during the elections period");
+    }
+
+    #[test]
+    #[should_panic(expected = "not an admin")]
+    fn set_class_metadata_not_admin() {
+        let (_, mut ctr, _) = setup(&alice(), &alice());
+        let _ = ctr.set_class_metadata(1, class_metadata());
+    }
+
+    #[test]
+    fn set_class_metadata_wrong_class() {
+        let (_, mut ctr, _) = setup(&alice(), &acc_admin());
+        match ctr.set_class_metadata(3, class_metadata()) {
+            Err(CtrError::BadRequest(_)) => (),
+            Err(error) => panic!("expected BadRequest, got: {:?}", error),
+            Ok(_) => panic!("expected BadRequest, got: Ok"),
+        }
+    }
+
+    #[test]
+    fn set_class_metadata() {
+        let (_, mut ctr, _) = setup(&alice(), &acc_admin());
+        match ctr.set_class_metadata(1, class_metadata()) {
+            Ok(_) => (),
+            Err(error) => panic!("expected Ok, got: {:?}", error),
+        }
+        assert_eq!(ctr.class_metadata(1).unwrap(), class_metadata());
     }
 }

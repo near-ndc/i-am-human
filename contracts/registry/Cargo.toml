@@ -1,6 +1,6 @@
 [package]
 name = "registry"
-version = "1.6.0"
+version = "1.7.0"
 authors = ["Robert Zaremba 'https://zaremba.ch/'"]
 edition = { workspace = true }
 repository = { workspace = true }
@@ -20,7 +20,7 @@ cost = { path = "../cost" }
 pretty_assertions.workspace = true
 anyhow.workspace = true
 tokio.workspace = true
-workspaces.workspace = true
+near-workspaces.workspace = true
 near-primitives.workspace = true
 near-units.workspace = true
 tracing.workspace = true

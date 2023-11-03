@@ -18,7 +18,7 @@ cid.workspace = true
 
 [dev-dependencies]
 assert_matches.workspace = true
-workspaces.workspace = true
+near-workspaces.workspace = true
 near-sandbox-utils.workspace = true
 near-units.workspace = true
 tokio.workspace = true

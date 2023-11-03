@@ -1,12 +1,13 @@
 use anyhow::Ok;
 use near_units::parse_near;
+use near_workspaces::{network::Sandbox, result::ExecutionFinalResult, Account, Contract, Worker};
 use sbt::{SBTs, TokenMetadata};
 use serde_json::json;
-use workspaces::{network::Sandbox, result::ExecutionFinalResult, Account, Contract, Worker};
 
-use human_checker::RegisterHumanPayload;
+use human_checker::{RegisterHumanPayload, VotePayload, VOTING_DURATION};
 
 const REGISTER_HUMAN_TOKEN: &str = "register_human_token";
+const MSECOND : u64 = 1000;
 
 struct Suite {
     registry: Contract,
@@ -28,6 +29,23 @@ impl Suite {
         println!(">>> is_human_call logs {:?}\n", res.logs());
         Ok(res)
     }
+
+    pub async fn is_human_call_lock(
+        &self,
+        caller: &Account,
+        lock_duration: u64,
+        payload: &VotePayload,
+    ) -> anyhow::Result<ExecutionFinalResult> {
+        let res = caller
+        .call(self.registry.id(), "is_human_call_lock")
+        .args_json(json!({"ctr": self.human_checker.id(), "function": "vote", "payload": serde_json::to_string(payload).unwrap(), "lock_duration": lock_duration, "with_proof": false}))
+        .max_gas()
+        .transact()
+        .await?;
+        println!(">>> is_human_call_lock logs {:?}\n", res.logs());
+        Ok(res)
+    }
+
 
     pub async fn query_sbts(&self, user: &Account) -> anyhow::Result<Option<SBTs>> {
         // check the key does not exists in human checker
@@ -132,7 +150,7 @@ async fn init(
 
 #[tokio::test]
 async fn is_human_call() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (registry, human_checker, alice, bob, john, issuer) = init(&worker).await?;
     let issuer_id = near_sdk::AccountId::try_from(issuer.id().as_str().to_owned())?;
 
@@ -170,6 +188,47 @@ async fn is_human_call() -> anyhow::Result<()> {
 
     tokens = suite.query_sbts(&john).await?;
     assert_eq!(tokens, None);
+
+
+    //
+    // Test Vote with lock duration
+    //
+
+    //
+    // test1: too short lock duration: should fail
+    let mut payload = VotePayload{prop_id: 10, vote: "approve".to_string()};
+    let r = suite.is_human_call_lock(&alice, VOTING_DURATION / 3 *2,  &payload).await?;
+    assert!(r.is_failure());
+    let failure_str = format!("{:?}",r.failures());
+    assert!(failure_str.contains("sufficient amount of time"), "{}", failure_str);
+
+    //
+    // test2: second call, should not change
+    let r = suite.is_human_call_lock(&alice, VOTING_DURATION / 3*2,  &payload).await?;
+    assert!(r.is_failure());
+    let failure_str = format!("{:?}",r.failures());
+    assert!(failure_str.contains("sufficient amount of time"), "{}", failure_str);
+
+    //
+    // test3: longer call should be accepted, but should fail on wrong payload (vote option)
+    payload.vote = "wrong-wrong".to_string();
+    let r = suite.is_human_call_lock(&alice, VOTING_DURATION +MSECOND,  &payload).await?;
+    assert!(r.is_failure());
+    let failure_str = format!("{:?}",r.failures());
+    assert!(failure_str.contains("invalid vote: must be either"), "{}", failure_str);
+
+    //
+    // test4: should work with correct input
+    payload.vote = "approve".to_string();
+    let r = suite.is_human_call_lock(&alice, VOTING_DURATION +MSECOND,  &payload).await?;
+    assert!(r.is_success());
+
+    //
+    // test5: should fail with not a human
+    let r = suite.is_human_call_lock(&john, VOTING_DURATION + MSECOND,  &payload).await?;
+    assert!(r.is_failure());
+    let failure_str = format!("{:?}",r.failures());
+    assert!(failure_str.contains("is not a human"), "{}", failure_str);
 
     Ok(())
 }
