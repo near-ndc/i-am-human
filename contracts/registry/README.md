@@ -10,12 +10,19 @@ This implementation requires an admin account (could be a DAO) to add an issuer 
 
 ## SBT mint
 
-The minting process is a procedure where we assign a new token to the provided receiver and keep track of it in the registry. The `sbt_mint` method must be called by a issuer that is opted-in. Additional:
+The minting process is a procedure where we assign a new token to the provided receiver and keep track of it in the registry. The `sbt_mint` method must be called by a issuer that is opted-in. Additionally:
 
 - each `TokenMetadata` provided must have a non zero `class`,
 - enough `Near` must be attached to cover the registry storage cost must be provided.
 
 The method will emit the [`Mint`](https://github.com/alpha-fi/i-am-human/blob/master/contracts/sbt/src/events.rs#L69) event when successful. There might be a case when the token vector provided is too long, and the gas is not enough to cover the minting process, then it will panic with `out of gas`.
+
+### Issuers
+
+SBT minting is done by an external entity, usually DAO (but can be any contract or account). In the current implementation, only whitelisted issuers are authorized to mint tokens until we will have more established governance and the protocol will get enough stability.
+The diagram below outlines different entities involved in minting process. Issuers always mints tokens under his own namespace. Moreover, when minting, an issuer must specify non zero `class` for every token (this is set in `TokenMetadata`). A recipient can have at most one SBT of the same class.
+
+![Issuers and minting](./issuers.jpg)
 
 ## Additional Queries
 
