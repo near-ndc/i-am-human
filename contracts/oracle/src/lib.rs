@@ -1,3 +1,5 @@
+use core::num;
+
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, UnorderedSet};
 use near_sdk::serde::Serialize;
@@ -333,6 +335,68 @@ impl Contract {
         Ok(())
     }
 
+    #[payable]
+    #[handle_result]
+    pub fn admin_mint_kyc(
+        &mut self,
+        mint_data: Vec<(AccountId, u64)>,
+        memo: Option<String>,
+    ) -> Result<Promise, CtrError> {
+        self.assert_admin();
+
+        let num_tokens = mint_data.len();
+        let storage_deposit = mint_deposit(num_tokens);
+        require!(
+            env::attached_deposit() >= storage_deposit,
+            format!(
+                "Requires attached deposit at least {} yoctoNEAR",
+                storage_deposit
+            )
+        );
+
+        let now: u64 = env::block_timestamp_ms();
+        let mut tokens_metadata: Vec<(AccountId, Vec<TokenMetadata>)> = Vec::new();
+        for (a, e) in mint_data {
+            tokens_metadata.push((
+                a,
+                vec![TokenMetadata {
+                    class: CLASS_KYC_SBT,
+                    issued_at: Some(now),
+                    expires_at: Some(e),
+                    reference: None,
+                    reference_hash: None,
+                }],
+            ));
+        }
+
+        if let Some(memo) = memo {
+            env::log_str(&format!("SBT mint memo: {}", memo));
+        }
+
+        let result = ext_registry::ext(self.registry.clone())
+            .with_attached_deposit(storage_deposit)
+            .with_static_gas(calculate_mint_gas(num_tokens))
+            .sbt_mint(tokens_metadata)
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(Gas::ONE_TERA * 3)
+                    .admin_mint_kyc_callback(),
+            );
+
+        Ok(result)
+    }
+
+    #[private]
+    pub fn admin_mint_kyc_callback(
+        &mut self,
+        #[callback_result] last_result: Result<Vec<TokenId>, PromiseError>,
+    ) -> CallbackResult<Vec<TokenId>, &str> {
+        match last_result {
+            Ok(v) => CallbackResult::Ok(v),
+            Err(_) => CallbackResult::Err("registry.sbt_mint failed"),
+        }
+    }
+
     // TODO:
     // - fn sbt_renew
 }
@@ -361,7 +425,7 @@ mod checks;
 pub mod tests {
     use crate::*;
     use ed25519_dalek::Keypair;
-    use near_sdk::test_utils::test_env::alice;
+    use near_sdk::test_utils::test_env::{alice, bob};
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::{testing_env, VMContext};
 
@@ -673,5 +737,27 @@ pub mod tests {
             Err(error) => panic!("expected Ok, got: {:?}", error),
         }
         assert_eq!(ctr.class_metadata(1).unwrap(), class_metadata());
+    }
+
+    #[test]
+    #[should_panic(expected = "not an admin")]
+    fn admin_mint_kyc_not_admin() {
+        let (_, mut ctr, _) = setup(&alice(), &alice());
+        let _ = ctr.admin_mint_kyc(vec![(bob(), 100)], None);
+    }
+
+    #[test]
+    #[should_panic(expected = "Requires attached deposit at least")]
+    fn admin_mint_kyc_wrong_deposit() {
+        let (mut ctx, mut ctr, _) = setup(&alice(), &acc_admin());
+        ctx.attached_deposit = 0;
+        testing_env!(ctx);
+        let _ = ctr.admin_mint_kyc(vec![(bob(), 100), (alice(), 100)], None);
+    }
+
+    #[test]
+    fn admin_mint_kyc() {
+        let (_, mut ctr, _) = setup(&alice(), &acc_admin());
+        let _ = ctr.admin_mint_kyc(vec![(bob(), 100), (alice(), 100)], None);
     }
 }
