@@ -354,7 +354,7 @@ impl Contract {
 
         let now: u64 = env::block_timestamp_ms();
         let mut tokens_metadata: Vec<(AccountId, Vec<TokenMetadata>)> = Vec::new();
-        for (a, e) in mint_data {
+        for (acc, end) in mint_data {
             tokens_metadata.push((
                 a,
                 vec![TokenMetadata {
