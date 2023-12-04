@@ -333,13 +333,15 @@ impl Contract {
         Ok(())
     }
 
+    /// Alows admin to mint KYC soul bound tokens to the provided list of accounts
+    /// with its respecitve expires_at timestmap.
+    /// Panics if not admin or the attached deposit is insufficient.
     #[payable]
-    #[handle_result]
     pub fn admin_mint_kyc(
         &mut self,
         mint_data: Vec<(AccountId, u64)>,
         memo: Option<String>,
-    ) -> Result<Promise, CtrError> {
+    ) -> Promise {
         self.assert_admin();
 
         let num_tokens = mint_data.len();
@@ -353,14 +355,15 @@ impl Contract {
         );
 
         let now: u64 = env::block_timestamp_ms();
-        let mut tokens_metadata: Vec<(AccountId, Vec<TokenMetadata>)> = Vec::new();
+        let mut tokens_metadata: Vec<(AccountId, Vec<TokenMetadata>)> =
+            Vec::with_capacity(num_tokens);
         for (acc, end) in mint_data {
             tokens_metadata.push((
-                a,
+                acc,
                 vec![TokenMetadata {
                     class: CLASS_KYC_SBT,
                     issued_at: Some(now),
-                    expires_at: Some(e),
+                    expires_at: Some(end),
                     reference: None,
                     reference_hash: None,
                 }],
@@ -371,28 +374,10 @@ impl Contract {
             env::log_str(&format!("SBT mint memo: {}", memo));
         }
 
-        let result = ext_registry::ext(self.registry.clone())
+        ext_registry::ext(self.registry.clone())
             .with_attached_deposit(storage_deposit)
             .with_static_gas(calculate_mint_gas(num_tokens))
             .sbt_mint(tokens_metadata)
-            .then(
-                Self::ext(env::current_account_id())
-                    .with_static_gas(Gas::ONE_TERA * 3)
-                    .admin_mint_kyc_callback(),
-            );
-
-        Ok(result)
-    }
-
-    #[private]
-    pub fn admin_mint_kyc_callback(
-        &mut self,
-        #[callback_result] last_result: Result<Vec<TokenId>, PromiseError>,
-    ) -> CallbackResult<Vec<TokenId>, &str> {
-        match last_result {
-            Ok(v) => CallbackResult::Ok(v),
-            Err(_) => CallbackResult::Err("registry.sbt_mint failed"),
-        }
     }
 
     // TODO:
