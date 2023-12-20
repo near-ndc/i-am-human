@@ -314,6 +314,11 @@ impl Contract {
         self.admins.insert(&admin);
     }
 
+    pub fn remove_admin(&mut self, admin: AccountId) {
+        self.assert_admin();
+        self.admins.remove(&admin);
+    }
+
     #[inline]
     fn assert_admin(&self) {
         require!(
@@ -522,6 +527,9 @@ pub mod tests {
         let (_, mut ctr, _) = setup(&acc_claimer(), &acc_admin());
         ctr.add_admin(acc_u1());
         assert_eq!(ctr.get_admins(), vec![acc_admin(), acc_u1()]);
+
+        ctr.remove_admin(acc_admin());
+        assert_eq!(ctr.get_admins(), vec![acc_u1()]);
     }
 
     #[test]
