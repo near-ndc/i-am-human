@@ -95,7 +95,14 @@ impl Contract {
 
     /**********
      * QUERIES
+     *
+     * Note: all SBT queries should be done through registry
      **********/
+
+    /// Returns list of admins
+    pub fn get_admins(&self) -> Vec<AccountId> {
+        self.admins.iter().collect()
+    }
 
     #[inline]
     pub fn required_sbt_mint_deposit(is_verified_kyc: bool) -> Balance {
@@ -115,8 +122,6 @@ impl Contract {
     pub fn class_metadata(&self, class: ClassId) -> Option<ClassMetadata> {
         self.class_metadata.get(&class)
     }
-
-    // all SBT queries should be done through registry
 
     /**********
      * FUNCTIONS
@@ -511,6 +516,13 @@ pub mod tests {
         let _ = ctr.sbt_mint(c_str.clone(), sig.clone(), None);
     }
     */
+
+    #[test]
+    fn add_admin() {
+        let (_, mut ctr, _) = setup(&acc_claimer(), &acc_admin());
+        ctr.add_admin(acc_u1());
+        assert_eq!(ctr.get_admins(), vec![acc_admin(), acc_u1()]);
+    }
 
     #[test]
     #[should_panic(
