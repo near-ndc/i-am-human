@@ -343,26 +343,33 @@ impl Contract {
         Ok(())
     }
 
-    /// Alows admin to mint KYC soul bound tokens to the provided list of accounts
-    /// with its respecitve expires_at timestmap.
-    /// Panics if not admin or the attached deposit is insufficient.
+    /// Alows admin to mint SBTs with a of the `class_id` to the provided list of pairs:
+    /// `(recipient_account, expire_timestamp_ms)`.
+    /// Panics if not called by an admin or the attached deposit is insufficient.
     #[payable]
-    pub fn admin_mint_kyc(
+    pub fn admin_mint(
         &mut self,
         mint_data: Vec<(AccountId, u64)>,
+        class: ClassId,
         memo: Option<String>,
     ) -> Promise {
         self.assert_admin();
 
         let num_tokens = mint_data.len();
-        let storage_deposit = mint_deposit(num_tokens);
+        let deposit = env::attached_deposit();
+        let required_deposit = mint_deposit(num_tokens);
         require!(
-            env::attached_deposit() >= storage_deposit,
-            format!(
-                "Requires attached deposit at least {} yoctoNEAR",
-                storage_deposit
-            )
+            deposit >= required_deposit,
+            format!("Requires min {}yoctoNEAR storage deposit", required_deposit)
         );
+        require!(
+            class == CLASS_FV_SBT || class == CLASS_KYC_SBT,
+            "wrong request, class must be either 1 (FV) or 2 (KYC)"
+        );
+
+        if deposit > required_deposit {
+            Promise::new(env::predecessor_account_id()).transfer(deposit - required_deposit);
+        }
 
         let now: u64 = env::block_timestamp_ms();
         let mut tokens_metadata: Vec<(AccountId, Vec<TokenMetadata>)> =
@@ -371,7 +378,7 @@ impl Contract {
             tokens_metadata.push((
                 acc,
                 vec![TokenMetadata {
-                    class: CLASS_KYC_SBT,
+                    class,
                     issued_at: Some(now),
                     expires_at: Some(end),
                     reference: None,
@@ -385,7 +392,7 @@ impl Contract {
         }
 
         ext_registry::ext(self.registry.clone())
-            .with_attached_deposit(storage_deposit)
+            .with_attached_deposit(required_deposit)
             .with_static_gas(calculate_mint_gas(num_tokens))
             .sbt_mint(tokens_metadata)
     }
@@ -744,23 +751,24 @@ pub mod tests {
 
     #[test]
     #[should_panic(expected = "not an admin")]
-    fn admin_mint_kyc_not_admin() {
+    fn admin_mint_not_admin() {
         let (_, mut ctr, _) = setup(&alice(), &alice());
-        let _ = ctr.admin_mint_kyc(vec![(bob(), 100)], None);
+        let _ = ctr.admin_mint(vec![(bob(), 100)], CLASS_FV_SBT, None);
     }
 
     #[test]
-    #[should_panic(expected = "Requires attached deposit at least")]
-    fn admin_mint_kyc_wrong_deposit() {
+    #[should_panic(expected = "Requires min")]
+    fn admin_mint_wrong_deposit() {
         let (mut ctx, mut ctr, _) = setup(&alice(), &acc_admin());
         ctx.attached_deposit = 0;
         testing_env!(ctx);
-        let _ = ctr.admin_mint_kyc(vec![(bob(), 100), (alice(), 100)], None);
+        let _ = ctr.admin_mint(vec![(bob(), 100), (alice(), 100)], CLASS_FV_SBT, None);
     }
 
     #[test]
-    fn admin_mint_kyc() {
+    fn admin_mint() {
         let (_, mut ctr, _) = setup(&alice(), &acc_admin());
-        let _ = ctr.admin_mint_kyc(vec![(bob(), 100), (alice(), 100)], None);
+        let _ = ctr.admin_mint(vec![(bob(), 100), (alice(), 100)], CLASS_KYC_SBT, None);
+        let _ = ctr.admin_mint(vec![(bob(), 100), (alice(), 100)], CLASS_FV_SBT, None);
     }
 }

@@ -13,7 +13,7 @@ use test_util::{
 };
 
 use near_sdk::borsh::BorshSerialize;
-use oracle_sbt::{Claim, MINT_TOTAL_COST};
+use oracle_sbt::{Claim, MINT_TOTAL_COST, CLASS_KYC_SBT};
 use sbt::{ClassMetadata, ContractMetadata};
 
 const AUTHORITY_KEY: &str = "zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E=";
@@ -226,7 +226,7 @@ async fn test_mint_sbt() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn test_admin_mint_kyc() -> anyhow::Result<()> {
+async fn test_admin_mint() -> anyhow::Result<()> {
     let worker = near_workspaces::sandbox().await?;
     let (oracle, registry, admin, alice, bob) = init(&worker).await?;
 
@@ -239,8 +239,8 @@ async fn test_admin_mint_kyc() -> anyhow::Result<()> {
     let mint_data = vec![(alice.id(), expires_at), (bob.id(), expires_at)];
 
     let res = admin
-        .call(oracle.id(), "admin_mint_kyc")
-        .args_json(json!({"mint_data":mint_data, "memo": "kyc_test"}))
+        .call(oracle.id(), "admin_mint")
+        .args_json(json!({"mint_data":mint_data, "class": CLASS_KYC_SBT, "memo": "kyc_test"}))
         .deposit(2 * MINT_TOTAL_COST)
         .max_gas()
         .transact()
@@ -249,7 +249,7 @@ async fn test_admin_mint_kyc() -> anyhow::Result<()> {
 
     let res: u64 = admin
         .call(registry.id(), "sbt_supply_by_class")
-        .args_json(json!({"issuer":oracle.id(), "class": 2}))
+        .args_json(json!({"issuer":oracle.id(), "class": CLASS_KYC_SBT}))
         .max_gas()
         .transact()
         .await?
