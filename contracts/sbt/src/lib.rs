@@ -49,6 +49,8 @@ pub type ClassSet = Vec<(AccountId, Vec<ClassId>)>;
 pub trait SBTContract {
     /// returns contract metadata
     fn sbt_metadata(&self) -> ContractMetadata;
+    /// returns sbt class metadata, or None if class is not found.
+    fn sbt_class_metadata(&self, class: ClassId) -> Option<ClassMetadata>;
 }
 
 pub trait SBTRegistry {

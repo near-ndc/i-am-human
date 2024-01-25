@@ -118,11 +118,6 @@ impl Contract {
         self.used_identities.contains(&normalised_id)
     }
 
-    /// Returns `ClassMetadata` by class. Returns none if the class is not found.
-    pub fn class_metadata(&self, class: ClassId) -> Option<ClassMetadata> {
-        self.class_metadata.get(&class)
-    }
-
     /**********
      * FUNCTIONS
      **********/
@@ -406,7 +401,12 @@ impl SBTContract for Contract {
     fn sbt_metadata(&self) -> ContractMetadata {
         self.metadata.get().unwrap()
     }
+    /// Returns `ClassMetadata` by class. Returns none if the class is not found.
+    fn sbt_class_metadata(&self, class: ClassId) -> Option<ClassMetadata> {
+        self.class_metadata.get(&class)
+    }
 }
+
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(
@@ -746,7 +746,7 @@ pub mod tests {
             Ok(_) => (),
             Err(error) => panic!("expected Ok, got: {:?}", error),
         }
-        assert_eq!(ctr.class_metadata(1).unwrap(), class_metadata());
+        assert_eq!(ctr.sbt_class_metadata(1).unwrap(), class_metadata());
     }
 
     #[test]

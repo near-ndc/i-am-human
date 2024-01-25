@@ -123,3 +123,23 @@ impl Contract {
         );
     }
 }
+
+#[near_bindgen]
+impl SBTContract for Contract {
+    fn sbt_metadata(&self) -> ContractMetadata {
+        self.metadata.get().unwrap()
+    }
+
+    /// Returns `ClassMetadata` by class. Dummy implementation for demo purposes.
+    fn sbt_class_metadata(&self, class: ClassId) -> Option<ClassMetadata> {
+        Some({
+            ClassMetadata {
+                name: format!("class-{}", class),
+                symbol: None,
+                icon: None,
+                reference: None,
+                reference_hash: None,
+            }
+        })
+    }
+}

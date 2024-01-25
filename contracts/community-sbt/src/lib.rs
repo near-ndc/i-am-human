@@ -51,11 +51,6 @@ impl Contract {
      * QUERIES
      **********/
 
-    /// Returns `ClassMetadata` by class. Returns none if the class is not enabled.
-    pub fn class_metadata(&self, class: ClassId) -> Option<ClassMetadata> {
-        self.class_metadata.get(&class)
-    }
-
     /// Returns minting authorities by class. Returns none if the class is not enabled.
     pub fn class_minter(&self, class: ClassId) -> Option<ClassMinters> {
         self.classes.get(&class)
@@ -286,7 +281,7 @@ impl Contract {
 
     /// Allows admin to update class metadata.
     /// Panics if class is not enabled.
-    pub fn set_class_metadata(&mut self, class: ClassId, metadata: ClassMetadata) {
+    pub fn set_sbt_class_metadata(&mut self, class: ClassId, metadata: ClassMetadata) {
         self.assert_admin();
         require!(class < self.next_class, "class not found");
         self.class_metadata.insert(&class, &metadata);
@@ -371,7 +366,10 @@ impl Contract {
 
     fn assert_admin(&self) {
         if let Some(admins) = self.admins.get() {
-            require!(admins.contains(&env::predecessor_account_id()), "not an admin");
+            require!(
+                admins.contains(&env::predecessor_account_id()),
+                "not an admin"
+            );
         } else {
             env::panic_str("admins list not found");
         }
@@ -417,6 +415,11 @@ impl SBTContract for Contract {
     fn sbt_metadata(&self) -> ContractMetadata {
         self.metadata.get().unwrap()
     }
+
+    /// Returns `ClassMetadata` by class. Returns none if the class is not enabled.
+    fn sbt_class_metadata(&self, class: ClassId) -> Option<ClassMetadata> {
+        self.class_metadata.get(&class)
+    }
 }
 
 #[cfg(test)]
@@ -429,7 +432,7 @@ mod tests {
         },
         testing_env, AccountId, Balance, VMContext,
     };
-    use sbt::{ClassId, ClassMetadata, ContractMetadata, TokenMetadata};
+    use sbt::{ClassId, ClassMetadata, ContractMetadata, SBTContract, TokenMetadata};
 
     use crate::{ClassMinters, Contract, MintError, MIN_TTL};
 
@@ -554,10 +557,10 @@ mod tests {
     fn authorize() {
         let (_, mut ctr) = setup(&admin(), None);
 
-        assert_eq!(ctr.class_metadata(1), Some(class_metadata(1)));
-        assert_eq!(ctr.class_metadata(0), None);
-        assert_eq!(ctr.class_metadata(2), None);
-        assert_eq!(ctr.class_metadata(322), None);
+        assert_eq!(ctr.sbt_class_metadata(1), Some(class_metadata(1)));
+        assert_eq!(ctr.sbt_class_metadata(0), None);
+        assert_eq!(ctr.sbt_class_metadata(2), None);
+        assert_eq!(ctr.sbt_class_metadata(322), None);
 
         assert_eq!(ctr.class_minter(0), None);
         assert_eq!(ctr.class_minter(2), None);
@@ -598,9 +601,9 @@ mod tests {
         assert_eq!(ctr.class_minter(4), None);
 
         // verify class metadata
-        assert_eq!(ctr.class_metadata(1), Some(class_metadata(1)));
-        assert_eq!(ctr.class_metadata(2), Some(class_metadata(2)));
-        assert_eq!(ctr.class_metadata(3), Some(class_metadata(3)));
+        assert_eq!(ctr.sbt_class_metadata(1), Some(class_metadata(1)));
+        assert_eq!(ctr.sbt_class_metadata(2), Some(class_metadata(2)));
+        assert_eq!(ctr.sbt_class_metadata(3), Some(class_metadata(3)));
         assert_eq!(ctr.class_minter(0), None);
         assert_eq!(ctr.class_minter(4), None);
         assert_eq!(ctr.class_minter(5), None);
@@ -785,6 +788,6 @@ mod tests {
         ctr.set_admin_list(vec![admin(), alice()]);
         ctr.assert_admin();
 
-        assert_eq!(ctr.admins.get().unwrap(), vec![admin(), alice ()]);
+        assert_eq!(ctr.admins.get().unwrap(), vec![admin(), alice()]);
     }
 }

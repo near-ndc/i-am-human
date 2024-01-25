@@ -29,13 +29,13 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Features
 
-+ `admin_mint` to allow manual verification and manual mint by the admin / dao.
-+ `get_admins` query.
-+ Added `ClassMetadata` to the Oracle contract and the `class_metadata` query.
+- `admin_mint` to allow manual verification and manual mint by the admin / dao.
+- `get_admins` query.
+- Added `ClassMetadata` to the Oracle contract and the `class_metadata` query.
 
 ## Improvements
 
-+ Decrease `sbt_mint` recommended storage deposit.
+- Decrease `sbt_mint` recommended storage deposit.
 
 ## v1.0.1 (2023-08-17)
 
