@@ -125,7 +125,7 @@ impl Contract {
 }
 
 #[near_bindgen]
-impl SBTContract for Contract {
+impl SBTIssuer for Contract {
     fn sbt_metadata(&self) -> ContractMetadata {
         self.metadata.get().unwrap()
     }

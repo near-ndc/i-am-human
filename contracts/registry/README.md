@@ -7,7 +7,7 @@ The Registry smart contract is a balance book for all associated SBT tokens. The
 Usually we have 4 entities involved in the minting process:
 
 1. Issuer entity: a smart contract representing an issuer, opted-in to the registry contract, allowed to issue new SBTs. Issuer should implement authorization methods for minters to call mint functions.
-   Issuer must provide an interface, to allowed minters, to call registry functions: `sbt_mint`, `sbt_mint_iah`, `sbt_renew`, `sbt_revoke`. It must also implement the [`SBTContract`](../sbt/src/lib.rs) trait to provide metadata information about the issuer and each token class.
+   Issuer must provide an interface, to allowed minters, to call registry functions: `sbt_mint`, `sbt_mint_iah`, `sbt_renew`, `sbt_revoke`. It must also implement the [`SBTIssuer`](../sbt/src/lib.rs) trait to provide metadata information about the issuer and each token class.
    NOTE: each SBT is issued under the issuer namespace. So if we have two issuers: A and B, each one can issue SBTs independently. SBTs are queried by issuer and token ID pair. This assures correct separation between issuers.
 2. Minter: an account (usually a DAO, but can be any contract or account) authorized to call Issuer mint functions. Authorization is handled by the _Issuer entity_. For example, Issuer entity can implement a role based authorization: allow different minters per class, or different accounts to handle renew.
 3. Registry: a smart contract described in this library. It implements the SBT Registry as per [nep-393](https://github.com/near/NEPs/pull/393).

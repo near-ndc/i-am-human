@@ -411,7 +411,7 @@ impl Contract {
 }
 
 #[near_bindgen]
-impl SBTContract for Contract {
+impl SBTIssuer for Contract {
     fn sbt_metadata(&self) -> ContractMetadata {
         self.metadata.get().unwrap()
     }
@@ -432,7 +432,7 @@ mod tests {
         },
         testing_env, AccountId, Balance, VMContext,
     };
-    use sbt::{ClassId, ClassMetadata, ContractMetadata, SBTContract, TokenMetadata};
+    use sbt::{ClassId, ClassMetadata, ContractMetadata, SBTIssuer, TokenMetadata};
 
     use crate::{ClassMinters, Contract, MintError, MIN_TTL};
 

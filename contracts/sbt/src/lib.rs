@@ -42,11 +42,11 @@ pub type SBTs = Vec<(AccountId, Vec<TokenId>)>;
 /// like set of tokens required to be verified as IAH
 pub type ClassSet = Vec<(AccountId, Vec<ClassId>)>;
 
-/// SBTContract is the minimum required interface to be implemented by issuer.
+/// SBTIssuer is the minimum required interface to be implemented by issuer.
 /// Other methods, such as a mint function, which requests the registry to proceed with token
 /// minting, is specific to an Issuer implementation (similarly, mint is not part of the FT
 /// standard).
-pub trait SBTContract {
+pub trait SBTIssuer {
     /// returns contract metadata
     fn sbt_metadata(&self) -> ContractMetadata;
     /// returns sbt class metadata, or None if class is not found.
