@@ -25,6 +25,12 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Bug Fixes
 
+## v1.2.0 (2024-01-25)
+
+### Breaking Changes
+
+- `class_metadata` has been renamed to `sbt_class_metadata` to unify the SBT Issuer interface.
+
 ## v1.1.0 (2023-12-20)
 
 ### Features

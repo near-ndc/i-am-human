@@ -827,7 +827,7 @@ dependencies = [
 
 [[package]]
 name = "community-sbt"
-version = "4.3.0"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "cost",
@@ -2840,7 +2840,7 @@ dependencies = [
 
 [[package]]
 name = "oracle-sbt"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "chrono",
