@@ -2,27 +2,39 @@
 
 The Registry smart contract is a balance book for all associated SBT tokens. The registry enables atomic `soul_transfers` and provides an efficient way to ban a smart contract (issuer). For more details check the [nep-393](https://github.com/near/NEPs/pull/393).
 
-## SBT opt-in
+## Issuing SBTs
 
-Every SBT smart contract must opt-in to a registry, or implement registry functionality by it's own. Different registries may implement different mechanisms for opt-in.
+Usually we have 4 entities involved in the minting process:
 
-This implementation requires an admin account (could be a DAO) to add an issuer to the registry, and as a consequence allow the issuer to use SBT registry methods.
+1. Issuer entity: a smart contract representing an issuer, opted-in to the registry contract, allowed to issue new SBTs. Issuer should implement authorization methods for minters to call mint functions.
+   Issuer must provide an interface, to allowed minters, to call registry functions: `sbt_mint`, `sbt_mint_iah`, `sbt_renew`, `sbt_revoke`. It must also implement the [`SBTContract`](../sbt/src/lib.rs) trait to provide metadata information about the issuer and each token class.
+   NOTE: each SBT is issued under the issuer namespace. So if we have two issuers: A and B, each one can issue SBTs independently. SBTs are queried by issuer and token ID pair. This assures correct separation between issuers.
+2. Minter: an account (usually a DAO, but can be any contract or account) authorized to call Issuer mint functions. Authorization is handled by the _Issuer entity_. For example, Issuer entity can implement a role based authorization: allow different minters per class, or different accounts to handle renew.
+3. Registry: a smart contract described in this library. It implements the SBT Registry as per [nep-393](https://github.com/near/NEPs/pull/393).
+4. Recipient: account receiving an SBT.
 
-## SBT mint
-
-The minting process is a procedure where we assign a new token to the provided receiver and keep track of it in the registry. The `sbt_mint` method must be called by a issuer that is opted-in. Additionally:
-
-- each `TokenMetadata` provided must have a non zero `class`,
-- enough `Near` must be attached to cover the registry storage cost must be provided.
-
-The method will emit the [`Mint`](https://github.com/alpha-fi/i-am-human/blob/master/contracts/sbt/src/events.rs#L69) event when successful. There might be a case when the token vector provided is too long, and the gas is not enough to cover the minting process, then it will panic with `out of gas`.
-
-### Issuers
-
-SBT minting is done by an external entity, usually DAO (but can be any contract or account). In the current implementation, only whitelisted issuers are authorized to mint tokens until we will have more established governance and the protocol will get enough stability.
-The diagram below outlines different entities involved in minting process. Issuers always mints tokens under his own namespace. Moreover, when minting, an issuer must specify non zero `class` for every token (this is set in `TokenMetadata`). A recipient can have at most one SBT of the same class.
+The diagram below outlines different entities involved in minting process. Issuers always mints tokens under his own namespace.
 
 ![Issuers and minting](./issuers.jpg)
+
+### Registering an issuer
+
+As noted above, every SBT is minted by an issuer, and it is recorded in the Registry contract, within an issuer namespace. An issuer, to be allowed to mint tokens, must firstly opt-in to the registry. Different registries may implement different mechanisms for opt-in. This implementation requires an admin account (could be a DAO) to add an issuer to the registry. The issuer opt-in mechanism is planned to be fully permissionless, once we will have more established governance and the protocol will get enough stability.
+
+### Minting
+
+The minting process is a procedure where an opt-in Issuer calls registry to mint a new token. Registry exposes two functions:
+
+- `sbt_mint(token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>` -- creates a new, unique tokens and assigns it to the `receiver`. `token_spec` is a vector of pairs: owner AccountId and TokenMetadata. Each TokenMetadata must specify non zero `class`.
+- `sbt_mint_iah(token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>` -- a wrapper around `sbt_mint` and `is_human`. It mints SBTs only when all recipients are humans. Panics if one of the recipients is not a human.
+
+When calling the registry `sbt_mint*` functions, enough `Near` must be attached to cover the registry storage cost.
+
+The functions will emit the [`Mint`](https://github.com/alpha-fi/i-am-human/blob/master/contracts/sbt/src/events.rs#L69) event when successful. There might be a case when the token vector provided is too long, and the gas is not enough to cover the minting process. In such case, the registry call will panic with `out of gas`.
+
+## NDC Community Issuer
+
+For NDC community SBTs, please see the [`community-sbt`](../community-sbt/README.md) contract and check with NDC leaders to be added as a minter and have your own class. The `community-sbt` contract allows to have unique set of minters per class. This way, there is no need to create a new contract for each new community, and every community will have it's own autonomy of issuing SBTs under their own class.
 
 ## Additional Queries
 

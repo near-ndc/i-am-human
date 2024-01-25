@@ -228,9 +228,9 @@ impl SBTRegistry for Contract {
      * Transactions
      *************/
 
-    /// Creates a new, unique token and assigns it to the `receiver`.
+    /// Creates a new, unique tokens and assigns it to the `receiver`.
     /// `token_spec` is a vector of pairs: owner AccountId and TokenMetadata.
-    /// Each TokenMetadata must have non zero `class`.
+    /// Each TokenMetadata must specify non zero `class`.
     /// Must be called by an SBT contract.
     /// Must emit `Mint` event.
     /// Must provide enough NEAR to cover registry storage cost.
