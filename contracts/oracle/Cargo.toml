@@ -1,6 +1,6 @@
 [package]
 name = "oracle-sbt"
-version = "1.0.1"
+version = "1.2.0"
 authors = ["Robert Zaremba 'https://zaremba.ch/'"]
 edition = { workspace = true }
 repository = { workspace = true }
@@ -8,7 +8,6 @@ license = { workspace = true }
 
 [lib]
 crate-type = ["cdylib", "rlib"]
-
 
 [dependencies]
 uint.workspace = true

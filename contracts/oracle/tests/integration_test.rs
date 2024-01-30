@@ -13,19 +13,22 @@ use test_util::{
 };
 
 use near_sdk::borsh::BorshSerialize;
-use oracle_sbt::{Claim, MINT_TOTAL_COST};
+use oracle_sbt::{Claim, MINT_TOTAL_COST, CLASS_KYC_SBT};
 use sbt::{ClassMetadata, ContractMetadata};
 
 const AUTHORITY_KEY: &str = "zqMwV9fTRoBOLXwt1mHxBAF3d0Rh9E9xwSAXR3/KL5E=";
 const CLAIM_TTL: u64 = 3600 * 24 * 365 * 100;
 
-async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<(Contract, Account, Account)> {
+async fn init(
+    worker: &Worker<impl DevNetwork>,
+) -> anyhow::Result<(Contract, Contract, Account, Account, Account)> {
     // deploy contracts
     let registry = worker.dev_deploy(include_bytes!("../../res/registry.wasm"));
 
     let registry = registry.await?;
 
     let alice = worker.dev_create_account().await?;
+    let bob = worker.dev_create_account().await?;
     let admin = worker.dev_create_account().await?;
     let auth_flagger = worker.dev_create_account().await?;
 
@@ -56,13 +59,13 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<(Contract, Acc
     // let block = worker.view_block().await?;
     // let now = block.timestamp() / MSECOND; // timestamp in seconds
 
-    Ok((oracle.to_owned(), admin, alice))
+    Ok((oracle.to_owned(), registry.to_owned(), admin, alice, bob))
 }
 
 #[tokio::test]
 async fn check_arithmetic_exception_dev() -> anyhow::Result<()> {
     let worker = near_workspaces::sandbox().await?;
-    let (oracle, _, alice) = init(&worker).await?;
+    let (oracle, _, _, alice, _) = init(&worker).await?;
     check_arithmetic_exception(oracle, alice).await?;
 
     Ok(())
@@ -218,6 +221,41 @@ async fn test_mint_sbt() -> anyhow::Result<()> {
         .transact()
         .await?;
     assert!(res.is_success());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_admin_mint() -> anyhow::Result<()> {
+    let worker = near_workspaces::sandbox().await?;
+    let (oracle, registry, admin, alice, bob) = init(&worker).await?;
+
+    // get current block time
+    let block = worker.view_block().await?;
+    let one_day_in_milliseconds: u64 = 24 * 60 * 60 * 1000;
+    let now = block.timestamp() / 1_000_000; // timestamp in miliseconds
+    let expires_at = now + one_day_in_milliseconds;
+
+    let mint_data = vec![(alice.id(), expires_at), (bob.id(), expires_at)];
+
+    let res = admin
+        .call(oracle.id(), "admin_mint")
+        .args_json(json!({"mint_data":mint_data, "class": CLASS_KYC_SBT, "memo": "kyc_test"}))
+        .deposit(2 * MINT_TOTAL_COST)
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
+
+    let res: u64 = admin
+        .call(registry.id(), "sbt_supply_by_class")
+        .args_json(json!({"issuer":oracle.id(), "class": CLASS_KYC_SBT}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+
+    assert_eq!(res, 2);
 
     Ok(())
 }

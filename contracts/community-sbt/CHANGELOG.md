@@ -23,9 +23,14 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Breaking Changes
 
-- The registry method `sbt_revoke_by_owner` now returns `boolean` indicating if all the tokens were revoked. `true` if all the tokens were revoked succesfully or `false` if not and the method needs to be called agian.
-
 ### Bug Fixes
+
+## v5.0.0 (2024-01-25)
+
+### Breaking Changes
+
+- The registry method `sbt_revoke_by_owner` now returns `boolean` indicating if all the tokens were revoked. `true` if all the tokens were revoked successfully or `false` if not and the method needs to be called again.
+- `class_metadata` has been renamed to `sbt_class_metadata` to unify the SBT Issuer interface.
 
 ## v4.3.0 (2023-09-07)
 

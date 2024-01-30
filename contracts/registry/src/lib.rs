@@ -137,6 +137,15 @@ impl Contract {
         self._is_human(&account)
     }
 
+    /// Returns `true` if an account is considered human, and `false` otherwise.
+    /// We DO NOT RECOMMEND using this function. You SHOULD use `is_human` instead. Returning
+    /// bool may create wrong practices. Humanity will be a metric, not a true/false.
+    /// Each "client" should have his own criteria and asses the humanity proof
+    /// (e.g. check for KYC SBTs, liveness, ...).
+    pub fn is_human_bool(&self, account: AccountId) -> bool {
+        !self._is_human(&account).is_empty()
+    }
+
     fn _is_human(&self, account: &AccountId) -> SBTs {
         if self.flagged.get(account) == Some(AccountFlag::Blacklisted) || self._is_banned(account) {
             return vec![];
@@ -154,7 +163,7 @@ impl Contract {
             );
             // we need to check class, because the query can return a "next" token if a user
             // doesn't have the token of requested class.
-            if !(!tokens.is_empty() && tokens[0].1[0].metadata.class == *cls) {
+            if tokens.is_empty() || tokens[0].1[0].metadata.class != *cls {
                 return vec![];
             }
             proof.push(tokens[0].1[0].token)
@@ -419,12 +428,10 @@ impl Contract {
 
         let now = env::block_timestamp_ms();
         let mut lock = self.transfer_lock.get(&caller).unwrap_or(now);
-        if lock_duration > 0 {
-            if lock < now + lock_duration {
-                lock = now + lock_duration;
-                self.transfer_lock.insert(&caller, &lock);
-                events::emit_transfer_lock(caller.clone(), lock)
-            }
+        if lock_duration > 0 && lock < now + lock_duration {
+            lock = now + lock_duration;
+            self.transfer_lock.insert(&caller, &lock);
+            events::emit_transfer_lock(caller.clone(), lock)
         }
 
         let args = IsHumanLockCallbackArgs {

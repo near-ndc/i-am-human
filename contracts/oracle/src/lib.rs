@@ -95,7 +95,14 @@ impl Contract {
 
     /**********
      * QUERIES
+     *
+     * Note: all SBT queries should be done through registry
      **********/
+
+    /// Returns list of admins
+    pub fn get_admins(&self) -> Vec<AccountId> {
+        self.admins.iter().collect()
+    }
 
     #[inline]
     pub fn required_sbt_mint_deposit(is_verified_kyc: bool) -> Balance {
@@ -110,13 +117,6 @@ impl Contract {
         let normalised_id = normalize_external_id(external_id).expect("failed to normalize id");
         self.used_identities.contains(&normalised_id)
     }
-
-    /// Returns `ClassMetadata` by class. Returns none if the class is not found.
-    pub fn class_metadata(&self, class: ClassId) -> Option<ClassMetadata> {
-        self.class_metadata.get(&class)
-    }
-
-    // all SBT queries should be done through registry
 
     /**********
      * FUNCTIONS
@@ -309,6 +309,11 @@ impl Contract {
         self.admins.insert(&admin);
     }
 
+    pub fn remove_admin(&mut self, admin: AccountId) {
+        self.assert_admin();
+        self.admins.remove(&admin);
+    }
+
     #[inline]
     fn assert_admin(&self) {
         require!(
@@ -333,16 +338,75 @@ impl Contract {
         Ok(())
     }
 
+    /// Alows admin to mint SBTs with a of the `class_id` to the provided list of pairs:
+    /// `(recipient_account, expire_timestamp_ms)`.
+    /// Panics if not called by an admin or the attached deposit is insufficient.
+    #[payable]
+    pub fn admin_mint(
+        &mut self,
+        mint_data: Vec<(AccountId, u64)>,
+        class: ClassId,
+        memo: Option<String>,
+    ) -> Promise {
+        self.assert_admin();
+
+        let num_tokens = mint_data.len();
+        let deposit = env::attached_deposit();
+        let required_deposit = mint_deposit(num_tokens);
+        require!(
+            deposit >= required_deposit,
+            format!("Requires min {}yoctoNEAR storage deposit", required_deposit)
+        );
+        require!(
+            class == CLASS_FV_SBT || class == CLASS_KYC_SBT,
+            "wrong request, class must be either 1 (FV) or 2 (KYC)"
+        );
+
+        if deposit > required_deposit {
+            Promise::new(env::predecessor_account_id()).transfer(deposit - required_deposit);
+        }
+
+        let now: u64 = env::block_timestamp_ms();
+        let mut tokens_metadata: Vec<(AccountId, Vec<TokenMetadata>)> =
+            Vec::with_capacity(num_tokens);
+        for (acc, end) in mint_data {
+            tokens_metadata.push((
+                acc,
+                vec![TokenMetadata {
+                    class,
+                    issued_at: Some(now),
+                    expires_at: Some(end),
+                    reference: None,
+                    reference_hash: None,
+                }],
+            ));
+        }
+
+        if let Some(memo) = memo {
+            env::log_str(&format!("SBT mint memo: {}", memo));
+        }
+
+        ext_registry::ext(self.registry.clone())
+            .with_attached_deposit(required_deposit)
+            .with_static_gas(calculate_mint_gas(num_tokens))
+            .sbt_mint(tokens_metadata)
+    }
+
     // TODO:
     // - fn sbt_renew
 }
 
 #[near_bindgen]
-impl SBTContract for Contract {
+impl SBTIssuer for Contract {
     fn sbt_metadata(&self) -> ContractMetadata {
         self.metadata.get().unwrap()
     }
+    /// Returns `ClassMetadata` by class. Returns none if the class is not found.
+    fn sbt_class_metadata(&self, class: ClassId) -> Option<ClassMetadata> {
+        self.class_metadata.get(&class)
+    }
 }
+
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(
@@ -361,7 +425,7 @@ mod checks;
 pub mod tests {
     use crate::*;
     use ed25519_dalek::Keypair;
-    use near_sdk::test_utils::test_env::alice;
+    use near_sdk::test_utils::test_env::{alice, bob};
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::{testing_env, VMContext};
 
@@ -464,6 +528,16 @@ pub mod tests {
         let _ = ctr.sbt_mint(c_str.clone(), sig.clone(), None);
     }
     */
+
+    #[test]
+    fn add_admin() {
+        let (_, mut ctr, _) = setup(&acc_claimer(), &acc_admin());
+        ctr.add_admin(acc_u1());
+        assert_eq!(ctr.get_admins(), vec![acc_admin(), acc_u1()]);
+
+        ctr.remove_admin(acc_admin());
+        assert_eq!(ctr.get_admins(), vec![acc_u1()]);
+    }
 
     #[test]
     #[should_panic(
@@ -672,6 +746,29 @@ pub mod tests {
             Ok(_) => (),
             Err(error) => panic!("expected Ok, got: {:?}", error),
         }
-        assert_eq!(ctr.class_metadata(1).unwrap(), class_metadata());
+        assert_eq!(ctr.sbt_class_metadata(1).unwrap(), class_metadata());
+    }
+
+    #[test]
+    #[should_panic(expected = "not an admin")]
+    fn admin_mint_not_admin() {
+        let (_, mut ctr, _) = setup(&alice(), &alice());
+        let _ = ctr.admin_mint(vec![(bob(), 100)], CLASS_FV_SBT, None);
+    }
+
+    #[test]
+    #[should_panic(expected = "Requires min")]
+    fn admin_mint_wrong_deposit() {
+        let (mut ctx, mut ctr, _) = setup(&alice(), &acc_admin());
+        ctx.attached_deposit = 0;
+        testing_env!(ctx);
+        let _ = ctr.admin_mint(vec![(bob(), 100), (alice(), 100)], CLASS_FV_SBT, None);
+    }
+
+    #[test]
+    fn admin_mint() {
+        let (_, mut ctr, _) = setup(&alice(), &acc_admin());
+        let _ = ctr.admin_mint(vec![(bob(), 100), (alice(), 100)], CLASS_KYC_SBT, None);
+        let _ = ctr.admin_mint(vec![(bob(), 100), (alice(), 100)], CLASS_FV_SBT, None);
     }
 }

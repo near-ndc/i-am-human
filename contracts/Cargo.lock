@@ -858,7 +858,7 @@ dependencies = [
 
 [[package]]
 name = "community-sbt"
-version = "4.3.0"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "cost",
@@ -2888,13 +2888,13 @@ dependencies = [
 
 [[package]]
 name = "oracle-sbt"
-version = "1.0.1"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "chrono",
  "cost",
  "ed25519-dalek",
- "near-crypto 0.17.0",
+ "near-crypto 0.14.0",
  "near-primitives 0.17.0",
  "near-sdk",
  "near-units",
@@ -3420,7 +3420,7 @@ checksum = "e5ea92a5b6195c6ef2a0295ea818b312502c6fc94dde986c5553242e18fd4ce2"
 
 [[package]]
 name = "registry"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "anyhow",
  "cost",
