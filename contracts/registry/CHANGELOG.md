@@ -21,6 +21,8 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Features
 
+- New `is_human_bool` function. Returns `true` if an account is considered human, and `false` otherwise. We do not recommend using this function. You SHOULD use `is_human` instead. Returning bool may create wrong practices. Humanity will be a metric, not a true/false. Each "client" should have his own criteria and asses the humanity proof (e.g. check for KYC SBTs, liveness, ...).
+
 ### Breaking Changes
 
 ### Bug Fixes

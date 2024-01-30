@@ -131,6 +131,15 @@ impl Contract {
         self._is_human(&account)
     }
 
+    /// Returns `true` if an account is considered human, and `false` otherwise.
+    /// We DO NOT RECOMMEND using this function. You SHOULD use `is_human` instead. Returning
+    /// bool may create wrong practices. Humanity will be a metric, not a true/false.
+    /// Each "client" should have his own criteria and asses the humanity proof
+    /// (e.g. check for KYC SBTs, liveness, ...).
+    pub fn is_human_bool(&self, account: AccountId) -> bool {
+        !self._is_human(&account).is_empty()
+    }
+
     fn _is_human(&self, account: &AccountId) -> SBTs {
         if self.flagged.get(account) == Some(AccountFlag::Blacklisted) || self._is_banned(account) {
             return vec![];
