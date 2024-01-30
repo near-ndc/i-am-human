@@ -313,14 +313,14 @@ impl SBTRegistry for Contract {
                     .get(&(owner_id.clone(), issuer_id))
                     .unwrap();
                 self.supply_by_owner
-                    .insert(&(owner_id, issuer_id), &(old_supply - &tokens_revoked));
+                    .insert(&(owner_id, issuer_id), &(old_supply - tokens_revoked));
             }
 
             // update supply by class
             for (class_id, tokens_revoked) in revoked_per_class {
                 let old_supply = self.supply_by_class.get(&(issuer_id, class_id)).unwrap();
                 self.supply_by_class
-                    .insert(&(issuer_id, class_id), &(&old_supply - &tokens_revoked));
+                    .insert(&(issuer_id, class_id), &(old_supply - tokens_revoked));
             }
 
             // update supply by issuer
@@ -434,53 +434,53 @@ impl SBTRegistry for Contract {
 
             // Check if all tokens were burned
             return self.sbt_supply_by_owner(owner.clone(), issuer, None) == 0;
-        } else {
-            let (_, non_expired_tokens) = self
-                .sbt_tokens_by_owner(
-                    owner.clone(),
-                    Some(issuer.clone()),
-                    None,
-                    Some(MAX_REVOKE_PER_CALL),
-                    Some(false),
-                )
-                .pop()
-                .unwrap();
-
-            if non_expired_tokens.is_empty() {
-                return true;
-            }
-
-            let is_finished = non_expired_tokens.len() < MAX_REVOKE_PER_CALL as usize;
-
-            let mut token_ids: Vec<TokenId> = Vec::new();
-
-            // Revoke: Update expire date for all tokens to current_timestamp
-            let now = env::block_timestamp_ms();
-            for mut t in non_expired_tokens {
-                token_ids.push(t.token);
-                t.metadata.expires_at = Some(now);
-                let token_data = TokenData {
-                    owner: owner.clone(),
-                    metadata: t.metadata.into(),
-                };
-                self.issuer_tokens.insert(
-                    &IssuerTokenId {
-                        issuer_id,
-                        token: t.token,
-                    },
-                    &token_data,
-                );
-            }
-
-            SbtTokensEvent {
-                issuer,
-                tokens: token_ids,
-            }
-            .emit_revoke();
-
-            // Check if all tokens were revoked
-            return is_finished;
         }
+
+        let (_, non_expired_tokens) = self
+            .sbt_tokens_by_owner(
+                owner.clone(),
+                Some(issuer.clone()),
+                None,
+                Some(MAX_REVOKE_PER_CALL),
+                Some(false),
+            )
+            .pop()
+            .unwrap();
+
+        if non_expired_tokens.is_empty() {
+            return true;
+        }
+
+        let is_finished = non_expired_tokens.len() < MAX_REVOKE_PER_CALL as usize;
+
+        let mut token_ids: Vec<TokenId> = Vec::new();
+
+        // Revoke: Update expire date for all tokens to current_timestamp
+        let now = env::block_timestamp_ms();
+        for mut t in non_expired_tokens {
+            token_ids.push(t.token);
+            t.metadata.expires_at = Some(now);
+            let token_data = TokenData {
+                owner: owner.clone(),
+                metadata: t.metadata.into(),
+            };
+            self.issuer_tokens.insert(
+                &IssuerTokenId {
+                    issuer_id,
+                    token: t.token,
+                },
+                &token_data,
+            );
+        }
+
+        SbtTokensEvent {
+            issuer,
+            tokens: token_ids,
+        }
+        .emit_revoke();
+
+        // Check if all tokens were revoked
+        is_finished
     }
 
     /// Allows issuer to update token metadata reference and reference_hash.
@@ -499,6 +499,7 @@ impl SBTRegistry for Contract {
             token: 0,
         };
         let mut idx = 0;
+        #[allow(clippy::explicit_counter_loop)]
         for (tid, reference, reference_hash) in updates {
             key.token = tid;
             let mut t = match self.issuer_tokens.get(&key) {
