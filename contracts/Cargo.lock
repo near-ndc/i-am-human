@@ -3372,7 +3372,7 @@ checksum = "56d84fdd47036b038fc80dd333d10b6aab10d5d31f4a366e20014def75328d33"
 
 [[package]]
 name = "registry"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "anyhow",
  "cost",
