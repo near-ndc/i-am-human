@@ -15,12 +15,11 @@ pub mod migrate;
 mod storage;
 
 const MIN_TTL: u64 = 86_400_000; // 24 hours in miliseconds
+const REGISTRATION_COST: u128 = 1;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
-    /// Accounts authorized to add new minting authority
-    pub admins: LazyOption<Vec<AccountId>>,
     /// map of classId -> to set of accounts authorized to mint
     pub classes: LookupMap<ClassId, ClassMinters>,
     pub next_class: ClassId,
@@ -36,9 +35,8 @@ pub struct Contract {
 impl Contract {
     /// @admin: account authorized to add new minting authority
     #[init]
-    pub fn new(registry: AccountId, admin: AccountId, metadata: ContractMetadata) -> Self {
+    pub fn new(registry: AccountId, metadata: ContractMetadata) -> Self {
         Self {
-            admins: LazyOption::new(StorageKey::Admins, Some(&vec![admin])),
             classes: LookupMap::new(StorageKey::MintingAuthority),
             next_class: 1,
             registry,
@@ -75,7 +73,7 @@ impl Contract {
         receiver: AccountId,
         #[allow(unused_mut)] mut metadata: TokenMetadata,
         memo: Option<String>,
-    ) -> Result<Promise, MintError> {
+    ) -> Result<Promise, Error> {
         let token_spec = vec![(receiver, vec![metadata])];
         self.sbt_mint_many(token_spec, memo)
     }
@@ -89,7 +87,7 @@ impl Contract {
         &mut self,
         #[allow(unused_mut)] mut token_spec: Vec<(AccountId, Vec<TokenMetadata>)>,
         memo: Option<String>,
-    ) -> Result<Promise, MintError> {
+    ) -> Result<Promise, Error> {
         let now_ms = env::block_timestamp_ms();
         let mut requires_iah = false;
         let mut class_info_map: HashMap<ClassId, (bool, u64)> = HashMap::new();
@@ -114,7 +112,7 @@ impl Contract {
         let required_deposit = mint_deposit(total_len);
         let attached_deposit = env::attached_deposit();
         if attached_deposit < required_deposit {
-            return Err(MintError::RequiredDeposit(required_deposit));
+            return Err(Error::RequiredDeposit(required_deposit));
         }
 
         if let Some(memo) = memo {
@@ -243,7 +241,6 @@ impl Contract {
         accounts: Vec<AccountId>,
         #[allow(unused_variables)] memo: Option<String>,
     ) {
-        self.assert_admin();
         require!(!accounts.is_empty(), "accounts must be a non empty list");
         env::panic_str("not implemented");
         // todo: requires registry update.
@@ -259,56 +256,69 @@ impl Contract {
     /**********
      * Admin
      **********/
-
     /// Allows admin to change if the specific class requires IAH verification.
-    /// Panics if class is not found.
-    pub fn set_requires_iah(&mut self, class: ClassId, requires_iah: bool) {
-        self.assert_admin();
-        let mut c = self.classes.get(&class).expect("class not found");
+    /// Panics if class is not found or not called by a class admin.
+    #[handle_result]
+    pub fn set_requires_iah(&mut self, class: ClassId, requires_iah: bool) -> Result<(), Error> {
+        let mut c = self.class_info_admin(class)?;
         if c.requires_iah != requires_iah {
             c.requires_iah = requires_iah;
             self.classes.insert(&class, &c);
         }
+        Ok(())
     }
 
     /// Allows admin to change Max TTL, expected time duration in miliseconds.
-    pub fn set_max_ttl(&mut self, class: ClassId, max_ttl: u64) {
-        self.assert_admin();
-        let mut cm = self.classes.get(&class).expect("class not found");
-        cm.max_ttl = max_ttl;
-        self.classes.insert(&class, &cm);
+    #[handle_result]
+    pub fn set_max_ttl(&mut self, class: ClassId, max_ttl: u64) -> Result<(), Error> {
+        let mut c = self.class_info_admin(class)?;
+        c.max_ttl = max_ttl;
+        self.classes.insert(&class, &c);
+        Ok(())
     }
 
     /// Allows admin to update class metadata.
     /// Panics if class is not enabled.
-    pub fn set_sbt_class_metadata(&mut self, class: ClassId, metadata: ClassMetadata) {
-        self.assert_admin();
-        require!(class < self.next_class, "class not found");
+    #[handle_result]
+    pub fn set_sbt_class_metadata(
+        &mut self,
+        class: ClassId,
+        metadata: ClassMetadata,
+    ) -> Result<(), Error> {
+        self.class_info_admin(class)?;
         self.class_metadata.insert(&class, &metadata);
+        Ok(())
     }
 
-    /// Enables a new, unused class and authorizes minter to issue SBTs of that class.
+    /// Acquires a new, unused class and authorizes minter to issue SBTs of that class.
+    /// Caller will become an admin of the class.
+    /// Must attach at least REGISTRATION_COST yNEAR to cover storage and bond cost.
     /// Returns the new class ID.
-    pub fn enable_next_class(
+    #[payable]
+    pub fn acquire_next_class(
         &mut self,
         requires_iah: bool,
-        minter: AccountId,
+        minters: Vec<AccountId>,
         max_ttl: u64,
         metadata: ClassMetadata,
         #[allow(unused_variables)] memo: Option<String>,
     ) -> ClassId {
-        self.assert_admin();
         require!(
             MIN_TTL <= max_ttl,
             format!("ttl must be at least {}ms", MIN_TTL)
+        );
+        require!(
+            MIN_TTL <= max_ttl,
+            format!("deposit must be at least {}yNEAR", REGISTRATION_COST)
         );
         let cls = self.next_class;
         self.next_class += 1;
         self.classes.insert(
             &cls,
             &ClassMinters {
+                admins: vec![env::predecessor_account_id()],
                 requires_iah,
-                minters: vec![minter],
+                minters,
                 max_ttl,
             },
         );
@@ -317,46 +327,50 @@ impl Contract {
     }
 
     /// Admin: authorize `minter` to mint tokens of a `class`.
-    /// Must be called by admin, panics otherwise.
-    pub fn authorize(
+    /// Must be called by a class admin, panics otherwise.
+    #[handle_result]
+    pub fn add_minters(
         &mut self,
         class: ClassId,
-        minter: AccountId,
+        minters: Vec<AccountId>,
         #[allow(unused_variables)] memo: Option<String>,
-    ) {
-        self.assert_admin();
-        let mut c = self.classes.get(&class).expect("class not found");
-        if !c.minters.contains(&minter) {
-            c.minters.push(minter);
+    ) -> Result<(), Error> {
+        let mut c = self.class_info_admin(class)?;
+        let mut ok = false;
+        for m in minters {
+            if !c.minters.contains(&m) {
+                c.minters.push(m);
+                ok = true;
+            }
+        }
+        if ok {
             self.classes.insert(&class, &c);
         }
+        Ok(())
     }
 
     /// admin: revokes `class` minting for `minter`.
-    /// Must be called by admin, panics otherwise.
-    pub fn unauthorize(
+    /// Must be called by a class admin, panics otherwise.
+    #[handle_result]
+    pub fn remove_minter(
         &mut self,
         class: ClassId,
         minter: AccountId,
         #[allow(unused_variables)] memo: Option<String>,
-    ) {
-        self.assert_admin();
-        let mut c = self.classes.get(&class).expect("class not found");
+    ) -> Result<(), Error> {
+        let mut c = self.class_info_admin(class)?;
         if let Some(idx) = c.minters.iter().position(|x| x == &minter) {
             c.minters.swap_remove(idx);
             self.classes.insert(&class, &c);
         }
+        Ok(())
     }
 
-    pub fn set_admin_list(&mut self, new_admin_list: Vec<AccountId>) {
-        self.assert_admin();
-        self.admins.set(&new_admin_list);
-    }
-
-    /// admin: authorize `minter` to mint tokens of a `class`.
-    /// Must be called by admin, panics otherwise.
+    /// admin: updates this SBT ContractMetadata
+    /// Must be called by a contract admin, panics otherwise.
+    #[handle_result]
+    #[private]
     pub fn update_metadata(&mut self, metadata: ContractMetadata) {
-        self.assert_admin();
         self.metadata.replace(&metadata);
     }
 
@@ -364,27 +378,31 @@ impl Contract {
      * INTERNAL
      **********/
 
-    fn assert_admin(&self) {
-        if let Some(admins) = self.admins.get() {
-            require!(
-                admins.contains(&env::predecessor_account_id()),
-                "not an admin"
-            );
-        } else {
-            env::panic_str("admins list not found");
+    /// Returns error if class is not found or not called by an admin.
+    fn class_info_admin(&self, class: ClassId) -> Result<ClassMinters, Error> {
+        match self.class_minter(class) {
+            None => Err(Error::ClassNotFound),
+            Some(cm) => {
+                if cm.admins.contains(&env::predecessor_account_id()) {
+                    Ok(cm)
+                } else {
+                    Err(Error::NotAdmin)
+                }
+            }
         }
     }
 
     /// Returns (requires_iah, max_ttl).
-    /// Returns error if class is not found  or not called by a minter.
-    fn class_info_minter(&self, class: ClassId) -> Result<(bool, u64), MintError> {
+    /// Returns error if class is not found or not called by a minter or an admin.
+    fn class_info_minter(&self, class: ClassId) -> Result<(bool, u64), Error> {
         match self.class_minter(class) {
-            None => Err(MintError::ClassNotEnabled),
+            None => Err(Error::ClassNotFound),
             Some(cm) => {
-                if cm.minters.contains(&env::predecessor_account_id()) {
+                let a = &env::predecessor_account_id();
+                if cm.minters.contains(a) || cm.admins.contains(a) {
                     Ok((cm.requires_iah, cm.max_ttl))
                 } else {
-                    Err(MintError::NotMinter)
+                    Err(Error::NotMinter)
                 }
             }
         }
@@ -434,7 +452,7 @@ mod tests {
     };
     use sbt::{ClassId, ClassMetadata, ContractMetadata, SBTIssuer, TokenMetadata};
 
-    use crate::{ClassMinters, Contract, MintError, MIN_TTL};
+    use crate::{ClassMinters, Contract, Error, MIN_TTL};
 
     const START: u64 = 10;
 
@@ -446,7 +464,7 @@ mod tests {
         AccountId::new_unchecked("sbt.near".to_string())
     }
 
-    fn authority(i: u8) -> AccountId {
+    fn auth(i: u8) -> AccountId {
         AccountId::new_unchecked(format!("authority{}.near", i))
     }
 
@@ -464,6 +482,7 @@ mod tests {
 
     fn class_minter(requires_iah: bool, minters: Vec<AccountId>, max_ttl: u64) -> ClassMinters {
         ClassMinters {
+            admins: vec![admin()],
             requires_iah,
             minters,
             max_ttl,
@@ -488,8 +507,8 @@ mod tests {
             .build();
         ctx.attached_deposit = deposit.unwrap_or(mint_deposit(1));
         testing_env!(ctx.clone());
-        let mut ctr = Contract::new(registry(), admin(), contract_metadata());
-        let c = ctr.enable_next_class(true, authority(1), MIN_TTL, class_metadata(1), None);
+        let mut ctr = Contract::new(registry(), contract_metadata());
+        let c = ctr.acquire_next_class(true, vec![auth(1)], MIN_TTL, class_metadata(1), None);
         assert_eq!(c, 1);
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
@@ -497,65 +516,52 @@ mod tests {
     }
 
     #[test]
-    fn class_info() -> Result<(), MintError> {
+    fn class_info() -> Result<(), Error> {
         let (mut ctx, mut ctr) = setup(&admin(), None);
 
         let expect_not_authorized = |cls, ctr: &Contract| match ctr.class_info_minter(cls) {
-            Err(MintError::NotMinter) => (),
-            x => panic!("expected NotAuthorized, got: {:?}", x),
+            Err(Error::NotMinter) => (),
+            x => panic!("expected NotAuthorized for cls {}, got: {:?}", cls, x),
         };
 
-        // admin is not a minter
-        expect_not_authorized(1, &ctr);
+        ctr.class_info_minter(1)?; // admin can mint
 
-        let new_cls = ctr.enable_next_class(true, authority(2), MIN_TTL, class_metadata(2), None);
-        let other_cls =
-            ctr.enable_next_class(true, authority(10), MIN_TTL, class_metadata(3), None);
-        ctr.authorize(new_cls, authority(3), None);
+        let cls2 = ctr.acquire_next_class(true, vec![auth(2)], MIN_TTL, class_metadata(2), None);
+        let cls3 = ctr.acquire_next_class(true, vec![auth(10)], MIN_TTL, class_metadata(3), None);
+        ctr.add_minters(cls2, vec![auth(3)], None)?;
 
-        match ctr.class_info_minter(new_cls) {
-            Err(MintError::NotMinter) => (),
-            x => panic!("admin should not be a minter of the new class, {:?}", x),
-        };
+        ctr.class_info_minter(cls2)?; // admin can mint
 
         // authority(1) is a default minter for class 1 in the test setup
-        ctx.predecessor_account_id = authority(1);
+        ctx.predecessor_account_id = auth(1);
         testing_env!(ctx.clone());
         ctr.class_info_minter(1)?;
-        expect_not_authorized(new_cls, &ctr);
-        expect_not_authorized(other_cls, &ctr);
+        expect_not_authorized(cls2, &ctr);
+        expect_not_authorized(cls3, &ctr);
         match ctr.class_info_minter(1122) {
-            Err(MintError::ClassNotEnabled) => (),
+            Err(Error::ClassNotFound) => (),
             x => panic!("expected ClassNotEnabled, got: {:?}", x),
         };
 
         // check authority(2)
-        ctx.predecessor_account_id = authority(2);
+        ctx.predecessor_account_id = auth(2);
         testing_env!(ctx);
         expect_not_authorized(1, &ctr);
-        ctr.class_info_minter(new_cls)?;
-        expect_not_authorized(other_cls, &ctr);
+        ctr.class_info_minter(cls2)?;
+        expect_not_authorized(cls3, &ctr);
 
         Ok(())
     }
 
     #[test]
-    #[should_panic(expected = "not an admin")]
-    fn authorize_only_admin() {
-        let (_, mut ctr) = setup(&alice(), None);
-        ctr.authorize(1, authority(2), None);
-    }
+    fn add_minter() -> Result<(), Error> {
+        let (mut ctx, mut ctr) = setup(&admin(), None);
 
-    #[test]
-    #[should_panic(expected = "class not found")]
-    fn authorize_class_not_found() {
-        let (_, mut ctr) = setup(&admin(), None);
-        ctr.authorize(2, authority(2), None);
-    }
-
-    #[test]
-    fn authorize() {
-        let (_, mut ctr) = setup(&admin(), None);
+        // class not found
+        matches!(
+            ctr.add_minters(2, vec![auth(2)], None),
+            Err(Error::ClassNotFound)
+        );
 
         assert_eq!(ctr.sbt_class_metadata(1), Some(class_metadata(1)));
         assert_eq!(ctr.sbt_class_metadata(0), None);
@@ -566,37 +572,28 @@ mod tests {
         assert_eq!(ctr.class_minter(2), None);
         assert_eq!(ctr.class_minter(2415), None);
 
-        let cls = ctr.enable_next_class(false, authority(4), MIN_TTL, class_metadata(2), None);
+        let cls = ctr.acquire_next_class(false, vec![auth(4)], MIN_TTL, class_metadata(2), None);
         assert_eq!(cls, 2);
         assert_eq!(ctr.next_class, cls + 1);
-        let cls = ctr.enable_next_class(false, authority(4), MIN_TTL, class_metadata(3), None);
+        let cls = ctr.acquire_next_class(false, vec![auth(4)], MIN_TTL, class_metadata(3), None);
         assert_eq!(cls, 3);
         assert_eq!(ctr.next_class, 4);
 
-        ctr.authorize(1, authority(2), None);
-        ctr.authorize(1, authority(2), None);
-        ctr.authorize(2, authority(2), None);
+        ctr.add_minters(1, vec![auth(2)], None)?;
+        ctr.add_minters(2, vec![auth(2), auth(2)], None)?;
 
         // verify class minters
         assert_eq!(
             ctr.class_minter(1),
-            Some(class_minter(
-                true,
-                vec![authority(1), authority(2)],
-                MIN_TTL
-            ))
+            Some(class_minter(true, vec![auth(1), auth(2)], MIN_TTL))
         );
         assert_eq!(
             ctr.class_minter(2),
-            Some(class_minter(
-                false,
-                vec![authority(4), authority(2)],
-                MIN_TTL
-            ))
+            Some(class_minter(false, vec![auth(4), auth(2)], MIN_TTL))
         );
         assert_eq!(
             ctr.class_minter(3),
-            Some(class_minter(false, vec![authority(4)], MIN_TTL))
+            Some(class_minter(false, vec![auth(4)], MIN_TTL))
         );
         assert_eq!(ctr.class_minter(4), None);
 
@@ -608,50 +605,55 @@ mod tests {
         assert_eq!(ctr.class_minter(4), None);
         assert_eq!(ctr.class_minter(5), None);
         assert_eq!(ctr.class_minter(2412), None);
+
+        // not an admin
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        matches!(
+            ctr.add_minters(1, vec![auth(200)], None),
+            Err(Error::NotAdmin)
+        );
+
+        ctx.predecessor_account_id = auth(1);
+        testing_env!(ctx.clone());
+        matches!(
+            ctr.add_minters(1, vec![auth(200)], None),
+            Err(Error::NotAdmin)
+        );
+
+        Ok(())
     }
 
     #[test]
-    #[should_panic(expected = "not an admin")]
-    fn unauthorize_only_admin() {
-        let (_, mut ctr) = setup(&alice(), None);
-        ctr.unauthorize(1, authority(1), None);
-    }
+    fn remove_minter() -> Result<(), Error> {
+        let (mut ctx, mut ctr) = setup(&admin(), None);
 
-    #[test]
-    #[should_panic(expected = "class not found")]
-    fn unauthorize_class_not_found() {
-        let (_, mut ctr) = setup(&admin(), None);
-        ctr.unauthorize(2, authority(1), None);
-    }
+        matches!(
+            ctr.remove_minter(2, auth(1), None),
+            Err(Error::ClassNotFound)
+        );
 
-    #[test]
-    fn unauthorize() {
-        let (_, mut ctr) = setup(&admin(), None);
-        ctr.enable_next_class(false, authority(3), MIN_TTL, class_metadata(2), None);
+        ctr.acquire_next_class(false, vec![auth(3)], MIN_TTL, class_metadata(2), None);
 
-        ctr.authorize(1, authority(2), None);
-        ctr.authorize(1, authority(3), None);
-        ctr.authorize(1, authority(4), None);
-        ctr.authorize(2, authority(2), None);
+        ctr.add_minters(1, vec![auth(2), auth(3), auth(4)], None)?;
+        ctr.add_minters(2, vec![auth(2)], None)?;
 
-        ctr.unauthorize(1, authority(2), None);
+        ctr.remove_minter(1, auth(2), None)?;
 
         assert_eq!(
             ctr.class_minter(1),
-            Some(class_minter(
-                true,
-                vec![authority(1), authority(4), authority(3)],
-                MIN_TTL
-            ))
+            Some(class_minter(true, vec![auth(1), auth(4), auth(3)], MIN_TTL))
         );
         assert_eq!(
             ctr.class_minter(2),
-            Some(class_minter(
-                false,
-                vec![authority(3), authority(2)],
-                MIN_TTL
-            ))
+            Some(class_minter(false, vec![auth(3), auth(2)], MIN_TTL))
         );
+
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        matches!(ctr.remove_minter(1, auth(1), None), Err(Error::NotAdmin));
+
+        Ok(())
     }
 
     fn mk_meteadata(class: ClassId) -> TokenMetadata {
@@ -665,23 +667,23 @@ mod tests {
     }
 
     #[test]
-    fn mint() -> Result<(), MintError> {
+    fn mint() -> Result<(), Error> {
         let (mut ctx, mut ctr) = setup(&admin(), None);
 
-        let cls2 = ctr.enable_next_class(true, authority(2), MIN_TTL, class_metadata(2), None);
+        let cls2 = ctr.acquire_next_class(true, vec![auth(2)], MIN_TTL, class_metadata(2), None);
 
-        ctx.predecessor_account_id = authority(1);
+        ctx.predecessor_account_id = auth(1);
         testing_env!(ctx);
 
         ctr.sbt_mint(alice(), mk_meteadata(1), None)?;
         match ctr.sbt_mint(alice(), mk_meteadata(cls2), None) {
-            Err(MintError::NotMinter) => (),
+            Err(Error::NotMinter) => (),
             Ok(_) => panic!("expected NotAuthorized, got: Ok"),
             Err(x) => panic!("expected NotAuthorized, got: {:?}", x),
         };
 
         match ctr.sbt_mint(alice(), mk_meteadata(1122), None) {
-            Err(MintError::ClassNotEnabled) => (),
+            Err(Error::ClassNotFound) => (),
             Ok(_) => panic!("expected ClassNotEnabled, got: Ok"),
             Err(x) => panic!("expected NotAuthorized, got: {:?}", x),
         };
@@ -704,13 +706,13 @@ mod tests {
     }
 
     #[test]
-    fn mint_many() -> Result<(), MintError> {
+    fn mint_many() -> Result<(), Error> {
         let (mut ctx, mut ctr) = setup(&admin(), None);
 
-        let cls2 = ctr.enable_next_class(true, authority(1), MIN_TTL, class_metadata(2), None);
-        let cls3 = ctr.enable_next_class(true, authority(2), MIN_TTL, class_metadata(3), None);
+        let cls2 = ctr.acquire_next_class(true, vec![auth(1)], MIN_TTL, class_metadata(2), None);
+        let cls3 = ctr.acquire_next_class(true, vec![auth(2)], MIN_TTL, class_metadata(3), None);
 
-        ctx.predecessor_account_id = authority(1);
+        ctx.predecessor_account_id = auth(1);
         testing_env!(ctx.clone());
 
         match ctr.sbt_mint_many(
@@ -720,7 +722,7 @@ mod tests {
             ],
             None,
         ) {
-            Err(MintError::RequiredDeposit(36000000000000000000000)) => (),
+            Err(Error::RequiredDeposit(36000000000000000000000)) => (),
             Ok(_) => panic!("expected RequiredDeposit, got: Ok"),
             Err(x) => panic!("expected RequiredDeposit, got: {:?}", x),
         };
@@ -732,7 +734,7 @@ mod tests {
             ],
             None,
         ) {
-            Err(MintError::NotMinter) => (),
+            Err(Error::NotMinter) => (),
             Ok(_) => panic!("expected NotAuthorized, got: Ok"),
             Err(x) => panic!("expected NotAuthorized, got: {:?}", x),
         };
@@ -744,7 +746,7 @@ mod tests {
             ],
             None,
         ) {
-            Err(MintError::ClassNotEnabled) => (),
+            Err(Error::ClassNotFound) => (),
             Ok(_) => panic!("expected ClassNotEnabled, got: Ok"),
             Err(x) => panic!("expected NotAuthorized, got: {:?}", x),
         };
@@ -771,23 +773,11 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "not an admin")]
     fn assert_admin() {
         let (mut ctx, ctr) = setup(&admin(), None);
 
         ctx.predecessor_account_id = alice();
         testing_env!(ctx);
-
-        ctr.assert_admin();
-    }
-
-    #[test]
-    fn set_admin_list() {
-        let (_, mut ctr) = setup(&admin(), None);
-
-        ctr.set_admin_list(vec![admin(), alice()]);
-        ctr.assert_admin();
-
-        assert_eq!(ctr.admins.get().unwrap(), vec![admin(), alice()]);
+        matches!(ctr.class_info_admin(1), Err(Error::NotAdmin));
     }
 }

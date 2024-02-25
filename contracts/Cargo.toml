@@ -4,6 +4,7 @@ members = [
     "sbt",
     "cost",
     "community-sbt",
+    "community-open",
     "oracle",
     "registry",
     "soulbound-class",

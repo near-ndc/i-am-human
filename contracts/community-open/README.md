@@ -1,8 +1,8 @@
-# Proof of concept for Community SBT
+# Open Community SBT issuer
 
 Based on SBT NEP: https://github.com/near/NEPs/pull/393. Early Design: https://hackmd.io/ZvgUeoF4SMGM4InswH0Dsg
 
-This is a permissioned version of the [Community Open](../community-open/README.md) contract: only contract admins can acquire a new class and designate minters.
+This is a permissionless version of the [Community SBT](../community-sbt/README.md) contract: anyone can acquire a class to be a minter and designate other minters.
 
 See root [README](../../README.md#testnet) for deployed smart contract addresses.
 

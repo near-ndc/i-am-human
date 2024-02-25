@@ -16,7 +16,8 @@ Helper crates:
 Issuers:
 
 - `demo-issuer`: basic SBT Issuer: contains a list of admins who are authorized to issue SBTs.
-- `community-sbt`: Community Issuer of SBT tokens
+- `community-sbt`: Permissioned Community Issuer of SBT tokens.
+- `community-open`: Permissionless Community Issuer of SBT tokens.
 - `oracle`: SBT Issuer which relays on an off-chain authority signing claims for issuing SBTs.
 
 work in progress:

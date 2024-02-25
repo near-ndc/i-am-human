@@ -826,6 +826,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "community-open"
+version = "5.0.0"
+dependencies = [
+ "anyhow",
+ "cost",
+ "near-primitives 0.17.0",
+ "near-sdk",
+ "near-units",
+ "near-workspaces",
+ "pretty_assertions",
+ "sbt",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uint",
+]
+
+[[package]]
 name = "community-sbt"
 version = "5.0.0"
 dependencies = [
