@@ -9,11 +9,11 @@ See root [README](../../README.md#testnet) for deployed smart contract addresses
 ## Usage
 
 Community SBT contract is designed for a communities with authority.
-The contract can mint tokens of multiple classes. The class restriction is implemented in the `sbt_mint` function.
+The contract is an SBT issuer and allows admins to acquire new classes and set minters to mint new SBTs. The class restriction is implemented in the `sbt_mint` function.
 
-The SBT minting and revoking can be only executed by an account which has _Minting Authority_, hence ideally it's assigned to a DAO. Minting Authorities are set per class ID. Each class ID can has one more minter.
+The SBT minting and revoking can be only executed by an account which has _Minting Authority_, hence ideally, minter should be a DAO. Minting Authorities are set per class ID. Each class ID can has one more minter.
 
-Only admin can add or revoke minting authority.
+Only contract admin can add or revoke minting authority.
 
 #### TTL
 
@@ -31,7 +31,7 @@ near call CTR_ADDRESS enable_next_class \
   '{"requires_iah": true, "minter": MINTER_ADDRESS}' --accountId ADMIN
 ```
 
-Contract admin should set the metadata information for each class using:
+Contract admin should set the [class metadata](https://github.com/near/NEPs/blob/master/neps/nep-0393.md#smart-contract-interface) using:
 
 ```shell
 near call CTR_ADDRESS set_class_metadata \
@@ -58,7 +58,7 @@ near call CTR_ADDRESS sbt_mint \
   '{"receiver": "receipient.near",
     "metadata": {"class": 1, "reference": "link to token characteristics"},
     "memo": "optional operation info"}'  \
-  --deposit 0.01 --accountId ADMIN
+  --deposit 0.01 --accountId MINTER
 ```
 
 It is also possible to mint few tokens at once. In the example below, `recipient1` will get 1 token, `recipient2` will get 3 tokens. Note that one account can have at most one token of a give class (SBT standard doesn't allow one account to hold more than one token of the same class).
@@ -72,7 +72,7 @@ near call CTR_ADDRESS sbt_mint_many \
         [{"class": 1, "reference": "token2 ref"}, {"class": 2, "reference": "token3 ref"}, {"class": 3, "reference": "token4 ref"}]]
     ],
     "memo": "optional operation info"}'  \
-  --deposit 0.04 --gas 100000000000000 --accountId ADMIN
+  --deposit 0.04 --gas 100000000000000 --accountId MINTER
 ```
 
 To query minting authorities of a given class call:

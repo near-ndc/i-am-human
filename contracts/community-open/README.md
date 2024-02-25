@@ -9,33 +9,33 @@ See root [README](../../README.md#testnet) for deployed smart contract addresses
 ## Usage
 
 Community SBT contract is designed for a communities with authority.
-The contract can mint tokens of multiple classes. The class restriction is implemented in the `sbt_mint` function.
+The contract is an SBT issuer and allows anyone to be a minter by acquiring a new class. The class restriction is implemented in the `sbt_mint` function.
 
-The SBT minting and revoking can be only executed by an account which has _Minting Authority_, hence ideally it's assigned to a DAO. Minting Authorities are set per class ID. Each class ID can has one more minter.
+The SBT minting and revoking can be only executed by an account which has _Minting Authority_, hence ideally, minter should be a DAO. Minting Authorities are set per class ID. Each class ID can has one more minter.
 
-Only admin can add or revoke minting authority.
+Only class admin can add or revoke minting authority.
 
-#### TTL
+### Become an Issuer
 
-Time To Live (TTL) is a duration in milliseconds used to define token expire time: `expires_at = now + ttl`.
-Every token class has its own `MAX_TTL` value which is being set when enabling new class for minting.
-The `max_ttl` value can be changed by an admin by calling the `set_max_ttl` method.
+Anyone can become an issuer by acquiring permissionlessly a class. Class is just an ID associated to the account that acquired it. Any account can acquire many classes.
 
-#### SBT classes
+Once you acquire a class, you can add more admins and add or remove minters, update class metadata. A minter will have a permission to mint on your behalves, but won't be able to add nor remove other minters.
 
-SBT contract supports multiple token classes: one issuer can mint tokens of many classes.
-The `community-sbt` contract requires an admin to enable a token class and set if minting of SBT of that class requires IAH humanity check. Moreover, admin must assign a minting authority (an address which is authorized to mint).
+To prevent spam, a payment is required, that is defined by the `const REGISTRATION_COST`.
 
 ```shell
-near call CTR_ADDRESS enable_next_class \
-  '{"requires_iah": true, "minter": MINTER_ADDRESS}' --accountId ADMIN
-```
+# acquire a new class, set initial set of minters, and set max_ttl (maximum time for expire of
+# newly minted SBTs to 100 days) attaching 2N payment.
+near call CTR_ADDRESS acquire_next_class \
+  '{"requires_iah": true, "minters": [MINTER_ADDRESS], "max_ttl": 8640000000, "metadata": {"name": "YOUR CLASS NAME"}}' \
+  --deposit 0.1 --accountId ADMIN
 
-Contract admin should set the metadata information for each class using:
-
-```shell
 near call CTR_ADDRESS set_class_metadata \
-  '{"class": ClassId, "metadata": "Metadata JSON"}' --accountId ADMIN
+  '{"class": ClassId, "metadata": "{<Metadata JSON>}"}' --accountId ADMIN
+
+near call CTR_ADDRESS add_minters \
+  '{"class": ClassId, "minters": [MINTER2]' --accountId ADMIN
+
 ```
 
 And anyone can query the class metadata:
@@ -43,6 +43,10 @@ And anyone can query the class metadata:
 ```shell
 near view CTR_ADDRESS class_metadata '{"class": ClassId}'
 ```
+
+#### TTL
+
+See [Community SBT](../community-sbt/README.md#ttl).
 
 #### Minting
 
@@ -82,15 +86,14 @@ near view CTR_ADDRESS minting_authorities \
   '{"class": CLASS_ID}'
 ```
 
+#### Query Registry
+
+``` shell
+near view $REGISTRY sbt_tokens_by_owner '{"account": "YOU", "issuer":"CTR_ADDRESS"}'
+```
+
+
+
 ### Memo and Metadata
 
-Guidelines for using metadata and minting memo field.
-
-Both `sbt_mint` and `sbt_mint_many` provide an optional `memo` argument which should be used as a reference for minting (operation data), usually a justification for a minting or a link to a Near Social post for justification. `memo` is not going to be recorded in the token.
-
-If you want to record extra data to the token, then you should set it as a token `metadata.reference` (usually a JSON or a link to a JSON document). That should be related to a token, hence be a part of the token characteristic rather then the mint operation.
-
-There is also contract metadata and class metadata - both are managed by the contract admin.
-
-- [Contract Metadata](https://github.com/alpha-fi/i-am-human/blob/master/contracts/sbt/src/metadata.rs) should describe the contract and the issuer as well as common data to all token classes.
-- [Class Metadata](https://github.com/alpha-fi/i-am-human/blob/master/contracts/sbt/src/metadata.rs) should describe the class and all common data for all tokens of that class. For example, token characteristics shared by all tokens of a given class should be set in the class metadata, rather than copied over all token metadata. Examples include icon, symbol etc...
+See [Guidelines for using metadata and minting memo field](../community-sbt/README.md#memo-and-metadata).

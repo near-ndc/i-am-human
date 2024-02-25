@@ -393,7 +393,7 @@ impl Contract {
     }
 
     /// Returns (requires_iah, max_ttl).
-    /// Returns error if class is not found or not called by a minter or an admin.
+    /// Returns error if class is not found or not called by a minter nor an admin.
     fn class_info_minter(&self, class: ClassId) -> Result<(bool, u64), Error> {
         match self.class_minter(class) {
             None => Err(Error::ClassNotFound),
