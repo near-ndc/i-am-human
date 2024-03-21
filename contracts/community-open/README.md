@@ -19,7 +19,7 @@ Only class admin can add or revoke minting authority.
 
 Anyone can become an issuer by acquiring permissionlessly a class. Class is just an ID associated to the account that acquired it. Any account can acquire many classes.
 
-Once you acquire a class, you can add more admins and add or remove minters, update class metadata. A minter will have a permission to mint on your behalves, but won't be able to add nor remove other minters.
+Once you acquire a class, you can add more admins and add or remove minters, update [class metadata](https://github.com/near/NEPs/blob/master/neps/nep-0393.md#smart-contract-interface). A minter will have a permission to mint on your behalves, but won't be able to add nor remove other minters.
 
 To prevent spam, a payment is required, that is defined by the `const REGISTRATION_COST`.
 

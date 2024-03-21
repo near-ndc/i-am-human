@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
-use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
+use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise, ONE_NEAR};
 
 use cost::{calculate_iah_mint_gas, calculate_mint_gas, mint_deposit};
 use sbt::*;
@@ -15,7 +15,7 @@ pub mod migrate;
 mod storage;
 
 const MIN_TTL: u64 = 86_400_000; // 24 hours in miliseconds
-const REGISTRATION_COST: u128 = 1;
+const MILI_NEAR: u128 = ONE_NEAR / 1000;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -28,6 +28,7 @@ pub struct Contract {
     /// contract metadata
     pub metadata: LazyOption<ContractMetadata>,
     pub class_metadata: LookupMap<ClassId, ClassMetadata>,
+    pub registration_cost: u64, // cost in milinear
 }
 
 // Implement the contract structure
@@ -42,6 +43,7 @@ impl Contract {
             registry,
             metadata: LazyOption::new(StorageKey::ContractMetadata, Some(&metadata)),
             class_metadata: LookupMap::new(StorageKey::ClassMetadata),
+            registration_cost: 100, // 0.1 Near
         }
     }
 
@@ -309,7 +311,10 @@ impl Contract {
         );
         require!(
             MIN_TTL <= max_ttl,
-            format!("deposit must be at least {}yNEAR", REGISTRATION_COST)
+            format!(
+                "deposit must be at least {}yNEAR",
+                self.registration_cost as u128 * MILI_NEAR
+            )
         );
         let cls = self.next_class;
         self.next_class += 1;
@@ -352,15 +357,21 @@ impl Contract {
     /// admin: revokes `class` minting for `minter`.
     /// Must be called by a class admin, panics otherwise.
     #[handle_result]
-    pub fn remove_minter(
+    pub fn remove_minters(
         &mut self,
         class: ClassId,
-        minter: AccountId,
+        minters: Vec<AccountId>,
         #[allow(unused_variables)] memo: Option<String>,
     ) -> Result<(), Error> {
         let mut c = self.class_info_admin(class)?;
-        if let Some(idx) = c.minters.iter().position(|x| x == &minter) {
-            c.minters.swap_remove(idx);
+        let mut ok = false;
+        for m in minters {
+            if let Some(idx) = c.minters.iter().position(|x| x == &m) {
+                c.minters.swap_remove(idx);
+                ok = true;
+            }
+        }
+        if ok {
             self.classes.insert(&class, &c);
         }
         Ok(())
@@ -629,7 +640,7 @@ mod tests {
         let (mut ctx, mut ctr) = setup(&admin(), None);
 
         matches!(
-            ctr.remove_minter(2, auth(1), None),
+            ctr.remove_minters(2, vec! {auth(1)}, None),
             Err(Error::ClassNotFound)
         );
 
@@ -638,7 +649,7 @@ mod tests {
         ctr.add_minters(1, vec![auth(2), auth(3), auth(4)], None)?;
         ctr.add_minters(2, vec![auth(2)], None)?;
 
-        ctr.remove_minter(1, auth(2), None)?;
+        ctr.remove_minters(1, vec![auth(2)], None)?;
 
         assert_eq!(
             ctr.class_minter(1),
@@ -651,7 +662,10 @@ mod tests {
 
         ctx.predecessor_account_id = alice();
         testing_env!(ctx.clone());
-        matches!(ctr.remove_minter(1, auth(1), None), Err(Error::NotAdmin));
+        matches!(
+            ctr.remove_minters(1, vec![auth(1)], None),
+            Err(Error::NotAdmin)
+        );
 
         Ok(())
     }

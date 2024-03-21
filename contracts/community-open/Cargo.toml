@@ -1,6 +1,6 @@
 [package]
 name = "community-open"
-version = "5.0.0"
+version = "1.0.0"
 authors = ["Robert Zaremba 'https://zaremba.ch/'"]
 edition = { workspace = true }
 repository = { workspace = true }

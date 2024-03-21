@@ -9,6 +9,7 @@ pub struct OldContract {
     pub registry: AccountId,
     pub metadata: LazyOption<ContractMetadata>,
     pub class_metadata: LookupMap<ClassId, ClassMetadata>,
+    pub registration_cost: u64,
 }
 
 // migration to community-open/v...
@@ -28,6 +29,7 @@ impl Contract {
             registry: old_state.registry,
             metadata: old_state.metadata,
             class_metadata: old_state.class_metadata,
+            registration_cost: old_state.registration_cost,
         }
     }
 }
