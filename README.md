@@ -83,6 +83,7 @@ Deprecated:
   registry: `registry-v2.i-am-human.testnet`
   classes: 1=OG, 2=NDC_Contributor, 3=NDC_Core_Contributors, 4=NDC_Champion, 5=NDC_Mod, 6=NDC_TechWG, 7=Creatives_DAO
   Max and default [TTL](./contracts/community-sbt/README.md#ttl) = 1year.
+- **Open Community SBTs**: `CTR open-v1.i-am-human.testnet` @ community-open/v1.0.0
 
 Deprecated:
 
