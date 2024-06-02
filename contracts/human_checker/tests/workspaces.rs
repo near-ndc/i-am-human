@@ -1,4 +1,5 @@
 use anyhow::Ok;
+use near_sdk::{Balance, ONE_NEAR};
 use near_units::parse_near;
 use near_workspaces::{network::Sandbox, result::ExecutionFinalResult, Account, Contract, Worker};
 use sbt::{SBTs, TokenMetadata};
@@ -19,11 +20,13 @@ impl Suite {
         &self,
         caller: &Account,
         payload: &RegisterHumanPayload,
+        deposit: Balance,
     ) -> anyhow::Result<ExecutionFinalResult> {
         let res = caller
         .call(self.registry.id(), "is_human_call")
         .args_json(json!({"ctr": self.human_checker.id(), "function": REGISTER_HUMAN_TOKEN, "payload": serde_json::to_string(payload).unwrap()}))
         .max_gas()
+        .deposit(deposit)
         .transact()
         .await?;
         println!(">>> is_human_call logs {:?}\n", res.logs());
@@ -165,7 +168,7 @@ async fn is_human_call() -> anyhow::Result<()> {
     };
 
     // Call using Alice. Should register tokens, because Alice is a human
-    let r = suite.is_human_call(&alice, &payload).await?;
+    let r = suite.is_human_call(&alice, &payload, 2 * ONE_NEAR).await?;
     assert!(r.is_success());
     let result: bool = r.json()?; // the final receipt is register_human_token, which return boolean
     assert!(result, "should register tokens to alice");
@@ -175,7 +178,7 @@ async fn is_human_call() -> anyhow::Result<()> {
 
     // call the is_human_call method with bob (has sbts but not a human)
     // should panic in the human_checker
-    let r = suite.is_human_call(&bob, &payload).await?;
+    let r = suite.is_human_call(&bob, &payload, 2 * ONE_NEAR).await?;
     assert!(r.is_failure());
 
     tokens = suite.query_sbts(&bob).await?;
@@ -183,7 +186,7 @@ async fn is_human_call() -> anyhow::Result<()> {
 
     // call the is_human_call method john (doesn't have sbts)
     // should panic in the registry
-    let r = suite.is_human_call(&john, &payload).await?;
+    let r = suite.is_human_call(&john, &payload, 2 * ONE_NEAR).await?;
     assert!(r.is_failure());
 
     tokens = suite.query_sbts(&john).await?;
@@ -229,6 +232,44 @@ async fn is_human_call() -> anyhow::Result<()> {
     assert!(r.is_failure());
     let failure_str = format!("{:?}",r.failures());
     assert!(failure_str.contains("is not a human"), "{}", failure_str);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn is_human_call_return_deposit() -> anyhow::Result<()> {
+    let worker = near_workspaces::sandbox().await?;
+    let (registry, human_checker, alice, bob, _, issuer) = init(&worker).await?;
+    let _ = near_sdk::AccountId::try_from(issuer.id().as_str().to_owned())?;
+
+    let payload = RegisterHumanPayload {
+        memo: "registering alice".to_owned(),
+        numbers: vec![2, 3, 5, 7, 11],
+    };
+
+    let suite = Suite {
+        registry,
+        human_checker,
+    };
+
+    // Alice is human but not enough deposit
+    // Checks if method called by is_human_call returns deposit in case of failure
+    let balance = alice.view_account().await?.balance;
+    let r = suite
+        .is_human_call(&alice, &payload, 2 * ONE_NEAR - 10)
+        .await?;
+    assert!(r.is_failure());
+    print!("{:?}", r.failures());
+    assert!(balance - alice.view_account().await?.balance < ONE_NEAR); // we are checking like this because of gas fees
+
+    // call the is_human_call method with bob (has sbts but not a human)
+    // should panic in the human_checker
+    // check if is_human_call returns deposit in case of failure
+    let balance = bob.view_account().await?.balance;
+    let r = suite.is_human_call(&bob, &payload, 2 * ONE_NEAR).await?;
+    assert!(r.is_failure());
+    print!("{:?}", r.failures());
+    assert!(balance - bob.view_account().await?.balance < ONE_NEAR);
 
     Ok(())
 }
