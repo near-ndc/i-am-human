@@ -11,6 +11,7 @@ concurrency:
 
 jobs:
   markdown-lint:
+    timeout-minutes: 60
     name: markdown-lint
     runs-on: ubuntu-latest
     steps:
@@ -30,6 +31,7 @@ jobs:
           separator: ","
 
   markdown-link-check:
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@master
